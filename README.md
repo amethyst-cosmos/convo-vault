@@ -49,7 +49,7 @@ Convo Vault 是一个本地优先的 Chrome 扩展，用来把 ChatGPT 对话导
 
 ```bash
 # 1. 克隆项目到本地
-git clone https://github.com/rcha585/convo-vault.git
+git clone https://github.com/amethyst-cosmos/convo-vault.git
 cd convo-vault
 
 # 2. 安装本地渲染后端依赖
