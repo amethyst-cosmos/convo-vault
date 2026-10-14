@@ -78,7 +78,7 @@ test("citations resolve from legacy grouped_webpages content references", async 
   assert.equal(markup.formatChatGptFootnotes(context), "[^3]: [Legacy source](https://legacy.example/page)");
 });
 
-test("writing block directives become fenced Markdown blocks", async () => {
+test("writing block directives become writing fences", async () => {
   const markup = await loadMarkupModule();
   const rendered = markup.renderChatGptWritingBlocks([
     "Send this:",
@@ -95,7 +95,7 @@ test("writing block directives become fenced Markdown blocks", async () => {
   assert.equal(rendered, [
     "Send this:",
     "",
-    "```markdown",
+    "```writing",
     "Please read `plan.md` and start.",
     "",
     "Use **only** P0.",

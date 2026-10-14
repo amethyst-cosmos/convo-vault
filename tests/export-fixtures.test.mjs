@@ -236,8 +236,9 @@ test("advanced PDF renderer keeps attachments after prose, embedded images, and 
   assert.doesNotMatch(html, /Image Attachments/);
   assert.match(html, /class="user-attachments image-grid" data-image-count="5"/);
   assert.equal((html.match(/class="attachment-card image with-thumb image-preview-card"/g) || []).length, 5);
-  assert.match(html, /Turn 03\. Assistant image/);
-  assert.doesNotMatch(html, /Turn 03\.[^<]*data:application/);
+  // The prompt index lists prompts only; answers follow them in the body.
+  assert.match(html, /<span class="toc-number">01<\/span>\s*<span class="toc-label" dir="auto">正文第一行/);
+  assert.doesNotMatch(html, /class="toc-label"[^>]*>[^<]*data:application/);
   assert.match(html, /data:image\/png;base64,/);
 });
 

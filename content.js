@@ -6489,12 +6489,13 @@
 
   /**
    * Converts :::writing directives (ChatGPT's copyable writing blocks) into
-   * fenced blocks, which keep the inner text verbatim in every Markdown reader.
+   * ```writing fences: Markdown readers keep the text verbatim and copyable,
+   * and the PDF renderer shows the fence as a formatted writing card.
    */
   function renderChatGptWritingBlocks(markdown) {
     return String(markdown || "").replace(CHATGPT_WRITING_BLOCK_RE, (match, prefix, body) => {
       const fence = makeFence(body);
-      return `${prefix}${fence}markdown\n${body}\n${fence}`;
+      return `${prefix}${fence}writing\n${body}\n${fence}`;
     });
   }
 
@@ -6927,7 +6928,7 @@
     }
 
     const fence = makeFence(text);
-    return `${fence}markdown\n${text}\n${fence}`;
+    return `${fence}writing\n${text}\n${fence}`;
   }
 
   /**

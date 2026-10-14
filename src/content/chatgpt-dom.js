@@ -137,7 +137,7 @@
     }
 
     const fence = makeFence(text);
-    return `${fence}markdown\n${text}\n${fence}`;
+    return `${fence}writing\n${text}\n${fence}`;
   }
 
   /**

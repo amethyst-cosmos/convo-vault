@@ -128,7 +128,6 @@
       "erDiagram"
     ],
     "mustContain": [
-      "Inline formula: \\(a^2 + b^2 = c^2\\).",
       "Remote product image",
       "Animated walkthrough",
       "research-report.pdf",
@@ -141,6 +140,7 @@
       "Source: product docs"
     ],
     "mustRenderContain": [
+      "Inline formula: <span class=\"math-inline\">a<sup class=\"math-sup\">2</sup> + b<sup class=\"math-sup\">2</sup> = c<sup class=\"math-sup\">2</sup></span>.",
       "class=\"math-inline\"",
       "class=\"math-card\"",
       "class=\"sequence-svg\"",
