@@ -170,6 +170,15 @@ async function prepareAndDownloadLocalBundle(serializedBody) {
     throw new Error(`Local renderer export request is invalid JSON. Details: ${error.message || error}`);
   }
 
+  // ChatGPT file pointers resolve only with the page's session, so the content
+  // script downloads them and ships the bytes here; the renderer never sees them.
+  const pageImages = readPageImageMap(body?.pageImages);
+  const pageImageFailures = readPageImageMap(body?.pageImageFailures);
+  if (body && typeof body === "object") {
+    delete body.pageImages;
+    delete body.pageImageFailures;
+  }
+
   try {
     const imageSources = collectBundleImageSources(body?.exportPayload?.messages);
     if (imageSources.length) {
@@ -180,6 +189,8 @@ async function prepareAndDownloadLocalBundle(serializedBody) {
         requestHeaders,
         exportSessionId,
         imageSources,
+        pageImages,
+        pageImageFailures,
         pageUrl: body?.exportPayload?.source || ""
       });
       applyStagedImageStats(body?.exportPayload, staged);
@@ -260,7 +271,7 @@ async function stageBundleImageSources(options) {
 
       try {
         const sourceKey = await sha256Text(source);
-        const blob = await fetchImageAsBlob(source, options.pageUrl);
+        const blob = await resolveStageableImageBlob(source, options);
         const response = await fetch(`${options.rendererUrl}/export-sessions/${options.exportSessionId}/assets/${sourceKey}`, {
           method: "PUT",
           headers: {
@@ -292,6 +303,29 @@ async function stageBundleImageSources(options) {
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
   return resultsBySource;
+}
+
+async function resolveStageableImageBlob(source, options) {
+  const pageImage = options.pageImages?.get(source);
+
+  if (pageImage) {
+    return dataUriToBlob(pageImage);
+  }
+
+  const pageFailure = options.pageImageFailures?.get(source);
+
+  // The page already tried with the user's session; retrying ChatGPT file
+  // endpoints from the service worker only adds failed requests.
+  if (pageFailure) {
+    throw new Error(`page download failed: ${pageFailure}`);
+  }
+
+  return fetchImageAsBlob(source, options.pageUrl);
+}
+
+function readPageImageMap(value) {
+  const entries = value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+  return new Map(entries.filter(([source, item]) => typeof source === "string" && typeof item === "string"));
 }
 
 async function deleteLocalExportSession(rendererUrl, requestHeaders, exportSessionId) {
@@ -382,6 +416,7 @@ function applyStagedImageStats(payload, staged) {
     ...(payload.assetStats || {}),
     imagesEmbedded: uniqueResults.filter((result) => result.ok).length,
     imagesFailed: uniqueResults.filter((result) => !result.ok).length,
+    imageFailureSamples: [...new Set(uniqueResults.filter((result) => !result.ok).map((result) => result.error))].slice(0, 5),
     imagesSkipped: 0,
     imageReferencesEmbedded: embeddedReferences,
     imageReferencesFailed: failedReferences,

@@ -52,6 +52,8 @@
   const DETAILED_DEBUG_LOG = false;
   const ADVANCED_PDF_IMAGE_EMBED_LIMIT = 160;
   const ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY = 4;
+  const BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY = 12;
+  const BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS = 20_000;
   const SETTINGS_STORAGE_KEY = "convoVaultSettings";
   const DEFAULT_EXPORTER_SETTINGS = {
     port: 38474,
@@ -1274,7 +1276,8 @@
     if (format === "bundle") {
       const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
         captureMode: options.captureMode,
-        debugLog: options.debugLog
+        debugLog: options.debugLog,
+        onProgress: options.onProgress
       });
       filename = bundleResult.filename;
 
@@ -1285,6 +1288,7 @@
           exporterVersion: EXPORTER_VERSION,
           captureMode: normalizeCaptureMode(options.captureMode),
           assetCount: bundleResult.assetCount || 0,
+          assetStats: bundleResult.assetStats,
           rendererTimings: bundleResult.rendererTimings || null
         });
         downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
@@ -1491,9 +1495,17 @@
       debugLog: options.debugLog
     });
 
+    const pageImageDownloads = await downloadChatGptFileImages(payload.messages, {
+      debugLog: options.debugLog,
+      onProgress: options.onProgress
+    });
+
+    options.onProgress?.("Rendering Markdown, PDF, and data files...");
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
-      fileName: defaultFileName
+      fileName: defaultFileName,
+      pageImages: pageImageDownloads.images,
+      pageImageFailures: pageImageDownloads.failures
     });
 
     if (!result?.ok) {
@@ -1507,8 +1519,121 @@
       rendererTimings: result.rendererTimings || null,
       assetCount: Number(result.assetCount) || 0,
       imagesEmbedded: result.assetStats?.imagesEmbedded ?? payload.assetStats?.imagesEmbedded ?? 0,
-      imagesFailed: result.assetStats?.imagesFailed ?? payload.assetStats?.imagesFailed ?? 0
+      imagesFailed: result.assetStats?.imagesFailed ?? payload.assetStats?.imagesFailed ?? 0,
+      assetStats: result.assetStats || null
     };
+  }
+
+  /**
+   * Downloads ChatGPT file images (file-service:// and sediment:// pointers)
+   * with the page's session. ChatGPT resolves a pointer through
+   * /backend-api/files/download/{id}, which returns a signed estuary URL that
+   * also needs the session cookies, so the extension service worker cannot
+   * fetch these images itself.
+   *
+   * @returns {Promise<{ images: Record<string, string>, failures: Record<string, string> }>}
+   *   data URIs and failure reasons keyed by the Markdown image source.
+   */
+  async function downloadChatGptFileImages(messages, options = {}) {
+    const sources = uniqueStrings(messages.flatMap((message) => [
+      ...extractMarkdownImageUrls(message?.markdown),
+      ...extractMarkdownImageUrls(message?.thinkingMarkdown)
+    ]).filter((source) => getChatGptFileImageId(source)));
+    const images = {};
+    const failures = {};
+
+    if (!sources.length) {
+      return { images, failures };
+    }
+
+    const startedAt = Date.now();
+    const accessToken = await getChatGptAccessToken(options.debugLog || null);
+    const conversationId = getCurrentConversationId();
+    let cursor = 0;
+    let finished = 0;
+
+    async function worker() {
+      while (cursor < sources.length) {
+        const source = sources[cursor];
+        cursor += 1;
+
+        try {
+          const blob = await fetchChatGptFileImage(getChatGptFileImageId(source), { accessToken, conversationId });
+          images[source] = await blobToDataUri(blob);
+        } catch (error) {
+          failures[source] = error?.message || String(error);
+        }
+
+        finished += 1;
+        options.onProgress?.(`Downloading images ${finished}/${sources.length}...`);
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY, sources.length) }, () => worker()));
+    options.debugLog?.event?.("assetDownload.done", {
+      images: sources.length,
+      downloaded: Object.keys(images).length,
+      failed: Object.keys(failures).length,
+      durationMs: Date.now() - startedAt,
+      failureSamples: [...new Set(Object.values(failures))].slice(0, 5)
+    });
+    return { images, failures };
+  }
+
+  function getChatGptFileImageId(source) {
+    return String(source || "").match(/^(?:file-service|sediment):\/\/([^/?#)\s]+)/i)?.[1] || "";
+  }
+
+  async function fetchChatGptFileImage(fileId, context) {
+    const headers = context.accessToken ? { authorization: `Bearer ${context.accessToken}` } : {};
+    const query = new URLSearchParams({ inline: "false" });
+
+    if (context.conversationId) {
+      query.set("conversation_id", context.conversationId);
+    }
+
+    const resolveUrl = new URL(`/backend-api/files/download/${encodeURIComponent(fileId)}?${query}`, location.origin);
+    const resolved = await fetchWithTimeout(resolveUrl.href, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include",
+      headers: { ...headers, accept: "application/json" }
+    });
+
+    if (!resolved.ok) {
+      throw new Error(`file download lookup HTTP ${resolved.status}`);
+    }
+
+    const details = await resolved.json();
+    const downloadUrl = String(details?.download_url || "");
+
+    if (!downloadUrl) {
+      throw new Error(`file download lookup returned no URL (${details?.status || "unknown status"})`);
+    }
+
+    const response = await fetchWithTimeout(new URL(downloadUrl, location.origin).href, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include"
+    });
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      throw new Error(`image download HTTP ${response.status}`);
+    }
+
+    if (!/^image\//i.test(contentType)) {
+      throw new Error(`image download returned ${contentType || "no content type"}`);
+    }
+
+    return response.blob();
+  }
+
+  function blobToDataUri(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Could not read image bytes."));
+      reader.readAsDataURL(blob);
+    });
   }
 
   async function requestBackgroundBundleExport(body) {
@@ -2923,7 +3048,10 @@
           ? "Generating export bundle..."
           : "Exporting selected messages...";
         setPanelPhase("exporting", busyLabel);
-        const result = await api.exportMessages(selected, options);
+        const result = await api.exportMessages(selected, {
+          ...options,
+          onProgress: (message) => setPanelStatus(message)
+        });
         const snapshot = captureJobs.getLoadedSnapshot();
         setPanelPhase(snapshot?.completeness?.complete ? "ready" : "incomplete", formatExportResult(result));
       } catch (error) {
@@ -2934,8 +3062,11 @@
 
     function formatExportResult(result) {
       if (result.format === "bundle") {
-        const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) left as links` : "";
-        return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${failedSummary}.`;
+        const imageSummary = result.imagesEmbedded || result.imagesFailed
+          ? `, ${result.imagesEmbedded} image(s) embedded`
+          : "";
+        const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) could not be downloaded and are left as links` : "";
+        return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${imageSummary}${failedSummary}.`;
       }
 
       if (result.format === "pdf" || result.format === "advanced-pdf") {
