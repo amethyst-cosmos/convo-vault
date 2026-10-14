@@ -73,7 +73,8 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function isFaviconImageUrl/);
   assert.match(generated, /function isTimestampDividerText/);
   assert.match(generated, /option value="fast" selected>Fast \(Recommended\)/);
-  assert.match(generated, /Hybrid \(Experimental for ImageGen\)/);
+  assert.match(generated, /option value="hybrid">Hybrid \(Fast \+ page details\)/);
+  assert.match(generated, /option value="full">Full \(page scan only\)/);
   assert.match(generated, /data-action="start-scan">Start Scan/);
   assert.match(generated, /Opening the selector does not scan/);
   const selectorOpen = generated.match(/open\(nextApi\)\s*\{[\s\S]*?return \{ ok: true, panelOpen: true \};\s*\}/)?.[0] || "";
