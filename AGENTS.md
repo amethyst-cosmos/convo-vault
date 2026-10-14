@@ -23,6 +23,7 @@
 - **数据完整性门禁 (Integrity Gate)**：
   - 支持 `Full`、`Fast`、`Hybrid` 捕获模式。
   - 严格保持消息序列完整性，杜绝序号跳跃与角色异常。
+- **每次交付都升版本号**：任何交给用户安装或测试的代码改动，都至少提升补丁版本（如 0.9.1 → 0.9.2），并同步 `package.json`、`manifest.json`、`tools/advanced-pdf/package.json`、`src/content/index.js` 的 `EXPORTER_VERSION`、`popup.html`、`tests/version.test.mjs` 和 README 的“当前版本”与更新说明，让用户能从面板和扩展页面看出装的是哪一版。
 
 ---
 
