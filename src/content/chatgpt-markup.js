@@ -201,6 +201,14 @@
       return 0;
     }
 
+    // Search results often repeat one page under several ref ids.
+    const samePage = context.footnotes.find((footnote) => footnote.url === source.url);
+
+    if (samePage) {
+      context.footnoteIndexByRef.set(ref, samePage.index);
+      return samePage.index;
+    }
+
     const index = context.footnoteOffset + context.footnotes.length + 1;
     context.footnotes.push({ index, ref, ...source });
     context.footnoteIndexByRef.set(ref, index);

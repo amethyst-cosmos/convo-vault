@@ -18,6 +18,8 @@ const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
   assistant: loadPngDataUri("artificial-intelligence.png")
 };
+const CJK_STRONG_OPEN = "CVSTRONGOPENX";
+const CJK_STRONG_CLOSE = "CVSTRONGCLOSEX";
 
 main().catch((error) => {
   console.error(`[advanced-pdf] ${error.stack || error.message || error}`);
@@ -1642,12 +1644,16 @@ function renderMessage(md, message, index, imageRegistry) {
   </article>`;
 }
 
-// One muted line per message: speaker, turn number, and time. The turn
-// heading above stays in the DOM (visually hidden) for PDF accessibility.
+// One muted line per message: avatar, speaker, turn number, and time. The
+// turn heading above stays in the DOM (visually hidden) for PDF accessibility.
 function renderMessageMeta(message, index, time) {
-  const speaker = message.role === "user" ? "" : `<span class="meta-speaker">${escapeHtml(formatRole(message.role))}</span>`;
+  const isUser = message.role === "user";
+  const speaker = isUser ? "" : `<span class="meta-speaker">${escapeHtml(formatRole(message.role))}</span>`;
   const number = `<span class="meta-turn">#${escapeHtml(String(formatTurnNumber(message, index)).replace(/^Turn\s+/, ""))}</span>`;
-  return `<div class="message-meta ${message.role === "user" ? "user-meta" : "assistant-meta"}">${[speaker, number, time].filter(Boolean).join('<span class="meta-dot">·</span>')}</div>`;
+  const details = [speaker, number, time].filter(Boolean).join('<span class="meta-dot">·</span>');
+  return isUser
+    ? `<div class="message-meta user-meta"><span class="meta-text">${details}</span>${renderUserAvatar()}</div>`
+    : `<div class="message-meta assistant-meta">${renderAssistantAvatar()}<span class="meta-text">${details}</span></div>`;
 }
 
 function renderTurnHeading(message, index) {
@@ -1682,10 +1688,33 @@ function renderThinking(md, thinkingMarkdown, imageRegistry) {
 function renderMessageMarkdown(md, markdown, imageRegistry, anchorPrefix = "message") {
   const cleaned = cleanMarkdownForHtml(markdown || "_No text content found._");
   const { body, footnotes } = extractMarkdownFootnotes(cleaned);
-  const numbers = new Map(footnotes.map((footnote, index) => [footnote.id, index + 1]));
+  // Definitions with the same text (one page cited several times) share a number.
+  const sources = [];
+  const numbers = new Map();
+  for (const footnote of footnotes) {
+    let number = sources.indexOf(footnote.text) + 1;
+    if (!number) {
+      sources.push(footnote.text);
+      number = sources.length;
+    }
+    numbers.set(footnote.id, number);
+  }
   const placeholder = (id) => `CVFOOTNOTEREF${hashFootnoteId(id)}X`;
-  const withPlaceholders = body.replace(/\[\^([^\]\s]+)\]/g, (match, id) => (numbers.has(id) ? placeholder(id) : match));
-  let html = md.render(withPlaceholders, { imageRegistry });
+  // Adjacent references that resolve to the same source collapse to one.
+  const withPlaceholders = body.replace(/(?:\[\^[^\]\s]+\])+/g, (run) => {
+    const seen = new Set();
+    return [...run.matchAll(/\[\^([^\]\s]+)\]/g)].map(([match, id]) => {
+      if (!numbers.has(id)) {
+        return match;
+      }
+      if (seen.has(numbers.get(id))) {
+        return "";
+      }
+      seen.add(numbers.get(id));
+      return placeholder(id);
+    }).join("");
+  });
+  let html = md.render(protectCjkStrongRuns(withPlaceholders), { imageRegistry });
 
   for (const [id, number] of numbers) {
     html = html.split(placeholder(id)).join(
@@ -1693,10 +1722,53 @@ function renderMessageMarkdown(md, markdown, imageRegistry, anchorPrefix = "mess
     );
   }
 
-  const list = footnotes.length
-    ? `<section class="footnotes"><ol>${footnotes.map((footnote, index) => `<li id="${escapeAttr(`${anchorPrefix}-fn-${index + 1}`)}">${md.renderInline(footnote.text, { imageRegistry })}</li>`).join("")}</ol></section>`
+  html = html
+    .replace(/<\/sup>(\s*)<sup class="footnote-ref">/g, '</sup><sup class="footnote-sep">,</sup><sup class="footnote-ref">')
+    .split(CJK_STRONG_OPEN).join("<strong>")
+    .split(CJK_STRONG_CLOSE).join("</strong>");
+
+  const list = sources.length
+    ? `<section class="footnotes"><ol>${sources.map((text, index) => `<li id="${escapeAttr(`${anchorPrefix}-fn-${index + 1}`)}">${md.renderInline(text, { imageRegistry })}</li>`).join("")}</ol></section>`
     : "";
   return `<div class="markdown-body" dir="auto">${html}${list}</div>`;
+}
+
+/**
+ * CommonMark rejects **bold** whose delimiter touches punctuation on the
+ * inside and a letter on the outside, which is common in Chinese text
+ * ("把**状态（Paid）**的"). ChatGPT renders those runs as bold, so they are
+ * swapped for placeholders that become <strong> after rendering. Runs that
+ * CommonMark accepts, code spans, and fenced code are left unchanged.
+ */
+function protectCjkStrongRuns(markdown) {
+  let fence = "";
+
+  return String(markdown || "").split("\n").map((line) => {
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+
+    if (fenceMatch) {
+      fence = fence ? (line.trim().startsWith(fence) ? "" : fence) : fenceMatch[1];
+      return line;
+    }
+
+    if (fence || !line.includes("**")) {
+      return line;
+    }
+
+    return line.split(/(`+[^`]*`+)/).map((segment, index) => (index % 2 === 1
+      ? segment
+      : segment.replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, (match, content, offset, text) => {
+        const before = text[offset - 1] || " ";
+        const after = text[offset + match.length] || " ";
+        const openOk = !isPunctuationChar(content[0]) || /\s/.test(before) || isPunctuationChar(before);
+        const closeOk = !isPunctuationChar(content[content.length - 1]) || /\s/.test(after) || isPunctuationChar(after);
+        return openOk && closeOk ? match : `${CJK_STRONG_OPEN}${content}${CJK_STRONG_CLOSE}`;
+      }))).join("");
+  }).join("\n");
+}
+
+function isPunctuationChar(char) {
+  return /[\p{P}\p{S}]/u.test(String(char || ""));
 }
 
 /**
@@ -3805,10 +3877,33 @@ a {
 }
 
 .message-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #9b9b9b;
   font-size: 10px;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
+}
+
+.user-meta {
+  justify-content: flex-end;
+}
+
+.message-meta .avatar,
+.message-meta .assistant-avatar,
+.message-meta .avatar img,
+.message-meta .assistant-avatar img {
+  width: 18px;
+  height: 18px;
+}
+
+.message-meta .avatar,
+.message-meta .assistant-avatar {
+  flex: 0 0 18px;
+  margin: 0;
+  border: 0;
+  background: transparent;
 }
 
 .meta-speaker {
@@ -4040,6 +4135,12 @@ a {
 
 .markdown-body .footnote-ref a {
   color: #6b6b6b;
+}
+
+.markdown-body .footnote-sep {
+  font-size: 0.72em;
+  line-height: 0;
+  color: #9b9b9b;
 }
 
 .thinking {

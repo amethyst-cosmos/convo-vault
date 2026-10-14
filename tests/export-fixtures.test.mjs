@@ -175,6 +175,55 @@ for (const fixtureCase of cases) {
   });
 }
 
+test("advanced PDF renderer renders CJK bold, merged footnotes, and avatars in message meta", async () => {
+  const payloadPath = path.join(outputDir, "reading-layout.payload.json");
+  const htmlPath = path.join(outputDir, "reading-layout.html");
+  const payload = {
+    title: "Reading layout regression",
+    exportedAt: "2026-10-14T00:00:00.000Z",
+    language: "zh",
+    messages: [{
+      id: "user-1",
+      role: "user",
+      turnNumber: 1,
+      markdown: "需要整理吗？"
+    }, {
+      id: "assistant-1",
+      role: "assistant",
+      turnNumber: 2,
+      markdown: [
+        "是否需要我把**工时表各个状态（Draft、Paid）**的含义整理成表？",
+        "",
+        "第一点。[^1][^2] 第二点。[^3]",
+        "",
+        "[^1]: [Get certified](https://example.test/certified)",
+        "[^2]: [Get certified](https://example.test/certified)",
+        "[^3]: [Fees](https://example.test/fees)"
+      ].join("\n")
+    }]
+  };
+
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(payloadPath, JSON.stringify(payload), "utf8");
+  await execFileAsync(process.execPath, [
+    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    payloadPath,
+    "--html",
+    htmlPath,
+    "--html-only"
+  ], { cwd: repoRoot, encoding: "utf8" });
+
+  const html = await readFile(htmlPath, "utf8");
+
+  assert.match(html, /我把<strong>工时表各个状态（Draft、Paid）<\/strong>的含义/);
+  assert.doesNotMatch(html, /CVSTRONG|CVFOOTNOTEREF/);
+  // [^1] and [^2] cite the same page: one number, one list entry.
+  assert.match(html, /第一点。<sup class="footnote-ref"><a href="#[^"]+-fn-1">1<\/a><\/sup> 第二点。<sup class="footnote-ref"><a href="#[^"]+-fn-2">2<\/a><\/sup>/);
+  assert.equal((html.match(/<li id="[^"]+-fn-\d+">/g) || []).length, 2);
+  assert.match(html, /class="message-meta user-meta"><span class="meta-text">[\s\S]*?<\/span><div class="avatar user-avatar"/);
+  assert.match(html, /class="message-meta assistant-meta"><div class="assistant-avatar"/);
+});
+
 test("advanced PDF renderer keeps attachments after prose, embedded images, and single line breaks", async () => {
   const payloadPath = path.join(outputDir, "attachment-linebreak.payload.json");
   const htmlPath = path.join(outputDir, "attachment-linebreak.html");
