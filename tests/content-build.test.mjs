@@ -21,6 +21,11 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
 
   assert.equal(current.replace(/\r\n/g, "\n"), generated);
   assert.match(generated, /function createDebugLog/);
+  assert.match(generated, /function buildConversationManifest/);
+  assert.match(generated, /function buildManifestCompletenessReport/);
+  assert.match(generated, /function renderChatGptInlineTokens/);
+  assert.match(generated, /function getDilFallbackMarkdown/);
+  assert.match(generated, /CHATGPT_MESSAGE_UNIT_SELECTOR = "\[data-chatgpt-search-unit-key\]"/);
   assert.match(generated, /async function collectFastConversationMessages/);
   assert.match(generated, /\/api\/auth\/session/);
   assert.match(generated, /Bearer \$\{attempt\.accessToken\}/);
@@ -67,8 +72,9 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function stripMarkdownImagesFromLinkLabel/);
   assert.match(generated, /function isFaviconImageUrl/);
   assert.match(generated, /function isTimestampDividerText/);
-  assert.match(generated, /option value="full" selected>Full \(Recommended\)/);
-  assert.match(generated, /Hybrid \(Experimental for ImageGen\)/);
+  assert.match(generated, /option value="fast" selected>Fast \(Recommended\)/);
+  assert.match(generated, /option value="hybrid">Hybrid \(Fast \+ page details\)/);
+  assert.match(generated, /option value="full">Full \(page scan only\)/);
   assert.match(generated, /data-action="start-scan">Start Scan/);
   assert.match(generated, /Opening the selector does not scan/);
   const selectorOpen = generated.match(/open\(nextApi\)\s*\{[\s\S]*?return \{ ok: true, panelOpen: true \};\s*\}/)?.[0] || "";

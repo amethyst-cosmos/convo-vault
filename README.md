@@ -10,9 +10,19 @@
 
 Convo Vault 是一个本地优先的 Chrome 扩展，用来把 ChatGPT 对话导出成可以长期保存、检索和供各类 Agent 二次处理的通用知识包（Universal Knowledge Pack）。它会读取你当前打开的 ChatGPT 对话，把选中的消息打包成本地 `.zip`，里面包含高保真排版的 Markdown、PDF，以及适合后续放进各类 AI Agent（如 Codex、Claude、Cursor、本地智能体）、知识库、搜索索引或 RAG 流程的结构化数据（JSONL、QA 对、主题图谱、实体索引与深度推理追踪）。
 
-当前版本：`0.8.5`
+当前版本：`0.9.0`
 
 ## 最近更新
+
+`0.9.0` 适配 ChatGPT 2026 年 10 月的页面与回复格式：
+
+- **完整性检查以接口为准**：三种模式都从 ChatGPT conversation API 的原始节点生成"应有消息清单"，按 ChatGPT 消息 id 逐条核对导出结果；不再依赖页面上已经消失的 `conversation-turn-N` 编号，也不再拿导出结果和它自己比较
+- **同角色相邻有原因**：用户连续两条消息之间没有回复时，报告会说明是"回复在产生内容前被停止"（`client_stopped`）还是"ChatGPT 没有存储任何回复"
+- **新页面结构（消息单元）**：Full 和 Hybrid 识别 `data-chatgpt-search-unit-key` 消息单元，从单元读取角色和消息 id；虚拟滚动下按消息 id 保持顺序；Hybrid 按消息 id 合并 Fast 与 Full 的同一条消息
+- **生成式界面回复（DIL）**：带卡片、流程框、按钮、单选组的新式回复，导出 ChatGPT 自带的 `fallbackMarkdown`，不再把 `<box>`、`<row>`、`{@body ...}` 等组件源码写进 Markdown
+- **内联标记**：`cite` 引用解析成带链接的脚注（同时支持新的 `search_result_groups` 和旧的 `grouped_webpages`），`entity` 输出实体名，`url` 输出 Markdown 链接，写作块（`:::writing`）输出为可复制的代码块
+- **Debug log 页面信息**：页面地址和标题在开始抓取时记录，导出期间切换对话不再写错
+- **Fast 成为默认推荐模式**：面板默认选中 `Fast (Recommended)`，未指定模式的导出也走 Fast
 
 `0.8.5` 深度强化思考链（Thinking Trace）与文献引用可点击性：
 
@@ -98,7 +108,7 @@ npm run build:extension
 </p>
 
 #### 5. 选择抓取模式 (Fast / Full / Hybrid)
-根据需求选择最合适的捕获引擎（长对话与包含特殊图片推荐 `Full`，追求极速与纯净 API 拓扑推荐 `Fast`），点击 **Start Scan** 开始扫描。
+默认选中 `Fast (Recommended)`，直接点击 **Start Scan** 开始扫描；只有需要页面上额外显示的细节时才换成 `Hybrid` 或 `Full`。
 
 <p align="center">
   <img src="docs/images/05-choose-capture-mode.png" alt="05-选择抓取模式" width="450" />
@@ -169,11 +179,15 @@ Convo Vault 的界面和按钮目前保持英文，但导出的对话内容按 U
 
 ## Hybrid、Fast 和 Full
 
-`Full` 是默认推荐模式。它扫描页面 DOM、处理虚拟化消息，并保留 ImageGen、图片型回复和没有普通 API `message-id` 的 assistant turn。
+`Fast` 是默认推荐模式。它直接读取 ChatGPT conversation API：消息结构、顺序、图片指针（由本地渲染服务打包进 zip）、思考过程、引用和生成文件都来自接口，不受页面虚拟滚动和懒加载影响。长对话通常几秒钟完成，Full 则需要逐屏滚动几分钟。
+
+`Full` 扫描页面 DOM、处理虚拟化消息，用于接口拿不到的页面细节（例如 Thinking flyout 里只在页面上展示的内容）。ChatGPT 页面只在消息进入可视区域时才加载图片，只含图片的用户消息若没有加载出图片，会被完整性检查报告为缺失。
+
+三种模式的完整性检查都使用 conversation API 生成的消息清单；接口不可用时，Full 退回到页面编号检查。
 
 打开 Selector 不会启动任何模式。选择模式后必须点击 `Start Scan`。扫描运行期间模式会锁定；取消、关闭面板或任务失效后，旧结果不能覆盖当前快照。
 
-`Hybrid` 仍然可用，但对 ImageGen 和其他非标准 assistant turn 标记为 Experimental。它先用 `Fast` 读取 ChatGPT conversation API，再用 `Full` 补充页面细节。若 Full 发现无法对齐 Fast 骨架的实质消息，完整性闸门会把结果标为不完整并阻止静默导出。
+`Hybrid` 先用 `Fast` 读取 ChatGPT conversation API，再用 `Full` 补充页面细节。若 Full 发现无法对齐 Fast 骨架的实质消息，完整性闸门会把结果标为不完整并阻止静默导出。
 
 这意味着：
 
@@ -182,11 +196,7 @@ Convo Vault 的界面和按钮目前保持英文，但导出的对话内容按 U
 - Full 多抓出来但不能对齐 Fast 的实质候选，会进入完整性报告和 debug report，并阻止普通导出。
 - 纯日期/时间分隔符，比如 `星期日 16:10`，会被当作非消息过滤掉。
 
-`Fast` 是 API-first 模式，速度更快，结构更干净，适合快速确认对话骨架。
-
-`Full` 是 DOM-only 深度扫描模式，速度更慢，但当前是长对话、ImageGen、Thinking/flyout 和特殊内容的正常推荐路径。
-
-`Fast` 适合快速查看 API 骨架；`Hybrid` 适合实验性对比；需要完整归档时先选 `Full`。
+日常归档用 `Fast`；需要页面上的额外细节时用 `Hybrid`；接口不可用时才用 `Full`。无论哪种模式，都以完整性报告为准。
 
 ## 安全措施
 
