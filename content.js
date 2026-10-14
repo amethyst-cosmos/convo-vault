@@ -1235,7 +1235,7 @@
 
   function normalizeCaptureMode(value) {
     const mode = String(value || "").toLowerCase();
-    return ["fast", "full", "hybrid"].includes(mode) ? mode : "full";
+    return ["fast", "full", "hybrid"].includes(mode) ? mode : "fast";
   }
 
   function formatCaptureMode(value) {
@@ -3845,9 +3845,9 @@
               <label class="cgce-format">
                 <span>Mode</span>
                 <select class="cgce-select" data-option="capture-mode">
-                  <option value="full" selected>Full (Recommended)</option>
-                  <option value="hybrid">Hybrid (Experimental for ImageGen)</option>
-                  <option value="fast">Fast</option>
+                  <option value="fast" selected>Fast (Recommended)</option>
+                  <option value="hybrid">Hybrid (Fast + page details)</option>
+                  <option value="full">Full (page scan only)</option>
                 </select>
               </label>
               <label class="cgce-option">

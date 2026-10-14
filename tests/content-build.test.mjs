@@ -72,7 +72,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function stripMarkdownImagesFromLinkLabel/);
   assert.match(generated, /function isFaviconImageUrl/);
   assert.match(generated, /function isTimestampDividerText/);
-  assert.match(generated, /option value="full" selected>Full \(Recommended\)/);
+  assert.match(generated, /option value="fast" selected>Fast \(Recommended\)/);
   assert.match(generated, /Hybrid \(Experimental for ImageGen\)/);
   assert.match(generated, /data-action="start-scan">Start Scan/);
   assert.match(generated, /Opening the selector does not scan/);
