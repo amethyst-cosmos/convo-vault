@@ -7211,8 +7211,10 @@
 
     const role = String(message.author?.role || "").toLowerCase();
     const parts = Array.isArray(message.content?.parts) ? message.content.parts : [];
+    // Document-reading tools attach page images for the model only.
+    const isDocumentReader = role === "tool" && /^(?:file_search|myfiles_browser)(?:\.|$)/.test(String(message.author?.name || "").toLowerCase());
 
-    if (parts.some(isManifestMediaPart)) {
+    if (!isDocumentReader && parts.some(isManifestMediaPart)) {
       return true;
     }
 
@@ -7756,6 +7758,7 @@
       const isThinking = isApiThinkingNode(msg);
       const isInternalTool = isApiInternalToolCallNode(msg);
       const isDil = isDilMessage(msg);
+      const isFileReader = isApiFileReaderNode(msg);
 
       // Collect text and image parts
       const content = msg.content;
@@ -7787,7 +7790,7 @@
             }
           } else if (part && typeof part === "object") {
             const ptr = part.asset_pointer || part.assetPointer || part.url || "";
-            if (ptr && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
+            if (ptr && !isFileReader && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
               const label = sanitizeApiMarkdownLabel(part.name || part.filename || part.title || "Image");
               const imgMd = `![${label}](${ptr})`;
               if (!imagePointers.includes(imgMd)) {
@@ -7928,6 +7931,17 @@
       || contentType === "reasoning_recap"
       || msg.metadata?.is_thinking_preamble_message === true
     );
+  }
+
+  /**
+   * File-reading tools (file_search, myfiles_browser) return each page of an
+   * uploaded document as text plus a page image (sediment://...#p_N.jpg) for
+   * the model. ChatGPT never shows those pages in the answer.
+   */
+  function isApiFileReaderNode(msg) {
+    const role = String(msg?.author?.role || "").toLowerCase();
+    const name = String(msg?.author?.name || "").toLowerCase();
+    return role === "tool" && /^(?:file_search|myfiles_browser)(?:\.|$)/.test(name);
   }
 
   function isApiInternalFileIngestionText(text) {
@@ -9006,14 +9020,16 @@
 
     let enriched = markdown;
     const footnotes = [];
+    // One uploaded document is often cited once per passage; it gets one
+    // footnote line however many citation records point at it.
+    const footnoteIndexByLine = new Map();
 
     citations.forEach((citation, index) => {
-      const footnoteIndex = index + 1;
       const title = citation?.metadata?.title
         || citation?.title
         || citation?.metadata?.name
         || citation?.name
-        || `Source ${footnoteIndex}`;
+        || `Source ${index + 1}`;
       const url = citation?.metadata?.url
         || citation?.url
         || citation?.metadata?.cloud_doc_url
@@ -9023,10 +9039,13 @@
         || citation?.link
         || "";
 
-      if (url) {
-        footnotes.push(`[^${footnoteIndex}]: [${title}](${url})`);
-      } else {
-        footnotes.push(`[^${footnoteIndex}]: 📄 **Document**: ${title}`);
+      const source = url ? `[${title}](${url})` : `📄 **Document**: ${title}`;
+      let footnoteIndex = footnoteIndexByLine.get(source);
+
+      if (!footnoteIndex) {
+        footnoteIndex = footnotes.length + 1;
+        footnoteIndexByLine.set(source, footnoteIndex);
+        footnotes.push(`[^${footnoteIndex}]: ${source}`);
       }
 
       // Replace matching citation tokens if present

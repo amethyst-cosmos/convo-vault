@@ -190,8 +190,10 @@
 
     const role = String(message.author?.role || "").toLowerCase();
     const parts = Array.isArray(message.content?.parts) ? message.content.parts : [];
+    // Document-reading tools attach page images for the model only.
+    const isDocumentReader = role === "tool" && /^(?:file_search|myfiles_browser)(?:\.|$)/.test(String(message.author?.name || "").toLowerCase());
 
-    if (parts.some(isManifestMediaPart)) {
+    if (!isDocumentReader && parts.some(isManifestMediaPart)) {
       return true;
     }
 

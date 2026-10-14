@@ -197,6 +197,50 @@ test("Fast builder keeps a final answer whose text looks like JSON", async () =>
   ]);
 });
 
+test("Fast builder drops document page images and lists each cited document once", async () => {
+  const fast = await loadFastModule();
+  const pages = [0, 1, 2].map((page) => ({
+    content_type: "image_asset_pointer",
+    asset_pointer: `sediment://abc${page}#file_00000000aaaa#p_${page}.jpg`
+  }));
+  const messages = fast.buildMessagesFromConversationApi({
+    messages: [
+      apiMessage("u1", "user", "Summarise the outline"),
+      {
+        id: "t1",
+        author: { role: "tool", name: "file_search" },
+        content: { content_type: "multimodal_text", parts: ["<PARSED TEXT FOR PAGE: 1 / 3>Outline", ...pages] },
+        recipient: "all",
+        metadata: {}
+      },
+      apiMessage("a1", "assistant", "Train before testing.fileciteturn0file0 Rest matters.fileciteturn0file0", {
+        channel: "final",
+        end_turn: true,
+        metadata: {
+          citations: [
+            { metadata: { title: "Outline.pdf" } },
+            { metadata: { title: "Outline.pdf" } },
+            { metadata: { title: "Outline.pdf" } }
+          ]
+        }
+      }),
+      {
+        id: "t2",
+        author: { role: "tool", name: "dalle.text2im" },
+        content: { content_type: "multimodal_text", parts: [{ content_type: "image_asset_pointer", asset_pointer: "sediment://file_generated" }] },
+        recipient: "all",
+        metadata: {}
+      }
+    ],
+    page_info: { has_previous_page: false }
+  });
+
+  const answer = messages[1].markdown;
+  assert.doesNotMatch(answer, /#p_\d+\.jpg/);
+  assert.match(answer, /!\[[^\]]*\]\(sediment:\/\/file_generated\)/);
+  assert.equal((answer.match(/📄 \*\*Document\*\*: Outline\.pdf/g) || []).length, 1);
+});
+
 async function loadMarkupModule() {
   const source = await readFile(path.join(repoRoot, "src", "content", "chatgpt-markup.js"), "utf8");
   const context = vm.createContext({ makeFence });
