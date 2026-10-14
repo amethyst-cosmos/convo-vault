@@ -21,6 +21,11 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
 
   assert.equal(current.replace(/\r\n/g, "\n"), generated);
   assert.match(generated, /function createDebugLog/);
+  assert.match(generated, /function buildConversationManifest/);
+  assert.match(generated, /function buildManifestCompletenessReport/);
+  assert.match(generated, /function renderChatGptInlineTokens/);
+  assert.match(generated, /function getDilFallbackMarkdown/);
+  assert.match(generated, /CHATGPT_MESSAGE_UNIT_SELECTOR = "\[data-chatgpt-search-unit-key\]"/);
   assert.match(generated, /async function collectFastConversationMessages/);
   assert.match(generated, /\/api\/auth\/session/);
   assert.match(generated, /Bearer \$\{attempt\.accessToken\}/);

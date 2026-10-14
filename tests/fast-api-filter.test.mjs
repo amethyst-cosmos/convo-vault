@@ -752,7 +752,11 @@ test("Fast API fetch loads every page from the plural conversations endpoint", a
 });
 
 async function loadFastCaptureModule(overrides = {}) {
-  const source = await readFile(path.join(repoRoot, "src", "content", "capture-fast.js"), "utf8");
+  const source = (await Promise.all([
+    "chatgpt-markup.js",
+    "conversation-manifest.js",
+    "capture-fast.js"
+  ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({
     AbortController,
     CONVERSATION_API_FETCH_TIMEOUT_MS: 15_000,
@@ -776,6 +780,11 @@ async function loadFastCaptureModule(overrides = {}) {
       return false;
     },
     getCodeBlockDiagnostics,
+    makeFence,
+    normalizeCaptureMode(value) {
+      const mode = String(value || "").toLowerCase();
+      return ["fast", "full", "hybrid"].includes(mode) ? mode : "full";
+    },
     location: {
       origin: "https://chatgpt.com",
       href: "https://chatgpt.com/c/test-conversation",
@@ -795,9 +804,13 @@ async function loadFastCaptureModule(overrides = {}) {
 
   vm.runInContext(`${source}\nglobalThis.__fastCaptureTest = {
     buildConversationApiAttempts,
+    buildConversationManifest,
     buildMessagesFromConversationApi,
+    collectFastConversationMessages,
     fetchConversationData,
-    mergeConversationApiPages
+    mergeConversationApiPages,
+    renderChatGptInlineTokens,
+    renderDilSourceAsMarkdown
   };`, context);
   return context.__fastCaptureTest;
 }
@@ -834,6 +847,11 @@ function makeJsonResponse(status, data) {
       return body;
     }
   };
+}
+
+function makeFence(code) {
+  const longest = Math.max(2, ...[...String(code || "").matchAll(/`+/g)].map((match) => match[0].length));
+  return "`".repeat(longest + 1);
 }
 
 function cleanMarkdown(value) {

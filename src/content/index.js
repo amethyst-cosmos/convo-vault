@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.8.5";
+  const EXPORTER_VERSION = "0.9.0";
   const IS_EXTENSION_ENV = typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
   const installedState = window.__chatGptConversationExporterInstalled;
 
@@ -61,7 +61,11 @@
   const LOCAL_RENDERER_BUNDLE_PORT = "CONVO_VAULT_LOCAL_RENDERER_BUNDLE";
   const LOCAL_RENDERER_REQUEST_CHUNK_CHARACTERS = 512 * 1024;
   const MAX_LOCAL_RENDERER_REQUEST_BYTES = 256 * 1024 * 1024;
+  // Message-unit pages expose one unit per message; legacy pages expose one
+  // turn container per message. Both are the "turn nodes" of Full capture.
+  const TURN_NODE_SELECTOR = '[data-chatgpt-search-unit-key], [data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]';
   const MESSAGE_NODE_SELECTORS = [
+    '[data-chatgpt-search-unit-key]',
     '[data-turn-id]',
     '[data-turn-container]',
     '[data-turn-id-container]',
@@ -350,12 +354,13 @@
 
     if (captureMode === "fast") {
       try {
-        const messages = await collectFastCanonicalMessages(debugLog, onProgress, {
+        const { messages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
           finishDebug: true,
           signal
         });
         return createValidatedCaptureResult({
           messages,
+          manifest,
           debugLog,
           captureMode
         }, { signal });
@@ -375,22 +380,40 @@
       return createValidatedCaptureResult(result, { signal });
     }
 
+    const manifest = await loadOptionalConversationManifest(debugLog, signal);
     const messages = await collectFullDomMessages(debugLog, onProgress, {
       finishDebug: true,
+      manifest,
       signal
     });
     return createValidatedCaptureResult({
       messages,
+      manifest,
       debugLog,
       captureMode: "full"
     }, { signal });
+  }
+
+  async function loadOptionalConversationManifest(debugLog, signal = null) {
+    try {
+      return await fetchConversationManifest(debugLog, { signal });
+    } catch (error) {
+      if (isCaptureCancelledError(error)) {
+        throw error;
+      }
+
+      debugLog.event("conversationManifest.unavailable", {
+        error: error?.message || String(error)
+      });
+      return null;
+    }
   }
 
   async function collectFastCanonicalMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
     onProgress("Loading conversation data...");
-    const messages = await collectFastConversationMessages(debugLog, { signal });
+    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal });
     throwIfCaptureCancelled(signal);
 
     if (!messages.length) {
@@ -414,13 +437,13 @@
     }
 
     onProgress(`Found ${messages.length} messages with Fast capture.`);
-    return messages;
+    return { messages, manifest };
   }
 
   async function collectHybridConversationMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     try {
-      const fastMessages = await collectFastCanonicalMessages(debugLog, onProgress, {
+      const { messages: fastMessages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
         finishDebug: false,
         signal
       });
@@ -437,6 +460,7 @@
           progressPrefix: "Full enrichment: ",
           expectedTurnCount: fastMessages.length,
           expectedOrders: fastMessages.map((m) => Number(m.order)).filter((order) => Number.isFinite(order) && order > 0),
+          manifest,
           signal
         });
       } catch (error) {
@@ -449,7 +473,7 @@
         onProgress(`Full enrichment failed; using ${fastMessages.length} Fast canonical messages.`);
       }
 
-      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog);
+      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog, manifest);
       const messages = reconciliation.messages;
       throwIfCaptureCancelled(signal);
       debugLog.event("hybridCapture.reconciled", reconciliation.report);
@@ -457,6 +481,7 @@
       onProgress(`Hybrid ready. ${messages.length} canonical messages, ${reconciliation.report.enrichedMessages} enriched, ${reconciliation.report.ignoredFullOnlyMessages} Full-only candidate(s) ignored.`);
       return {
         messages,
+        manifest,
         debugLog,
         captureMode: "hybrid",
         reconciliationReport: reconciliation.report
@@ -506,19 +531,29 @@
       debugLog.mark("hydratedVirtualizedTurns");
       await collector.captureFromDom({ signal });
       debugLog.mark("finalCapture");
-      onProgress(`${progressPrefix}Recovering missed turns...`);
-      const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
-      const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
-      const recoveryDeadline = Date.now() + recoveryBudgetMs;
-      await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
-        expectedOrders,
-        maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
-      });
-      throwIfCaptureCancelled(signal);
-      debugLog.mark("recoveredMissingTurns");
+      if (hasChatGptMessageUnits()) {
+        // Message-unit pages expose no global turn numbers to scroll back to;
+        // missing messages are reported by the manifest completeness check.
+        debugLog.event("missingRecovery.skipped", { reason: "message-unit DOM has no conversation-turn numbers" });
+      } else {
+        onProgress(`${progressPrefix}Recovering missed turns...`);
+        const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
+        const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
+        const recoveryDeadline = Date.now() + recoveryBudgetMs;
+        await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
+          expectedOrders,
+          maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
+        });
+        throwIfCaptureCancelled(signal);
+        debugLog.mark("recoveredMissingTurns");
+      }
       await collector.captureFromDom({ settleMs: 0, signal });
 
-      const messages = finalizeCollectedMessages(collector.getMessages(), debugLog);
+      const messages = applyManifestOrder(
+        finalizeCollectedMessages(collector.getMessages(), debugLog),
+        options.manifest || null,
+        debugLog
+      );
 
       if (!messages.length) {
         throw new Error("No conversation messages were found on this page.");
@@ -548,7 +583,7 @@
     }
   }
 
-  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null) {
+  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null, manifest = null) {
     const fullMatches = new Map();
     const fullOnlyCandidates = [];
     const substantiveFullOnlyCandidates = [];
@@ -566,7 +601,7 @@
         continue;
       }
 
-      const key = getHybridMessageKey(fullMessage);
+      const key = getHybridMessageKey(fullMessage, manifest);
 
       if (!key) {
         const candidate = {
@@ -589,7 +624,7 @@
     }
 
     const messages = fastMessages.map((fastMessage, index) => {
-      const key = getHybridMessageKey(fastMessage);
+      const key = getHybridMessageKey(fastMessage, manifest);
       const fullMessage = key ? fullMatches.get(key) : null;
 
       if (!fullMessage) {
@@ -702,7 +737,15 @@
     };
   }
 
-  function getHybridMessageKey(message) {
+  function getHybridMessageKey(message, manifest = null) {
+    // Message ids pair Fast and Full copies exactly; order numbers are the
+    // fallback for DOM messages that expose no ChatGPT message id.
+    const manifestIdentity = manifest ? resolveManifestIdentity(manifest, message) : "";
+
+    if (manifestIdentity) {
+      return manifestIdentity;
+    }
+
     const order = Number(message?.conversationOrder ?? message?.order ?? message?.turnNumber);
     const role = String(message?.role || "").toLowerCase();
 
@@ -844,11 +887,18 @@
     throwIfCaptureCancelled(options.signal);
     const messages = result?.messages || [];
     const captureMode = normalizeCaptureMode(result?.captureMode);
-    const completeness = buildCaptureCompletenessReport(messages, {
-      captureMode,
-      reconciliationReport: result?.reconciliationReport || null,
-      expectedSummary: result?.debugLog?.getFinalSummary?.() || null
-    });
+    // The API manifest is the expected structure whenever it loaded; the DOM
+    // turn census remains the fallback for pages where the API is unavailable.
+    const completeness = result?.manifest
+      ? buildManifestCompletenessReport(messages, result.manifest, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null
+      })
+      : buildCaptureCompletenessReport(messages, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null,
+        expectedSummary: result?.debugLog?.getFinalSummary?.() || null
+      });
 
     result?.debugLog?.event("capture.completeness", completeness);
     return {
@@ -3776,11 +3826,12 @@
   }
 
   function isTurnNode(node) {
-    return Boolean(node?.matches?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]'));
+    return Boolean(node?.matches?.(TURN_NODE_SELECTOR));
   }
 
   function getAllTurnNodes() {
     return uniqueElements([
+      ...document.querySelectorAll(CHATGPT_MESSAGE_UNIT_SELECTOR),
       ...document.querySelectorAll("[data-turn-id]"),
       ...document.querySelectorAll("[data-turn-container]"),
       ...document.querySelectorAll("[data-turn-id-container]"),
@@ -3948,7 +3999,7 @@
   }
 
   function getClosestTurnNode(element) {
-    return element?.closest?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]') || null;
+    return element?.closest?.(TURN_NODE_SELECTOR) || null;
   }
 
   function getTurnRootNode(element) {
@@ -3956,7 +4007,8 @@
       return element || null;
     }
 
-    return element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
+    return element.closest(CHATGPT_MESSAGE_UNIT_SELECTOR)
+      || element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
       || element.closest("[data-turn-id]")
       || element.closest("[data-turn-container]")
       || element.closest("[data-turn-id-container]")
@@ -3972,7 +4024,8 @@
   }
 
   function hasRoleOrMessageIdSignal(node) {
-    return Boolean(node?.matches?.("[data-message-author-role], [data-message-id]") || node?.querySelector?.("[data-message-author-role], [data-message-id]"));
+    const selector = "[data-message-author-role], [data-message-id], [data-chatgpt-search-unit-key]";
+    return Boolean(node?.matches?.(selector) || node?.querySelector?.(selector));
   }
 
   function isNonMessageNode(node) {
@@ -4177,8 +4230,18 @@
   }
 
   function detectRoleDetails(node, sequence) {
-    // The author-role attribute is the strongest signal. Test ids, body shape,
-    // and order are fallbacks for UI revisions where attributes move around.
+    // Message-unit keys and the author-role attribute are the strongest
+    // signals. Test ids, body shape, and order are fallbacks for UI revisions
+    // where attributes move around.
+    const unitRole = isChatGptMessageUnit(node) ? getChatGptMessageUnitInfo(node)?.role : "";
+
+    if (unitRole === "user" || unitRole === "assistant" || unitRole === "system" || unitRole === "tool") {
+      return {
+        role: unitRole,
+        reason: "data-chatgpt-search-unit-key"
+      };
+    }
+
     const roleElement = findRoleElement(node);
     const role = roleElement?.getAttribute("data-message-author-role")?.toLowerCase();
 
@@ -4331,6 +4394,12 @@
   }
 
   function findMessageBody(node, role, roleElement) {
+    const unitBody = getChatGptMessageUnitBody(node, role);
+
+    if (unitBody) {
+      return unitBody;
+    }
+
     const root = roleElement || node;
     const selectors = role === "assistant" ? ASSISTANT_BODY_SELECTORS : USER_BODY_SELECTORS;
     const candidates = [root, node];
@@ -4886,6 +4955,10 @@
     const time = text.match(TIME_VALUE_RE)?.[0]?.trim() || "";
     return Boolean(time && time === text && TIMESTAMP_CUE_RE.test(text));
   }
+
+  // @convo-vault-include chatgpt-markup
+  // @convo-vault-include chatgpt-dom
+  // @convo-vault-include conversation-manifest
 
   // @convo-vault-include capture-fast
   function formatConversationTimestamp(value) {
@@ -6146,6 +6219,10 @@
   }
 
   function getMessageIdFromNode(node) {
+    if (isChatGptMessageUnit(node)) {
+      return getChatGptMessageUnitInfo(node)?.messageIds[0] || "";
+    }
+
     return node?.querySelector?.("[data-message-id]")?.getAttribute("data-message-id") || node?.getAttribute?.("data-message-id") || "";
   }
 
@@ -6204,6 +6281,7 @@
       sourceTurnContainer: node.getAttribute("data-turn-id-container") || node.getAttribute("data-turn-container") || "",
       sourceTestId: node.getAttribute("data-testid") || "",
       sourceMessageId: getMessageIdFromNode(node),
+      sourceMessageIds: getChatGptMessageUnitInfo(node)?.messageIds || [],
       order: getOrderHint(node, order),
       timestamp: parts.timestamp || "",
       markdown,
@@ -6438,7 +6516,8 @@
 
     const className = ` ${String(element.getAttribute("class") || "")} `;
     const styleAttr = String(element.getAttribute("style") || "");
-    let bold = /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
+    let bold = hasChatGptDilStrongMarker(element)
+      || /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
       || /font-\[(?:[6-9]\d{2}|[1-9]\d{3})\]/.test(className)
       || /font-weight\s*:\s*(?:bold|bolder|[6-9]\d{2}|[1-9]\d{3})/i.test(styleAttr);
     let italic = /\sitalic\s/.test(className) || /font-style\s*:\s*(?:italic|oblique)/i.test(styleAttr);
@@ -6532,6 +6611,11 @@
     const element = node;
     const tag = element.tagName.toLowerCase();
 
+    // Citation chips use role="button", which the generic skip rules drop.
+    if (isChatGptDilCitationChip(element) && !state?.skipElements?.has(element)) {
+      return formatChatGptDilCitationChip(element);
+    }
+
     if (shouldSkipElement(element, state)) {
       return "";
     }
@@ -6553,6 +6637,15 @@
         state.fileCount += 1;
       }
       return fileMarkdown ? `\n\n${fileMarkdown}\n\n` : "";
+    }
+
+    if (isChatGptDilDivider(element)) {
+      return "\n\n---\n\n";
+    }
+
+    if (isChatGptWritingBlockElement(element)) {
+      const block = formatChatGptWritingBlock(element);
+      return block ? `\n\n${block}\n\n` : "";
     }
 
     if (hasChatGptRangeMarker(element) && !isSemanticMarkdownElementTag(tag)) {
@@ -6712,6 +6805,10 @@
       return true;
     }
 
+    if (isChatGptCopyExcludedElement(element)) {
+      return true;
+    }
+
     if (tag === "button" && !isExpandableContentButton(element) && !hasUsefulImageContent(element) && !hasUsefulFileContent(element)) {
       return true;
     }
@@ -6802,6 +6899,11 @@
 
     const text = getElementText(element);
     const href = getAttachmentHref(element);
+
+    if (isChatGptDilWebLink(element, href)) {
+      return false;
+    }
+
     const signal = [
       text,
       href,

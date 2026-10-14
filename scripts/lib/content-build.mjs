@@ -4,7 +4,10 @@ import path from "node:path";
 const INCLUDE_FILES = {
   "debug-log": "debug-log.js",
   "capture-fast": "capture-fast.js",
-  "capture-full": "capture-full.js"
+  "capture-full": "capture-full.js",
+  "chatgpt-dom": "chatgpt-dom.js",
+  "chatgpt-markup": "chatgpt-markup.js",
+  "conversation-manifest": "conversation-manifest.js"
 };
 
 export async function buildContentScript(repoRoot, options = {}) {

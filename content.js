@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.8.5";
+  const EXPORTER_VERSION = "0.9.0";
   const IS_EXTENSION_ENV = typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
   const installedState = window.__chatGptConversationExporterInstalled;
 
@@ -61,7 +61,11 @@
   const LOCAL_RENDERER_BUNDLE_PORT = "CONVO_VAULT_LOCAL_RENDERER_BUNDLE";
   const LOCAL_RENDERER_REQUEST_CHUNK_CHARACTERS = 512 * 1024;
   const MAX_LOCAL_RENDERER_REQUEST_BYTES = 256 * 1024 * 1024;
+  // Message-unit pages expose one unit per message; legacy pages expose one
+  // turn container per message. Both are the "turn nodes" of Full capture.
+  const TURN_NODE_SELECTOR = '[data-chatgpt-search-unit-key], [data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]';
   const MESSAGE_NODE_SELECTORS = [
+    '[data-chatgpt-search-unit-key]',
     '[data-turn-id]',
     '[data-turn-container]',
     '[data-turn-id-container]',
@@ -350,12 +354,13 @@
 
     if (captureMode === "fast") {
       try {
-        const messages = await collectFastCanonicalMessages(debugLog, onProgress, {
+        const { messages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
           finishDebug: true,
           signal
         });
         return createValidatedCaptureResult({
           messages,
+          manifest,
           debugLog,
           captureMode
         }, { signal });
@@ -375,22 +380,40 @@
       return createValidatedCaptureResult(result, { signal });
     }
 
+    const manifest = await loadOptionalConversationManifest(debugLog, signal);
     const messages = await collectFullDomMessages(debugLog, onProgress, {
       finishDebug: true,
+      manifest,
       signal
     });
     return createValidatedCaptureResult({
       messages,
+      manifest,
       debugLog,
       captureMode: "full"
     }, { signal });
+  }
+
+  async function loadOptionalConversationManifest(debugLog, signal = null) {
+    try {
+      return await fetchConversationManifest(debugLog, { signal });
+    } catch (error) {
+      if (isCaptureCancelledError(error)) {
+        throw error;
+      }
+
+      debugLog.event("conversationManifest.unavailable", {
+        error: error?.message || String(error)
+      });
+      return null;
+    }
   }
 
   async function collectFastCanonicalMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
     onProgress("Loading conversation data...");
-    const messages = await collectFastConversationMessages(debugLog, { signal });
+    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal });
     throwIfCaptureCancelled(signal);
 
     if (!messages.length) {
@@ -414,13 +437,13 @@
     }
 
     onProgress(`Found ${messages.length} messages with Fast capture.`);
-    return messages;
+    return { messages, manifest };
   }
 
   async function collectHybridConversationMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     try {
-      const fastMessages = await collectFastCanonicalMessages(debugLog, onProgress, {
+      const { messages: fastMessages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
         finishDebug: false,
         signal
       });
@@ -437,6 +460,7 @@
           progressPrefix: "Full enrichment: ",
           expectedTurnCount: fastMessages.length,
           expectedOrders: fastMessages.map((m) => Number(m.order)).filter((order) => Number.isFinite(order) && order > 0),
+          manifest,
           signal
         });
       } catch (error) {
@@ -449,7 +473,7 @@
         onProgress(`Full enrichment failed; using ${fastMessages.length} Fast canonical messages.`);
       }
 
-      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog);
+      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog, manifest);
       const messages = reconciliation.messages;
       throwIfCaptureCancelled(signal);
       debugLog.event("hybridCapture.reconciled", reconciliation.report);
@@ -457,6 +481,7 @@
       onProgress(`Hybrid ready. ${messages.length} canonical messages, ${reconciliation.report.enrichedMessages} enriched, ${reconciliation.report.ignoredFullOnlyMessages} Full-only candidate(s) ignored.`);
       return {
         messages,
+        manifest,
         debugLog,
         captureMode: "hybrid",
         reconciliationReport: reconciliation.report
@@ -506,19 +531,29 @@
       debugLog.mark("hydratedVirtualizedTurns");
       await collector.captureFromDom({ signal });
       debugLog.mark("finalCapture");
-      onProgress(`${progressPrefix}Recovering missed turns...`);
-      const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
-      const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
-      const recoveryDeadline = Date.now() + recoveryBudgetMs;
-      await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
-        expectedOrders,
-        maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
-      });
-      throwIfCaptureCancelled(signal);
-      debugLog.mark("recoveredMissingTurns");
+      if (hasChatGptMessageUnits()) {
+        // Message-unit pages expose no global turn numbers to scroll back to;
+        // missing messages are reported by the manifest completeness check.
+        debugLog.event("missingRecovery.skipped", { reason: "message-unit DOM has no conversation-turn numbers" });
+      } else {
+        onProgress(`${progressPrefix}Recovering missed turns...`);
+        const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
+        const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
+        const recoveryDeadline = Date.now() + recoveryBudgetMs;
+        await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
+          expectedOrders,
+          maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
+        });
+        throwIfCaptureCancelled(signal);
+        debugLog.mark("recoveredMissingTurns");
+      }
       await collector.captureFromDom({ settleMs: 0, signal });
 
-      const messages = finalizeCollectedMessages(collector.getMessages(), debugLog);
+      const messages = applyManifestOrder(
+        finalizeCollectedMessages(collector.getMessages(), debugLog),
+        options.manifest || null,
+        debugLog
+      );
 
       if (!messages.length) {
         throw new Error("No conversation messages were found on this page.");
@@ -548,7 +583,7 @@
     }
   }
 
-  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null) {
+  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null, manifest = null) {
     const fullMatches = new Map();
     const fullOnlyCandidates = [];
     const substantiveFullOnlyCandidates = [];
@@ -566,7 +601,7 @@
         continue;
       }
 
-      const key = getHybridMessageKey(fullMessage);
+      const key = getHybridMessageKey(fullMessage, manifest);
 
       if (!key) {
         const candidate = {
@@ -589,7 +624,7 @@
     }
 
     const messages = fastMessages.map((fastMessage, index) => {
-      const key = getHybridMessageKey(fastMessage);
+      const key = getHybridMessageKey(fastMessage, manifest);
       const fullMessage = key ? fullMatches.get(key) : null;
 
       if (!fullMessage) {
@@ -702,7 +737,15 @@
     };
   }
 
-  function getHybridMessageKey(message) {
+  function getHybridMessageKey(message, manifest = null) {
+    // Message ids pair Fast and Full copies exactly; order numbers are the
+    // fallback for DOM messages that expose no ChatGPT message id.
+    const manifestIdentity = manifest ? resolveManifestIdentity(manifest, message) : "";
+
+    if (manifestIdentity) {
+      return manifestIdentity;
+    }
+
     const order = Number(message?.conversationOrder ?? message?.order ?? message?.turnNumber);
     const role = String(message?.role || "").toLowerCase();
 
@@ -844,11 +887,18 @@
     throwIfCaptureCancelled(options.signal);
     const messages = result?.messages || [];
     const captureMode = normalizeCaptureMode(result?.captureMode);
-    const completeness = buildCaptureCompletenessReport(messages, {
-      captureMode,
-      reconciliationReport: result?.reconciliationReport || null,
-      expectedSummary: result?.debugLog?.getFinalSummary?.() || null
-    });
+    // The API manifest is the expected structure whenever it loaded; the DOM
+    // turn census remains the fallback for pages where the API is unavailable.
+    const completeness = result?.manifest
+      ? buildManifestCompletenessReport(messages, result.manifest, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null
+      })
+      : buildCaptureCompletenessReport(messages, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null,
+        expectedSummary: result?.debugLog?.getFinalSummary?.() || null
+      });
 
     result?.debugLog?.event("capture.completeness", completeness);
     return {
@@ -1971,6 +2021,10 @@
 
   function createDebugLog(options = {}) {
     const startedAt = new Date();
+    // ChatGPT is a single-page app: the user can open another conversation
+    // while a long export renders, so page identity is fixed at capture start.
+    const pageUrl = location.href;
+    const pageTitle = getConversationTitle();
     const events = [];
     const isDetailed = options.detailed ?? DETAILED_DEBUG_LOG;
     const maxEvents = options.maxEvents || DEBUG_EVENT_LIMIT;
@@ -2318,8 +2372,8 @@
             warningsCount: fidelityWarnings.length,
             warnings: fidelityWarnings
           },
-          pageUrl: location.href,
-          title: getConversationTitle(),
+          pageUrl,
+          title: pageTitle,
           startedAt: startedAt.toISOString(),
           finishedAt: new Date().toISOString(),
           pageTurnDiagnostics,
@@ -2335,8 +2389,8 @@
           exportPayload: {
             schemaVersion: 1,
             exporterVersion: EXPORTER_VERSION,
-            title: getConversationTitle(),
-            source: location.href,
+            title: pageTitle,
+            source: pageUrl,
             exportedAt: new Date().toISOString(),
             captureMode,
             messages: exportMessages
@@ -3819,6 +3873,7 @@
   function createMessageCollector(debugLog = null) {
     const messagesByKey = new Map();
     const capturedStableKeys = new Set();
+    const unitOrder = createDomOrderRegistry();
     let sequence = 0;
 
     return {
@@ -3832,7 +3887,12 @@
           throwIfCaptureCancelled(signal);
         }
 
-        for (const node of options.nodes || getCandidateMessageNodes(debugLog)) {
+        const nodes = options.nodes || getCandidateMessageNodes(debugLog);
+        unitOrder.observe(nodes
+          .filter(isChatGptMessageUnit)
+          .map((node) => getChatGptMessageUnitInfo(node)?.messageIds[0] || ""));
+
+        for (const node of nodes) {
           throwIfCaptureCancelled(signal);
           const stableKey = getStableNodeKey(node);
           const existingByStableKey = stableKey && capturedStableKeys.has(stableKey) ? messagesByKey.get(stableKey) : null;
@@ -3898,7 +3958,19 @@
       },
 
       getMessages() {
-        return uniqueMessages([...messagesByKey.values()]).sort((a, b) => a.order - b.order);
+        const messages = uniqueMessages([...messagesByKey.values()]);
+
+        // Message units carry no global turn number, so their order comes from
+        // the id sequence observed across scroll batches.
+        for (const message of messages) {
+          const rank = isChatGptMessageUnit(message.sourceNode) ? unitOrder.rank(message.sourceMessageId) : NaN;
+
+          if (Number.isFinite(rank)) {
+            message.order = rank;
+          }
+        }
+
+        return messages.sort((a, b) => a.order - b.order);
       },
 
       getMessageCount() {
@@ -4877,11 +4949,12 @@
   }
 
   function isTurnNode(node) {
-    return Boolean(node?.matches?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]'));
+    return Boolean(node?.matches?.(TURN_NODE_SELECTOR));
   }
 
   function getAllTurnNodes() {
     return uniqueElements([
+      ...document.querySelectorAll(CHATGPT_MESSAGE_UNIT_SELECTOR),
       ...document.querySelectorAll("[data-turn-id]"),
       ...document.querySelectorAll("[data-turn-container]"),
       ...document.querySelectorAll("[data-turn-id-container]"),
@@ -5049,7 +5122,7 @@
   }
 
   function getClosestTurnNode(element) {
-    return element?.closest?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]') || null;
+    return element?.closest?.(TURN_NODE_SELECTOR) || null;
   }
 
   function getTurnRootNode(element) {
@@ -5057,7 +5130,8 @@
       return element || null;
     }
 
-    return element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
+    return element.closest(CHATGPT_MESSAGE_UNIT_SELECTOR)
+      || element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
       || element.closest("[data-turn-id]")
       || element.closest("[data-turn-container]")
       || element.closest("[data-turn-id-container]")
@@ -5073,7 +5147,8 @@
   }
 
   function hasRoleOrMessageIdSignal(node) {
-    return Boolean(node?.matches?.("[data-message-author-role], [data-message-id]") || node?.querySelector?.("[data-message-author-role], [data-message-id]"));
+    const selector = "[data-message-author-role], [data-message-id], [data-chatgpt-search-unit-key]";
+    return Boolean(node?.matches?.(selector) || node?.querySelector?.(selector));
   }
 
   function isNonMessageNode(node) {
@@ -5278,8 +5353,18 @@
   }
 
   function detectRoleDetails(node, sequence) {
-    // The author-role attribute is the strongest signal. Test ids, body shape,
-    // and order are fallbacks for UI revisions where attributes move around.
+    // Message-unit keys and the author-role attribute are the strongest
+    // signals. Test ids, body shape, and order are fallbacks for UI revisions
+    // where attributes move around.
+    const unitRole = isChatGptMessageUnit(node) ? getChatGptMessageUnitInfo(node)?.role : "";
+
+    if (unitRole === "user" || unitRole === "assistant" || unitRole === "system" || unitRole === "tool") {
+      return {
+        role: unitRole,
+        reason: "data-chatgpt-search-unit-key"
+      };
+    }
+
     const roleElement = findRoleElement(node);
     const role = roleElement?.getAttribute("data-message-author-role")?.toLowerCase();
 
@@ -5432,6 +5517,12 @@
   }
 
   function findMessageBody(node, role, roleElement) {
+    const unitBody = getChatGptMessageUnitBody(node, role);
+
+    if (unitBody) {
+      return unitBody;
+    }
+
     const root = roleElement || node;
     const selectors = role === "assistant" ? ASSISTANT_BODY_SELECTORS : USER_BODY_SELECTORS;
     const candidates = [root, node];
@@ -5988,6 +6079,1281 @@
     return Boolean(time && time === text && TIMESTAMP_CUE_RE.test(text));
   }
 
+  // ============================================================================
+  // CHATGPT RESPONSE MARKUP
+  // ============================================================================
+  //
+  // ChatGPT stores two non-Markdown layers inside assistant text:
+  //
+  // 1. Inline reference tokens: U+E200 <name> U+E202 <arg> [U+E202 <arg>...] U+E201.
+  //    Known names are cite, entity, url, image_group, and navlist. They appear
+  //    in classic text messages and in the DIL fallback Markdown.
+  // 2. DIL (metadata.model_dil_v2): content.parts holds component source such as
+  //    <box>, <row>, <Cite/>, and {@body ...} state declarations. The same
+  //    metadata carries fallbackMarkdown, ChatGPT's static Markdown rendition of
+  //    that source, which is the export source of record for DIL messages.
+
+  const CHATGPT_TOKEN_START = "";
+  const CHATGPT_TOKEN_SEPARATOR = "";
+  const CHATGPT_TOKEN_END = "";
+  const CHATGPT_INLINE_TOKEN_RE = /([A-Za-z_][\w-]*)((?:[^]*)*)/g;
+  const CHATGPT_CITATION_REF_RE = /^turn\d+[a-z_]+\d+$/i;
+  const CHATGPT_WRITING_BLOCK_RE = /(^|\n):::writing(?:\{[^\n]*\})?[ \t]*\n([\s\S]*?)\n:::[ \t]*(?=\n|$)/g;
+  const DIL_COMPONENT_NAMES = new Set([
+    "AsyncImage",
+    "Cite",
+    "Entity",
+    "Link",
+    "MemoryCite",
+    "WritingBlock",
+    "badge",
+    "box",
+    "button",
+    "caption",
+    "divider",
+    "grid",
+    "grid-item",
+    "icon",
+    "pressable",
+    "radio",
+    "radio-group",
+    "row",
+    "spacer",
+    "text",
+    "title"
+  ]);
+
+  /**
+   * Returns the Markdown that ChatGPT itself shows for a message whose body is
+   * DIL component source, or "" when the message is not a DIL message.
+   */
+  function getDilFallbackMarkdown(message) {
+    const dil = message?.metadata?.model_dil_v2;
+    const fallback = dil && typeof dil === "object" ? dil.fallbackMarkdown : "";
+    return typeof fallback === "string" ? fallback.trim() : "";
+  }
+
+  function isDilMessage(message) {
+    const dil = message?.metadata?.model_dil_v2;
+    return Boolean(dil && typeof dil === "object");
+  }
+
+  /**
+   * Maps citation ref ids (turn<index><type><index>) to their source pages.
+   * Ref ids restart in every exchange, so pass the messages of one response.
+   * Two API layouts carry the mapping:
+   * - search_result_groups[].entries[].ref_id on search tool messages (2026);
+   * - content_references[type=grouped_webpages].items[].refs on the answer.
+   */
+  function buildCitationSourceIndex(messages) {
+    const sources = new Map();
+    const addSource = (refId, url, title) => {
+      const ref = formatCitationRefId(refId);
+      const href = String(url || "").trim();
+
+      if (ref && href && !sources.has(ref)) {
+        sources.set(ref, { url: href, title: String(title || href).trim() });
+      }
+    };
+
+    for (const message of messages) {
+      const metadata = message?.metadata || {};
+
+      for (const group of Array.isArray(metadata.search_result_groups) ? metadata.search_result_groups : []) {
+        for (const entry of Array.isArray(group?.entries) ? group.entries : []) {
+          addSource(entry?.ref_id, entry?.url, entry?.title || group?.domain);
+        }
+      }
+
+      for (const reference of Array.isArray(metadata.content_references) ? metadata.content_references : []) {
+        if (reference?.type !== "grouped_webpages") {
+          continue;
+        }
+
+        for (const item of Array.isArray(reference.items) ? reference.items : []) {
+          for (const refId of Array.isArray(item?.refs) ? item.refs : []) {
+            addSource(refId, item?.url, item?.title || item?.attribution);
+          }
+        }
+      }
+    }
+
+    return sources;
+  }
+
+  function formatCitationRefId(refId) {
+    if (!refId || typeof refId !== "object") {
+      return "";
+    }
+
+    const turnIndex = refId.turn_index ?? refId.turnIndex;
+    const refType = refId.ref_type ?? refId.refType;
+    const refIndex = refId.ref_index ?? refId.refIndex;
+
+    if (turnIndex == null || !refType || refIndex == null) {
+      return "";
+    }
+
+    return `turn${turnIndex}${refType}${refIndex}`;
+  }
+
+  /**
+   * Creates the per-response state shared by every text part of one assistant
+   * turn, so footnote numbers stay unique across the whole response.
+   */
+  function createChatGptMarkupContext(options = {}) {
+    return {
+      citationSources: options.citationSources || new Map(),
+      footnoteOffset: Math.max(0, Number(options.footnoteOffset) || 0),
+      footnotes: [],
+      footnoteIndexByRef: new Map(),
+      tokenCounts: {},
+      unknownTokenCounts: {},
+      unresolvedCitationRefs: []
+    };
+  }
+
+  /**
+   * Replaces ChatGPT inline reference tokens with portable Markdown. Citations
+   * become numbered footnote references; call formatChatGptFootnotes() with the
+   * same context once all parts of the response are rendered.
+   */
+  function renderChatGptInlineTokens(markdown, context = createChatGptMarkupContext()) {
+    const text = String(markdown || "");
+
+    if (!text.includes(CHATGPT_TOKEN_START)) {
+      return text;
+    }
+
+    return text.replace(CHATGPT_INLINE_TOKEN_RE, (match, rawName, rawArgs) => {
+      const name = rawName.toLowerCase();
+      const args = rawArgs ? rawArgs.split(CHATGPT_TOKEN_SEPARATOR).slice(1) : [];
+      context.tokenCounts[name] = (context.tokenCounts[name] || 0) + 1;
+
+      switch (name) {
+        case "cite":
+          return renderCitationToken(args, context);
+        case "entity":
+          return renderEntityToken(args);
+        case "url":
+          return renderUrlToken(args);
+        case "image_group":
+          return renderImageGroupToken(args);
+        case "navlist":
+          return renderNavlistToken(args, context);
+        default:
+          context.unknownTokenCounts[name] = (context.unknownTokenCounts[name] || 0) + 1;
+          return args.filter(isReadableTokenArgument).join(" ");
+      }
+    });
+  }
+
+  function renderCitationToken(args, context) {
+    const references = [];
+
+    for (const arg of args) {
+      const ref = String(arg || "").trim();
+
+      if (!CHATGPT_CITATION_REF_RE.test(ref)) {
+        continue;
+      }
+
+      const footnote = resolveCitationFootnote(ref, context);
+
+      if (footnote && !references.includes(footnote)) {
+        references.push(footnote);
+      }
+    }
+
+    return references.map((index) => `[^${index}]`).join("");
+  }
+
+  function resolveCitationFootnote(ref, context) {
+    if (context.footnoteIndexByRef.has(ref)) {
+      return context.footnoteIndexByRef.get(ref);
+    }
+
+    const source = context.citationSources.get(ref);
+
+    if (!source) {
+      if (!context.unresolvedCitationRefs.includes(ref)) {
+        context.unresolvedCitationRefs.push(ref);
+      }
+      return 0;
+    }
+
+    const index = context.footnoteOffset + context.footnotes.length + 1;
+    context.footnotes.push({ index, ref, ...source });
+    context.footnoteIndexByRef.set(ref, index);
+    return index;
+  }
+
+  function renderEntityToken(args) {
+    const parsed = parseJsonTokenArgument(args[0]);
+
+    if (Array.isArray(parsed)) {
+      return String(parsed[1] ?? parsed[0] ?? "").trim();
+    }
+
+    return String(args[1] ?? args[0] ?? "").trim();
+  }
+
+  function renderUrlToken(args) {
+    const values = args.map((arg) => String(arg || "").trim()).filter(Boolean);
+    const url = values.find((value) => /^https?:\/\//i.test(value)) || "";
+    const title = values.find((value) => value !== url) || url;
+
+    if (!url) {
+      return title;
+    }
+
+    return `[${escapeMarkdownLinkLabel(title)}](${url})`;
+  }
+
+  function renderImageGroupToken(args) {
+    const parsed = parseJsonTokenArgument(args[0]);
+    const queries = Array.isArray(parsed?.query)
+      ? parsed.query
+      : (typeof parsed?.query === "string" ? [parsed.query] : []);
+    const label = queries.map((query) => String(query || "").trim()).filter(Boolean).join("; ");
+    return label ? `*[Image search: ${escapeMarkdownLinkLabel(label)}]*` : "";
+  }
+
+  function renderNavlistToken(args, context) {
+    const [title = "", ...refs] = args.map((arg) => String(arg || "").trim());
+    const links = refs
+      .filter((ref) => CHATGPT_CITATION_REF_RE.test(ref))
+      .map((ref) => context.citationSources.get(ref))
+      .filter(Boolean)
+      .map((source) => `- [${escapeMarkdownLinkLabel(source.title)}](${source.url})`);
+
+    return [title ? `**${title}**` : "", ...links].filter(Boolean).join("\n");
+  }
+
+  function parseJsonTokenArgument(value) {
+    try {
+      return JSON.parse(String(value || ""));
+    } catch (error) {
+      // Token arguments are model output; a malformed payload degrades to text.
+      return null;
+    }
+  }
+
+  function isReadableTokenArgument(value) {
+    const text = String(value || "").trim();
+    return Boolean(text)
+      && !CHATGPT_CITATION_REF_RE.test(text)
+      && !/^[{[]/.test(text);
+  }
+
+  function escapeMarkdownLinkLabel(value) {
+    return String(value || "").replace(/[[\]]/g, "\\$&");
+  }
+
+  function formatChatGptFootnotes(context) {
+    return context.footnotes
+      .map((footnote) => `[^${footnote.index}]: [${escapeMarkdownLinkLabel(footnote.title)}](${footnote.url})`)
+      .join("\n");
+  }
+
+  /**
+   * Converts :::writing directives (ChatGPT's copyable writing blocks) into
+   * fenced blocks, which keep the inner text verbatim in every Markdown reader.
+   */
+  function renderChatGptWritingBlocks(markdown) {
+    return String(markdown || "").replace(CHATGPT_WRITING_BLOCK_RE, (match, prefix, body) => {
+      const fence = makeFence(body);
+      return `${prefix}${fence}markdown\n${body}\n${fence}`;
+    });
+  }
+
+  /**
+   * Degrades DIL component source to static Markdown. It is used only when a
+   * DIL message lacks fallbackMarkdown; code fences are left untouched.
+   */
+  function renderDilSourceAsMarkdown(source) {
+    return mapOutsideCodeFences(String(source || ""), (segment) => {
+      const withoutStatements = stripDilExpressionBlocks(segment);
+      // Component nesting indents source lines; four spaces would turn them
+      // into Markdown code blocks, so only list items keep their indentation.
+      return renderDilComponents(withoutStatements)
+        .replace(/^[ \t]+(?![-*+][ \t]|\d+[.)][ \t])/gm, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n");
+    });
+  }
+
+  function mapOutsideCodeFences(text, transform) {
+    const lines = text.split("\n");
+    const output = [];
+    let buffer = [];
+    let fence = null;
+
+    const flush = () => {
+      if (buffer.length) {
+        output.push(transform(buffer.join("\n")));
+        buffer = [];
+      }
+    };
+
+    for (const line of lines) {
+      const match = line.match(/^\s*(`{3,}|~{3,})/);
+
+      if (!fence && match) {
+        flush();
+        fence = match[1];
+        output.push(line);
+        continue;
+      }
+
+      if (fence) {
+        output.push(line);
+
+        if (line.trim().startsWith(fence[0].repeat(fence.length)) && line.trim().replace(/[`~]/g, "") === "") {
+          fence = null;
+        }
+        continue;
+      }
+
+      buffer.push(line);
+    }
+
+    flush();
+    return output.join("\n");
+  }
+
+  function stripDilExpressionBlocks(text) {
+    let output = "";
+    let index = 0;
+
+    while (index < text.length) {
+      const open = text.indexOf("{", index);
+
+      if (open < 0) {
+        output += text.slice(index);
+        break;
+      }
+
+      const close = findBalancedBraceEnd(text, open);
+      const block = close > open ? text.slice(open, close + 1) : "";
+      const isStatement = /^\{\s*@/.test(block);
+      const isExpression = /=>|\bDIL\.|\bGenUI\./.test(block);
+
+      if (block && (isStatement || isExpression) && !isInsideDilTag(text, open)) {
+        output += text.slice(index, open);
+        index = close + 1;
+        continue;
+      }
+
+      output += text.slice(index, open + 1);
+      index = open + 1;
+    }
+
+    return output;
+  }
+
+  function isInsideDilTag(text, position) {
+    const tagStart = text.lastIndexOf("<", position);
+    const tagEnd = text.lastIndexOf(">", position);
+    return tagStart > tagEnd && /^<\/?[A-Za-z]/.test(text.slice(tagStart, tagStart + 2));
+  }
+
+  function findBalancedBraceEnd(text, start) {
+    let depth = 0;
+    let quote = "";
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (quote) {
+        if (char === "\\") {
+          index += 1;
+        } else if (char === quote) {
+          quote = "";
+        }
+        continue;
+      }
+
+      if (char === "\"" || char === "'" || char === "`") {
+        quote = char;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  function renderDilComponents(text) {
+    let output = "";
+    let index = 0;
+
+    while (index < text.length) {
+      const tag = readDilTag(text, index);
+
+      if (!tag) {
+        output += text[index];
+        index += 1;
+        continue;
+      }
+
+      output += renderDilTag(tag);
+      index = tag.end;
+    }
+
+    return output;
+  }
+
+  function readDilTag(text, start) {
+    if (text[start] !== "<") {
+      return null;
+    }
+
+    const nameMatch = text.slice(start).match(/^<(\/?)([A-Za-z][\w-]*)/);
+
+    if (!nameMatch || !DIL_COMPONENT_NAMES.has(nameMatch[2])) {
+      return null;
+    }
+
+    const closing = nameMatch[1] === "/";
+    const name = nameMatch[2];
+    const attributes = {};
+    let index = start + nameMatch[0].length;
+
+    while (index < text.length) {
+      while (/\s/.test(text[index] || "")) {
+        index += 1;
+      }
+
+      if (text.startsWith("/>", index)) {
+        return { name, closing, selfClosing: true, attributes, end: index + 2 };
+      }
+
+      if (text[index] === ">") {
+        return { name, closing, selfClosing: false, attributes, end: index + 1 };
+      }
+
+      const attributeMatch = text.slice(index).match(/^([A-Za-z_][\w-]*)/);
+
+      if (!attributeMatch) {
+        return null;
+      }
+
+      const attributeName = attributeMatch[1];
+      index += attributeName.length;
+
+      if (text[index] !== "=") {
+        attributes[attributeName] = true;
+        continue;
+      }
+
+      index += 1;
+      const valueStart = index;
+
+      if (text[index] === "\"" || text[index] === "'") {
+        const quote = text[index];
+        let cursor = index + 1;
+
+        while (cursor < text.length && text[cursor] !== quote) {
+          cursor += text[cursor] === "\\" ? 2 : 1;
+        }
+
+        attributes[attributeName] = text.slice(valueStart + 1, cursor);
+        index = cursor + 1;
+      } else if (text[index] === "{") {
+        const close = findBalancedBraceEnd(text, index);
+
+        if (close < 0) {
+          return null;
+        }
+
+        attributes[attributeName] = { expression: text.slice(index + 1, close) };
+        index = close + 1;
+      } else {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function renderDilTag(tag) {
+    const attributes = tag.attributes;
+    const text = (name) => (typeof attributes[name] === "string" ? attributes[name] : "");
+
+    if (tag.closing) {
+      switch (tag.name) {
+        case "title":
+          return "**";
+        case "badge":
+          return ")";
+        case "button":
+          return "]";
+        case "WritingBlock":
+          return "\n```\n";
+        case "box":
+        case "row":
+        case "grid":
+        case "grid-item":
+        case "pressable":
+        case "radio-group":
+        case "caption":
+        case "radio":
+        case "text":
+          return "\n";
+        default:
+          return "";
+      }
+    }
+
+    switch (tag.name) {
+      case "Link": {
+        const url = text("url");
+        const title = text("title") || url;
+        return url ? `[${escapeMarkdownLinkLabel(title)}](${url})` : title;
+      }
+      case "Entity":
+        return text("value");
+      case "AsyncImage":
+        return text("query") ? `*[Image search: ${escapeMarkdownLinkLabel(text("query"))}]*` : "";
+      case "Cite":
+      case "MemoryCite":
+      case "spacer":
+        return "";
+      case "icon":
+        return renderDilIcon(text("name"));
+      case "divider":
+        return "\n\n---\n\n";
+      case "title":
+        return tag.selfClosing ? "" : "**";
+      case "badge":
+        return tag.selfClosing ? "" : " (";
+      case "button":
+        return tag.selfClosing ? "" : "[";
+      case "radio":
+        return tag.selfClosing ? "" : "\n- ";
+      case "WritingBlock":
+        return tag.selfClosing ? "" : "\n```markdown\n";
+      default:
+        return tag.selfClosing ? "" : "\n";
+    }
+  }
+
+  function renderDilIcon(name) {
+    const glyphs = {
+      "arrow-down": "↓",
+      "arrow-right": "→",
+      "arrow-left": "←",
+      "arrow-up": "↑",
+      "check": "✓",
+      "check-circle-2": "✓",
+      "circle": "○"
+    };
+    return glyphs[String(name || "").toLowerCase()] || "";
+  }
+  // ============================================================================
+  // CHATGPT DOM SCHEMA: MESSAGE UNITS (2026-10)
+  // ============================================================================
+  //
+  // Current ChatGPT pages render one [data-turn-key] container per exchange.
+  // Each message inside it is a unit:
+  //
+  //   [data-turn-key="<user message id>"]
+  //     [data-chatgpt-search-unit-key="<turn>:<index>:user"]
+  //        data-chatgpt-search-message-ids="<message id>"
+  //       [data-user-message-bubble]                       user body
+  //     [data-chatgpt-search-unit-key="<turn>:<index>:assistant"]
+  //        data-chatgpt-search-message-ids="<message id> ..."
+  //       [data-markdown-text-style="assistant-message"]   assistant body
+  //
+  // The unit key carries the role, and the message ids match the conversation
+  // API, so units are the message nodes for Full capture. The <turn> prefix is
+  // a render-window key (for example "fallback-turn-3"), not a global order.
+  // Legacy pages ([data-message-author-role], conversation-turn-N) keep using
+  // the selectors in index.js.
+
+  const CHATGPT_MESSAGE_UNIT_SELECTOR = "[data-chatgpt-search-unit-key]";
+  const CHATGPT_UNIT_BODY_SELECTORS = {
+    assistant: [
+      "[data-markdown-text-style='assistant-message']",
+      "[data-markdown-copy='contents']"
+    ],
+    user: [
+      "[data-user-message-bubble]"
+    ]
+  };
+  const CHATGPT_WRITING_BLOCK_SELECTOR = "[data-testid='chatgpt-writing-block']";
+  const CHATGPT_COPY_EXCLUDED_SELECTOR = "[data-markdown-copy='exclude']";
+
+  function isChatGptMessageUnit(node) {
+    return Boolean(node?.matches?.(CHATGPT_MESSAGE_UNIT_SELECTOR));
+  }
+
+  function hasChatGptMessageUnits(root = document) {
+    return Boolean(root?.querySelector?.(CHATGPT_MESSAGE_UNIT_SELECTOR));
+  }
+
+  /**
+   * Reads role and ChatGPT message ids from a message unit.
+   *
+   * @returns {{ role: string, messageIds: string[], unitKey: string, turnKey: string } | null}
+   */
+  function getChatGptMessageUnitInfo(node) {
+    const unit = isChatGptMessageUnit(node) ? node : node?.closest?.(CHATGPT_MESSAGE_UNIT_SELECTOR);
+
+    if (!unit) {
+      return null;
+    }
+
+    const unitKey = unit.getAttribute("data-chatgpt-search-unit-key") || "";
+    const keyRole = (unitKey.match(/:(user|assistant|system|tool)$/i)?.[1] || "").toLowerCase();
+    const headingRole = String(unit.querySelector("[data-conversation-role]")?.getAttribute("data-conversation-role") || "").toLowerCase();
+    const messageIds = uniqueStrings([
+      ...String(unit.getAttribute("data-chatgpt-search-message-ids") || "").split(/\s+/),
+      ...[...unit.querySelectorAll("[data-chatgpt-selection-message-id]")]
+        .map((element) => element.getAttribute("data-chatgpt-selection-message-id") || "")
+    ].map((id) => id.trim()).filter(Boolean));
+
+    return {
+      role: keyRole || headingRole,
+      messageIds,
+      unitKey,
+      turnKey: unit.closest("[data-turn-key]")?.getAttribute("data-turn-key") || ""
+    };
+  }
+
+  function getChatGptMessageUnitBody(node, role) {
+    if (!isChatGptMessageUnit(node)) {
+      return null;
+    }
+
+    for (const selector of CHATGPT_UNIT_BODY_SELECTORS[role] || []) {
+      const body = node.querySelector(selector);
+
+      if (body) {
+        return body;
+      }
+    }
+
+    return null;
+  }
+
+  // DIL responses render through [data-dil-message-id] with data-d-component
+  // markers. Citation chips are popover triggers that wrap a pill badge and no
+  // link; Link components are popover triggers that wrap a plain <a href>.
+  const CHATGPT_DIL_ROOT_SELECTOR = "[data-dil-message-id]";
+
+  function isChatGptDilCitationChip(element) {
+    return Boolean(
+      element?.matches?.("[data-d-component='popover-trigger']")
+      && element.querySelector("[data-d-component='badge'][data-pill]")
+      && !element.querySelector("a[href]")
+    );
+  }
+
+  function formatChatGptDilCitationChip(element) {
+    const label = String(element.textContent || "").replace(/\s+/g, " ").trim();
+    return label ? ` (${label})` : "";
+  }
+
+  function isChatGptDilWebLink(element, href) {
+    return Boolean(element?.closest?.(CHATGPT_DIL_ROOT_SELECTOR))
+      && /^https?:\/\//i.test(String(href || ""))
+      && !/\/backend-api\/|oaiusercontent\.com/i.test(String(href || ""));
+  }
+
+  function isChatGptDilDivider(element) {
+    return Boolean(element?.matches?.("[data-d-component='divider']"));
+  }
+
+  function hasChatGptDilStrongMarker(element) {
+    return Boolean(element?.hasAttribute?.("data-d-default-strong"));
+  }
+
+  function isChatGptCopyExcludedElement(element) {
+    return Boolean(element?.matches?.(CHATGPT_COPY_EXCLUDED_SELECTOR));
+  }
+
+  function isChatGptWritingBlockElement(element) {
+    return Boolean(element?.matches?.(CHATGPT_WRITING_BLOCK_SELECTOR));
+  }
+
+  /**
+   * Writing blocks render through an editor surface; ChatGPT keeps the block's
+   * Markdown source in data-markdown-copy-text for its own copy action.
+   */
+  function formatChatGptWritingBlock(element) {
+    const text = String(element.getAttribute("data-markdown-copy-text") || element.innerText || "").replace(/\s+$/g, "");
+
+    if (!text.trim()) {
+      return "";
+    }
+
+    const fence = makeFence(text);
+    return `${fence}markdown\n${text}\n${fence}`;
+  }
+
+  /**
+   * Keeps the discovery order of message ids across virtualized scroll
+   * batches. Each batch is in document order; ids not seen before are placed
+   * after the nearest earlier id of the same batch that is already known.
+   */
+  function createDomOrderRegistry() {
+    const order = [];
+
+    return {
+      observe(ids) {
+        let anchor = -1;
+
+        for (const id of ids) {
+          if (!id) {
+            continue;
+          }
+
+          const known = order.indexOf(id);
+
+          if (known >= 0) {
+            anchor = known;
+            continue;
+          }
+
+          order.splice(anchor + 1, 0, id);
+          anchor += 1;
+        }
+      },
+
+      rank(id) {
+        const index = order.indexOf(id);
+        return index >= 0 ? index + 1 : NaN;
+      },
+
+      size() {
+        return order.length;
+      }
+    };
+  }
+
+  /**
+   * Orders captured messages by the conversation manifest when one is
+   * available and assigns contiguous order numbers. Messages the manifest
+   * does not know keep their position relative to their neighbours.
+   */
+  function applyManifestOrder(messages, manifest, debugLog = null) {
+    if (!manifest?.entries?.length) {
+      return messages;
+    }
+
+    const positionByIdentity = new Map(manifest.entries.map((entry, index) => [entry.identity, index]));
+    let lastPosition = -1;
+    const keyed = messages.map((message, index) => {
+      const position = positionByIdentity.get(resolveManifestIdentity(manifest, message));
+
+      if (position != null) {
+        lastPosition = position;
+        return { message, key: position, tie: index };
+      }
+
+      return { message, key: lastPosition + 0.5, tie: index };
+    });
+
+    keyed.sort((a, b) => (a.key - b.key) || (a.tie - b.tie));
+    const ordered = keyed.map((entry, index) => {
+      entry.message.order = index + 1;
+      entry.message.conversationOrder = index + 1;
+      return entry.message;
+    });
+
+    debugLog?.event("fullCapture.manifestOrder", {
+      messages: ordered.length,
+      matched: keyed.filter((entry) => Number.isInteger(entry.key)).length
+    });
+
+    return ordered;
+  }
+  // ============================================================================
+  // CONVERSATION MANIFEST (expected structure from the raw conversation API)
+  // ============================================================================
+  //
+  // The manifest states which messages an export must contain. It is derived
+  // from raw API nodes with its own visibility rules and never from exporter
+  // output, so the completeness gate compares two independent results:
+  //
+  //   raw API nodes --buildConversationManifest--> expected entries
+  //   raw API nodes --Fast builder / DOM capture--> exported messages
+  //
+  // Entries are matched by ChatGPT message id, not by position, so a dropped
+  // or duplicated message cannot shift every later comparison.
+
+  const MANIFEST_REPLY_STATUS = Object.freeze({
+    ANSWER: "answer",
+    THINKING_ONLY: "thinking-only",
+    INTERRUPTED: "interrupted",
+    EMPTY: "empty",
+    NO_REPLY: "no-reply"
+  });
+
+  /**
+   * Builds the expected export structure of the current conversation branch.
+   *
+   * @returns {{
+   *   entries: Array<{ identity: string, role: "user" | "assistant", nodeIds: string[], status: string }>,
+   *   gaps: Array<{ userIdentity: string, userNodeId: string, status: string, reason: string, createTime: number | null }>,
+   *   nodeIdentity: Map<string, string>,
+   *   counts: { pathNodes: number, hiddenNodes: number, user: number, assistant: number }
+   * }}
+   */
+  function buildConversationManifest(data) {
+    const pathNodes = getConversationApiCurrentPath(data);
+    const entries = [];
+    const gaps = [];
+    const nodeIdentity = new Map();
+    let hiddenNodes = 0;
+    let pendingUser = null;
+    let pendingReplyNodes = [];
+
+    const closeExchange = () => {
+      if (!pendingUser) {
+        pendingReplyNodes = [];
+        return;
+      }
+
+      const reply = classifyManifestReply(pendingReplyNodes);
+
+      if (reply.status === MANIFEST_REPLY_STATUS.ANSWER || reply.status === MANIFEST_REPLY_STATUS.THINKING_ONLY) {
+        const identity = `reply:${reply.nodeIds[0]}`;
+        entries.push({ identity, role: "assistant", nodeIds: reply.nodeIds, status: reply.status });
+        reply.nodeIds.forEach((nodeId) => nodeIdentity.set(nodeId, identity));
+      } else {
+        gaps.push({
+          userIdentity: pendingUser.identity,
+          userNodeId: pendingUser.nodeId,
+          status: reply.status,
+          reason: reply.reason,
+          createTime: pendingUser.createTime
+        });
+      }
+
+      pendingUser = null;
+      pendingReplyNodes = [];
+    };
+
+    for (const node of pathNodes) {
+      const message = node?.message;
+
+      if (!message) {
+        continue;
+      }
+
+      if (isManifestHiddenMessage(message)) {
+        hiddenNodes += 1;
+        continue;
+      }
+
+      const role = String(message.author?.role || "").toLowerCase();
+      const nodeId = String(message.id || node.id || "");
+
+      if (role === "user") {
+        closeExchange();
+        const identity = `message:${nodeId}`;
+        entries.push({ identity, role: "user", nodeIds: [nodeId], status: "prompt" });
+        nodeIdentity.set(nodeId, identity);
+        pendingUser = {
+          identity,
+          nodeId,
+          createTime: Number.isFinite(Number(message.create_time)) ? Number(message.create_time) : null
+        };
+        continue;
+      }
+
+      if (role === "assistant" || role === "tool") {
+        if (!pendingUser) {
+          // A reply without a visible prompt (for example a greeting) still
+          // belongs in the export when it shows content.
+          pendingUser = { identity: "", nodeId: "", createTime: null, synthetic: true };
+        }
+        pendingReplyNodes.push({ nodeId, message });
+      }
+    }
+
+    closeExchange();
+
+    // Drop gaps recorded for synthetic prompt placeholders.
+    const visibleGaps = gaps.filter((gap) => gap.userIdentity);
+
+    return {
+      entries,
+      gaps: visibleGaps,
+      nodeIdentity,
+      counts: {
+        pathNodes: pathNodes.length,
+        hiddenNodes,
+        user: entries.filter((entry) => entry.role === "user").length,
+        assistant: entries.filter((entry) => entry.role === "assistant").length
+      }
+    };
+  }
+
+  function isManifestHiddenMessage(message) {
+    const metadata = message?.metadata || {};
+    const authorMetadata = message?.author?.metadata || {};
+    return [
+      metadata.is_visually_hidden_from_conversation,
+      metadata.is_hidden,
+      metadata.hidden,
+      authorMetadata.is_visually_hidden_from_conversation,
+      authorMetadata.is_hidden,
+      authorMetadata.hidden
+    ].some((value) => value === true || String(value || "").toLowerCase() === "true");
+  }
+
+  function classifyManifestReply(replyNodes) {
+    const nodeIds = replyNodes.map((entry) => entry.nodeId).filter(Boolean);
+
+    if (!replyNodes.length) {
+      return {
+        status: MANIFEST_REPLY_STATUS.NO_REPLY,
+        reason: "ChatGPT stored no assistant message after this prompt.",
+        nodeIds
+      };
+    }
+
+    const messages = replyNodes.map((entry) => entry.message);
+
+    if (messages.some(hasManifestAnswerContent)) {
+      return { status: MANIFEST_REPLY_STATUS.ANSWER, reason: "", nodeIds };
+    }
+
+    if (messages.some(hasManifestThinkingContent)) {
+      return { status: MANIFEST_REPLY_STATUS.THINKING_ONLY, reason: "", nodeIds };
+    }
+
+    const interrupted = messages.find((message) => {
+      const finish = message?.metadata?.finish_details || {};
+      return String(finish.type || "").toLowerCase() === "interrupted";
+    });
+
+    if (interrupted) {
+      const finishReason = String(interrupted.metadata.finish_details.reason || "interrupted");
+      return {
+        status: MANIFEST_REPLY_STATUS.INTERRUPTED,
+        reason: `The response was stopped before it produced content (${finishReason}).`,
+        nodeIds
+      };
+    }
+
+    return {
+      status: MANIFEST_REPLY_STATUS.EMPTY,
+      reason: "The stored response has no visible content.",
+      nodeIds
+    };
+  }
+
+  /**
+   * A reply shows an answer when an assistant message addressed to the user
+   * (not a tool call or reasoning channel) carries text, DIL fallback Markdown,
+   * or media; or when any reply node carries an image or generated file.
+   */
+  function hasManifestAnswerContent(message) {
+    if (!message) {
+      return false;
+    }
+
+    const role = String(message.author?.role || "").toLowerCase();
+    const parts = Array.isArray(message.content?.parts) ? message.content.parts : [];
+
+    if (parts.some(isManifestMediaPart)) {
+      return true;
+    }
+
+    if (role !== "assistant") {
+      return false;
+    }
+
+    const recipient = String(message.recipient || "").toLowerCase();
+    const channel = String(message.channel || "").toLowerCase();
+    const contentType = String(message.content?.content_type || "").toLowerCase();
+
+    if (recipient && recipient !== "all") {
+      return false;
+    }
+
+    if (channel && channel !== "final") {
+      return false;
+    }
+
+    if (!["text", "multimodal_text"].includes(contentType)) {
+      return false;
+    }
+
+    const dilFallback = message.metadata?.model_dil_v2?.fallbackMarkdown;
+
+    if (typeof dilFallback === "string" && dilFallback.trim()) {
+      return true;
+    }
+
+    return parts.some((part) => typeof part === "string" && part.trim());
+  }
+
+  function isManifestMediaPart(part) {
+    if (!part || typeof part !== "object") {
+      return false;
+    }
+
+    const pointer = String(part.asset_pointer || part.assetPointer || "");
+    return Boolean(pointer) && /image|file-service|sediment/i.test(`${part.content_type || ""} ${pointer}`);
+  }
+
+  function hasManifestThinkingContent(message) {
+    const content = message?.content || {};
+    const contentType = String(content.content_type || "").toLowerCase();
+
+    if (contentType === "thoughts") {
+      return Array.isArray(content.thoughts)
+        && content.thoughts.some((thought) => String(thought?.summary || thought?.content || "").trim());
+    }
+
+    if (contentType === "reasoning_recap") {
+      return typeof content.content === "string" && Boolean(content.content.trim());
+    }
+
+    // Commentary preambles appear in ChatGPT's activity timeline.
+    if (String(message?.channel || "").toLowerCase() === "commentary") {
+      const parts = Array.isArray(content.parts) ? content.parts : [];
+      return parts.some((part) => typeof part === "string" && part.trim());
+    }
+
+    return false;
+  }
+
+  /**
+   * Resolves the manifest identity of an exported message from any ChatGPT
+   * message id it carries. Returns "" when the message is not in the manifest.
+   */
+  function resolveManifestIdentity(manifest, message) {
+    for (const id of getCapturedSourceMessageIds(message)) {
+      const identity = manifest.nodeIdentity.get(id);
+
+      if (identity) {
+        return identity;
+      }
+    }
+
+    return "";
+  }
+
+  function getCapturedSourceMessageIds(message) {
+    return [
+      message?.sourceMessageId,
+      ...(Array.isArray(message?.sourceMessageIds) ? message.sourceMessageIds : []),
+      message?.sourceTurnId
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Compares exported messages with the manifest. The returned report has the
+   * same fields as buildCaptureCompletenessReport so the selector UI, the
+   * export gate, and the debug log treat both sources alike.
+   */
+  function buildManifestCompletenessReport(messages, manifest, options = {}) {
+    const captureMode = normalizeCaptureMode(options.captureMode);
+    const expectedIdentities = manifest.entries.map((entry) => entry.identity);
+    const expectedIdentitySet = new Set(expectedIdentities);
+    const capturedIdentities = [];
+    const unmatchedMessages = [];
+    const duplicateIdentities = [];
+
+    messages.forEach((message, index) => {
+      const identity = resolveManifestIdentity(manifest, message);
+
+      if (!identity) {
+        unmatchedMessages.push({
+          index,
+          role: message?.role || "",
+          preview: truncatePreview(String(message?.preview || message?.markdown || ""), 120)
+        });
+        return;
+      }
+
+      if (capturedIdentities.includes(identity)) {
+        duplicateIdentities.push(identity);
+        return;
+      }
+
+      capturedIdentities.push(identity);
+    });
+
+    const capturedIdentitySet = new Set(capturedIdentities);
+    const missingEntries = manifest.entries.filter((entry) => !capturedIdentitySet.has(entry.identity));
+    const roleSequence = getRoleSequenceDiagnostics(messages);
+    const imageStats = getCaptureImageCompletenessStats(messages);
+    const reconciliationReport = options.reconciliationReport || {};
+    const substantiveFullOnlyMessages = Number(reconciliationReport.substantiveFullOnlyMessages || 0);
+    const expectedUser = manifest.counts.user;
+    const expectedAssistant = manifest.counts.assistant;
+    const issues = [];
+    const warnings = [];
+
+    if (missingEntries.length) {
+      const missingUser = missingEntries.filter((entry) => entry.role === "user").length;
+      const missingAssistant = missingEntries.length - missingUser;
+      issues.push({
+        code: "missing-identities",
+        message: `Missing ${missingEntries.length} expected message(s): ${missingUser} user, ${missingAssistant} assistant.`,
+        missing: missingEntries.slice(0, 50).map((entry) => ({
+          identity: entry.identity,
+          role: entry.role,
+          position: expectedIdentities.indexOf(entry.identity) + 1
+        }))
+      });
+    }
+
+    if (roleSequence.userMessages < expectedUser) {
+      issues.push({
+        code: "missing-user-messages",
+        message: `Captured ${roleSequence.userMessages}/${expectedUser} expected user messages.`
+      });
+    }
+
+    if (roleSequence.assistantMessages < expectedAssistant) {
+      issues.push({
+        code: "missing-assistant-messages",
+        message: `Captured ${roleSequence.assistantMessages}/${expectedAssistant} expected assistant messages.`
+      });
+    }
+
+    if (!isManifestOrderPreserved(messages, manifest)) {
+      issues.push({
+        code: "order-mismatch",
+        message: "Captured messages are not in conversation order."
+      });
+    }
+
+    if (imageStats.failures > 0) {
+      issues.push({
+        code: "image-failures",
+        message: `${imageStats.failures} image reference(s) failed during capture.`
+      });
+    }
+
+    if (captureMode === "hybrid" && substantiveFullOnlyMessages > 0) {
+      issues.push({
+        code: "hybrid-full-only-messages",
+        message: `Hybrid found ${substantiveFullOnlyMessages} substantive Full-only message(s); use Full to retain them.`
+      });
+    }
+
+    if (unmatchedMessages.length) {
+      warnings.push({
+        code: "unmatched-messages",
+        message: `${unmatchedMessages.length} captured message(s) have no ChatGPT message id in the conversation branch.`,
+        samples: unmatchedMessages.slice(0, 12)
+      });
+    }
+
+    if (duplicateIdentities.length) {
+      warnings.push({
+        code: "duplicate-identities",
+        message: `${duplicateIdentities.length} captured message(s) repeat an earlier message.`,
+        identities: duplicateIdentities.slice(0, 20)
+      });
+    }
+
+    if (roleSequence.sameRolePairs.length) {
+      warnings.push({
+        code: "same-role-adjacency",
+        message: formatSameRoleAdjacencyWarning(roleSequence.sameRolePairs.length, manifest.gaps),
+        pairs: roleSequence.sameRolePairs,
+        explainedBy: manifest.gaps
+      });
+    }
+
+    const complete = issues.length === 0;
+    return {
+      complete,
+      requiresOverride: !complete,
+      captureMode,
+      coverageKnown: true,
+      expectedSource: "conversation-api-manifest",
+      expected: {
+        uniqueIdentities: expectedIdentities.length,
+        conversationOrders: [],
+        userMessages: expectedUser,
+        assistantMessages: expectedAssistant,
+        startRole: manifest.entries[0]?.role || "",
+        endRole: manifest.entries[manifest.entries.length - 1]?.role || "",
+        sameRoleAdjacencies: manifest.gaps.length,
+        replyGaps: manifest.gaps
+      },
+      captured: {
+        messages: messages.length,
+        uniqueIdentities: capturedIdentities.filter((identity) => expectedIdentitySet.has(identity)).length,
+        conversationOrders: [],
+        userMessages: roleSequence.userMessages,
+        assistantMessages: roleSequence.assistantMessages,
+        startRole: messages[0]?.role || "",
+        endRole: messages[messages.length - 1]?.role || "",
+        sameRoleAdjacencies: roleSequence.sameRolePairs
+      },
+      missingConversationOrders: missingEntries.map((entry) => expectedIdentities.indexOf(entry.identity) + 1),
+      missingIdentities: missingEntries.map((entry) => entry.identity),
+      images: imageStats,
+      hybrid: {
+        substantiveFullOnlyMessages,
+        substantiveFullOnlyAssistantMessages: Number(reconciliationReport.substantiveFullOnlyAssistantMessages || 0),
+        substantiveSamples: reconciliationReport.substantiveSamples || []
+      },
+      issues,
+      warnings
+    };
+  }
+
+  function isManifestOrderPreserved(messages, manifest) {
+    const positionByIdentity = new Map(manifest.entries.map((entry, index) => [entry.identity, index]));
+    let previous = -1;
+
+    for (const message of messages) {
+      const position = positionByIdentity.get(resolveManifestIdentity(manifest, message));
+
+      if (position == null) {
+        continue;
+      }
+
+      if (position < previous) {
+        return false;
+      }
+
+      previous = position;
+    }
+
+    return true;
+  }
+
+  function formatSameRoleAdjacencyWarning(pairCount, gaps) {
+    const byStatus = gaps.reduce((counts, gap) => {
+      counts[gap.status] = (counts[gap.status] || 0) + 1;
+      return counts;
+    }, {});
+    const reasons = [
+      byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED] ? `${byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED]} stopped before any content` : "",
+      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} never answered` : "",
+      byStatus[MANIFEST_REPLY_STATUS.EMPTY] ? `${byStatus[MANIFEST_REPLY_STATUS.EMPTY]} answered with no visible content` : ""
+    ].filter(Boolean);
+
+    if (!reasons.length) {
+      return `${pairCount} same-role adjacency pair(s) detected.`;
+    }
+
+    return `${pairCount} same-role adjacency pair(s): ChatGPT has no reply for ${gaps.length} prompt(s) (${reasons.join(", ")}).`;
+  }
+
   const FAST_CONVERSATION_API_PAGE_SIZE = 100;
   const FAST_CONVERSATION_API_MAX_PAGES = 200;
 
@@ -6007,6 +7373,7 @@
     });
     throwIfCaptureCancelled(signal);
     const messages = buildMessagesFromConversationApi(data, debugLog);
+    const manifest = buildConversationManifest(data);
 
     debugLog?.event("fastCapture.loaded", {
       conversationId,
@@ -6015,14 +7382,51 @@
       linearMessageCount: getConversationApiLinearMessages(data).length,
       messageCount: messages.length
     });
+    logConversationManifest(manifest, debugLog);
 
-    return messages;
+    return { messages, manifest };
+  }
+
+  /**
+   * Loads only the expected conversation structure. Full capture uses it to
+   * order DOM messages and to check completeness; a failure is reported to the
+   * caller, which falls back to DOM-only checks.
+   */
+  async function fetchConversationManifest(debugLog = null, options = {}) {
+    const conversationId = getCurrentConversationId();
+
+    if (!conversationId) {
+      throw new Error("No conversation id was found in the current URL.");
+    }
+
+    const data = await fetchConversationData(conversationId, {
+      timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
+      debugLog,
+      signal: options.signal || null
+    });
+    const manifest = buildConversationManifest(data);
+    logConversationManifest(manifest, debugLog);
+    return manifest;
+  }
+
+  function logConversationManifest(manifest, debugLog) {
+    debugLog?.event("conversationManifest.built", {
+      ...manifest.counts,
+      expectedMessages: manifest.entries.length,
+      replyGaps: manifest.gaps.map((gap) => ({
+        userNodeId: gap.userNodeId,
+        status: gap.status,
+        reason: gap.reason,
+        createTime: gap.createTime
+      }))
+    });
   }
 
   function buildMessagesFromConversationApi(data, debugLog = null) {
     const pathNodes = getConversationApiCurrentPath(data);
     const messages = [];
     const filterStats = {};
+    const markupStats = createMarkupStats();
     let pendingAssistantNodes = [];
     let directThinkingMessageCount = 0;
 
@@ -6031,7 +7435,7 @@
         return;
       }
 
-      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog);
+      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog, markupStats);
       pendingAssistantNodes = [];
 
       if (!synthesized) {
@@ -6074,7 +7478,7 @@
         const turnNumber = messages.length + 1;
         const id = message.id || node.id || `api-message-${turnNumber}`;
         const markdown = cleanApiMarkdown([
-          extractApiContentMarkdown(message.content),
+          renderChatGptInlineTokens(extractApiContentMarkdown(message.content)),
           extractApiAttachmentMarkdown(message)
         ].filter(Boolean).join("\n\n"));
 
@@ -6125,6 +7529,10 @@
       });
     }
 
+    if (markupStats.dilMessages || Object.keys(markupStats.tokens).length) {
+      debugLog?.event("fastCapture.markup", markupStats);
+    }
+
     if (directThinkingMessageCount) {
       debugLog?.event("fastCapture.thinkingMerged", {
         applied: directThinkingMessageCount
@@ -6134,7 +7542,7 @@
     return messages;
   }
 
-  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null) {
+  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null, markupStats = null) {
     if (!nodes.length) {
       return null;
     }
@@ -6178,6 +7586,11 @@
     const agentTrace = FastThinkingEngine.extractTurnAgentTrace(parsedReasoning, citations, memories);
 
     // 2. Aggregate prose text, image pointers, generated files and attachments
+    const markupContext = createChatGptMarkupContext({
+      citationSources: buildCitationSourceIndex(nodes.map((node) => node?.message).filter(Boolean)),
+      footnoteOffset: Array.isArray(primaryMessage?.metadata?.citations) ? primaryMessage.metadata.citations.length : 0
+    });
+
     for (const node of nodes) {
       const msg = node?.message;
       if (!msg) continue;
@@ -6196,21 +7609,35 @@
 
       const isThinking = isApiThinkingNode(msg);
       const isInternalTool = isApiInternalToolCallNode(msg);
+      const isDil = isDilMessage(msg);
 
       // Collect text and image parts
       const content = msg.content;
+      if (isDil && !isThinking && !isInternalTool) {
+        const fallbackMarkdown = getDilFallbackMarkdown(msg);
+        const dilMarkdown = fallbackMarkdown || renderDilSourceAsMarkdown(getApiStringParts(content).join("\n\n"));
+        if (markupStats) {
+          markupStats.dilMessages += 1;
+          if (!fallbackMarkdown) markupStats.dilWithoutFallback += 1;
+        }
+        if (dilMarkdown.trim()) {
+          textParts.push(renderApiResponseMarkup(dilMarkdown, markupContext));
+        }
+      }
+
       if (content && typeof content === "object") {
         const parts = Array.isArray(content.parts) ? content.parts : [];
         for (const part of parts) {
           if (typeof part === "string" && part.trim()) {
             if (
-              !isThinking
+              !isDil
+              && !isThinking
               && !isInternalTool
               && !isApiInternalFileIngestionText(part)
               && !looksLikeInternalApiToolCall(part)
-              && !looksLikeApiJsonPayload(part)
+              && !(looksLikeApiJsonPayload(part) && !isApiFinalAnswerMessage(msg))
             ) {
-              textParts.push(part.trim());
+              textParts.push(renderApiResponseMarkup(part, markupContext));
             }
           } else if (part && typeof part === "object") {
             const ptr = part.asset_pointer || part.assetPointer || part.url || "";
@@ -6230,9 +7657,9 @@
             && !isInternalTool
             && !isApiInternalFileIngestionText(content.text)
             && !looksLikeInternalApiToolCall(content.text)
-            && !looksLikeApiJsonPayload(content.text)
+            && !(looksLikeApiJsonPayload(content.text) && !isApiFinalAnswerMessage(msg))
           ) {
-            textParts.push(content.text.trim());
+            textParts.push(renderApiResponseMarkup(content.text, markupContext));
           }
         }
       }
@@ -6256,6 +7683,12 @@
       markdown = enrichApiMarkdownWithCitations(markdown, { metadata: { citations } });
       markdown = enrichApiMarkdownWithMemories(markdown, { metadata: { conversation_context_citation_metadata: memories } });
     }
+
+    const tokenFootnotes = formatChatGptFootnotes(markupContext);
+    if (tokenFootnotes) {
+      markdown = `${markdown.trim()}\n\n${tokenFootnotes}`;
+    }
+    mergeMarkupStats(markupStats, markupContext);
 
     if (!markdown && !thinkingMarkdown) {
       return null;
@@ -6285,6 +7718,55 @@
       imagesFailed: 0,
       captureMode: "fast"
     };
+  }
+
+  // A JSON-shaped text is dropped as a leaked tool payload unless ChatGPT marks
+  // the message as the user-facing final answer.
+  function isApiFinalAnswerMessage(msg) {
+    const channel = String(msg?.channel || "").toLowerCase();
+    const recipient = String(msg?.recipient || "").toLowerCase();
+    return (channel === "final" || msg?.end_turn === true) && (!recipient || recipient === "all");
+  }
+
+  function renderApiResponseMarkup(text, markupContext) {
+    return renderChatGptInlineTokens(renderChatGptWritingBlocks(String(text || "").trim()), markupContext);
+  }
+
+  function getApiStringParts(content) {
+    if (!content || typeof content !== "object") {
+      return [];
+    }
+
+    const parts = Array.isArray(content.parts) ? content.parts : [content.text];
+    return parts.filter((part) => typeof part === "string" && part.trim());
+  }
+
+  function createMarkupStats() {
+    return {
+      dilMessages: 0,
+      dilWithoutFallback: 0,
+      tokens: {},
+      unknownTokens: {},
+      citationFootnotes: 0,
+      unresolvedCitationRefs: 0
+    };
+  }
+
+  function mergeMarkupStats(stats, markupContext) {
+    if (!stats) {
+      return;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.tokenCounts)) {
+      stats.tokens[name] = (stats.tokens[name] || 0) + count;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.unknownTokenCounts)) {
+      stats.unknownTokens[name] = (stats.unknownTokens[name] || 0) + count;
+    }
+
+    stats.citationFootnotes += markupContext.footnotes.length;
+    stats.unresolvedCitationRefs += markupContext.unresolvedCitationRefs.length;
   }
 
   function isApiThinkingNode(msg) {
@@ -7347,8 +8829,11 @@
       }
     }
 
-    // Check sandbox files in parts
-    const parts = Array.isArray(message?.content?.parts) ? message.content.parts : [];
+    // Check sandbox files in the displayed text; DIL parts hold component
+    // source, so DIL messages are read from their fallback Markdown.
+    const parts = isDilMessage(message)
+      ? [getDilFallbackMarkdown(message)]
+      : (Array.isArray(message?.content?.parts) ? message.content.parts : []);
     for (const part of parts) {
       if (typeof part === "string") {
         const sandboxMatches = [...part.matchAll(/\[([^\]]+)\]\((sandbox:[^)]+)\)/g)];
@@ -9290,6 +10775,10 @@
   }
 
   function getMessageIdFromNode(node) {
+    if (isChatGptMessageUnit(node)) {
+      return getChatGptMessageUnitInfo(node)?.messageIds[0] || "";
+    }
+
     return node?.querySelector?.("[data-message-id]")?.getAttribute("data-message-id") || node?.getAttribute?.("data-message-id") || "";
   }
 
@@ -9348,6 +10837,7 @@
       sourceTurnContainer: node.getAttribute("data-turn-id-container") || node.getAttribute("data-turn-container") || "",
       sourceTestId: node.getAttribute("data-testid") || "",
       sourceMessageId: getMessageIdFromNode(node),
+      sourceMessageIds: getChatGptMessageUnitInfo(node)?.messageIds || [],
       order: getOrderHint(node, order),
       timestamp: parts.timestamp || "",
       markdown,
@@ -9582,7 +11072,8 @@
 
     const className = ` ${String(element.getAttribute("class") || "")} `;
     const styleAttr = String(element.getAttribute("style") || "");
-    let bold = /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
+    let bold = hasChatGptDilStrongMarker(element)
+      || /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
       || /font-\[(?:[6-9]\d{2}|[1-9]\d{3})\]/.test(className)
       || /font-weight\s*:\s*(?:bold|bolder|[6-9]\d{2}|[1-9]\d{3})/i.test(styleAttr);
     let italic = /\sitalic\s/.test(className) || /font-style\s*:\s*(?:italic|oblique)/i.test(styleAttr);
@@ -9676,6 +11167,11 @@
     const element = node;
     const tag = element.tagName.toLowerCase();
 
+    // Citation chips use role="button", which the generic skip rules drop.
+    if (isChatGptDilCitationChip(element) && !state?.skipElements?.has(element)) {
+      return formatChatGptDilCitationChip(element);
+    }
+
     if (shouldSkipElement(element, state)) {
       return "";
     }
@@ -9697,6 +11193,15 @@
         state.fileCount += 1;
       }
       return fileMarkdown ? `\n\n${fileMarkdown}\n\n` : "";
+    }
+
+    if (isChatGptDilDivider(element)) {
+      return "\n\n---\n\n";
+    }
+
+    if (isChatGptWritingBlockElement(element)) {
+      const block = formatChatGptWritingBlock(element);
+      return block ? `\n\n${block}\n\n` : "";
     }
 
     if (hasChatGptRangeMarker(element) && !isSemanticMarkdownElementTag(tag)) {
@@ -9856,6 +11361,10 @@
       return true;
     }
 
+    if (isChatGptCopyExcludedElement(element)) {
+      return true;
+    }
+
     if (tag === "button" && !isExpandableContentButton(element) && !hasUsefulImageContent(element) && !hasUsefulFileContent(element)) {
       return true;
     }
@@ -9946,6 +11455,11 @@
 
     const text = getElementText(element);
     const href = getAttachmentHref(element);
+
+    if (isChatGptDilWebLink(element, href)) {
+      return false;
+    }
+
     const signal = [
       text,
       href,

@@ -1,6 +1,7 @@
   function createMessageCollector(debugLog = null) {
     const messagesByKey = new Map();
     const capturedStableKeys = new Set();
+    const unitOrder = createDomOrderRegistry();
     let sequence = 0;
 
     return {
@@ -14,7 +15,12 @@
           throwIfCaptureCancelled(signal);
         }
 
-        for (const node of options.nodes || getCandidateMessageNodes(debugLog)) {
+        const nodes = options.nodes || getCandidateMessageNodes(debugLog);
+        unitOrder.observe(nodes
+          .filter(isChatGptMessageUnit)
+          .map((node) => getChatGptMessageUnitInfo(node)?.messageIds[0] || ""));
+
+        for (const node of nodes) {
           throwIfCaptureCancelled(signal);
           const stableKey = getStableNodeKey(node);
           const existingByStableKey = stableKey && capturedStableKeys.has(stableKey) ? messagesByKey.get(stableKey) : null;
@@ -80,7 +86,19 @@
       },
 
       getMessages() {
-        return uniqueMessages([...messagesByKey.values()]).sort((a, b) => a.order - b.order);
+        const messages = uniqueMessages([...messagesByKey.values()]);
+
+        // Message units carry no global turn number, so their order comes from
+        // the id sequence observed across scroll batches.
+        for (const message of messages) {
+          const rank = isChatGptMessageUnit(message.sourceNode) ? unitOrder.rank(message.sourceMessageId) : NaN;
+
+          if (Number.isFinite(rank)) {
+            message.order = rank;
+          }
+        }
+
+        return messages.sort((a, b) => a.order - b.order);
       },
 
       getMessageCount() {

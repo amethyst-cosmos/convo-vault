@@ -17,6 +17,7 @@
     });
     throwIfCaptureCancelled(signal);
     const messages = buildMessagesFromConversationApi(data, debugLog);
+    const manifest = buildConversationManifest(data);
 
     debugLog?.event("fastCapture.loaded", {
       conversationId,
@@ -25,14 +26,51 @@
       linearMessageCount: getConversationApiLinearMessages(data).length,
       messageCount: messages.length
     });
+    logConversationManifest(manifest, debugLog);
 
-    return messages;
+    return { messages, manifest };
+  }
+
+  /**
+   * Loads only the expected conversation structure. Full capture uses it to
+   * order DOM messages and to check completeness; a failure is reported to the
+   * caller, which falls back to DOM-only checks.
+   */
+  async function fetchConversationManifest(debugLog = null, options = {}) {
+    const conversationId = getCurrentConversationId();
+
+    if (!conversationId) {
+      throw new Error("No conversation id was found in the current URL.");
+    }
+
+    const data = await fetchConversationData(conversationId, {
+      timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
+      debugLog,
+      signal: options.signal || null
+    });
+    const manifest = buildConversationManifest(data);
+    logConversationManifest(manifest, debugLog);
+    return manifest;
+  }
+
+  function logConversationManifest(manifest, debugLog) {
+    debugLog?.event("conversationManifest.built", {
+      ...manifest.counts,
+      expectedMessages: manifest.entries.length,
+      replyGaps: manifest.gaps.map((gap) => ({
+        userNodeId: gap.userNodeId,
+        status: gap.status,
+        reason: gap.reason,
+        createTime: gap.createTime
+      }))
+    });
   }
 
   function buildMessagesFromConversationApi(data, debugLog = null) {
     const pathNodes = getConversationApiCurrentPath(data);
     const messages = [];
     const filterStats = {};
+    const markupStats = createMarkupStats();
     let pendingAssistantNodes = [];
     let directThinkingMessageCount = 0;
 
@@ -41,7 +79,7 @@
         return;
       }
 
-      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog);
+      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog, markupStats);
       pendingAssistantNodes = [];
 
       if (!synthesized) {
@@ -84,7 +122,7 @@
         const turnNumber = messages.length + 1;
         const id = message.id || node.id || `api-message-${turnNumber}`;
         const markdown = cleanApiMarkdown([
-          extractApiContentMarkdown(message.content),
+          renderChatGptInlineTokens(extractApiContentMarkdown(message.content)),
           extractApiAttachmentMarkdown(message)
         ].filter(Boolean).join("\n\n"));
 
@@ -135,6 +173,10 @@
       });
     }
 
+    if (markupStats.dilMessages || Object.keys(markupStats.tokens).length) {
+      debugLog?.event("fastCapture.markup", markupStats);
+    }
+
     if (directThinkingMessageCount) {
       debugLog?.event("fastCapture.thinkingMerged", {
         applied: directThinkingMessageCount
@@ -144,7 +186,7 @@
     return messages;
   }
 
-  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null) {
+  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null, markupStats = null) {
     if (!nodes.length) {
       return null;
     }
@@ -188,6 +230,11 @@
     const agentTrace = FastThinkingEngine.extractTurnAgentTrace(parsedReasoning, citations, memories);
 
     // 2. Aggregate prose text, image pointers, generated files and attachments
+    const markupContext = createChatGptMarkupContext({
+      citationSources: buildCitationSourceIndex(nodes.map((node) => node?.message).filter(Boolean)),
+      footnoteOffset: Array.isArray(primaryMessage?.metadata?.citations) ? primaryMessage.metadata.citations.length : 0
+    });
+
     for (const node of nodes) {
       const msg = node?.message;
       if (!msg) continue;
@@ -206,21 +253,35 @@
 
       const isThinking = isApiThinkingNode(msg);
       const isInternalTool = isApiInternalToolCallNode(msg);
+      const isDil = isDilMessage(msg);
 
       // Collect text and image parts
       const content = msg.content;
+      if (isDil && !isThinking && !isInternalTool) {
+        const fallbackMarkdown = getDilFallbackMarkdown(msg);
+        const dilMarkdown = fallbackMarkdown || renderDilSourceAsMarkdown(getApiStringParts(content).join("\n\n"));
+        if (markupStats) {
+          markupStats.dilMessages += 1;
+          if (!fallbackMarkdown) markupStats.dilWithoutFallback += 1;
+        }
+        if (dilMarkdown.trim()) {
+          textParts.push(renderApiResponseMarkup(dilMarkdown, markupContext));
+        }
+      }
+
       if (content && typeof content === "object") {
         const parts = Array.isArray(content.parts) ? content.parts : [];
         for (const part of parts) {
           if (typeof part === "string" && part.trim()) {
             if (
-              !isThinking
+              !isDil
+              && !isThinking
               && !isInternalTool
               && !isApiInternalFileIngestionText(part)
               && !looksLikeInternalApiToolCall(part)
-              && !looksLikeApiJsonPayload(part)
+              && !(looksLikeApiJsonPayload(part) && !isApiFinalAnswerMessage(msg))
             ) {
-              textParts.push(part.trim());
+              textParts.push(renderApiResponseMarkup(part, markupContext));
             }
           } else if (part && typeof part === "object") {
             const ptr = part.asset_pointer || part.assetPointer || part.url || "";
@@ -240,9 +301,9 @@
             && !isInternalTool
             && !isApiInternalFileIngestionText(content.text)
             && !looksLikeInternalApiToolCall(content.text)
-            && !looksLikeApiJsonPayload(content.text)
+            && !(looksLikeApiJsonPayload(content.text) && !isApiFinalAnswerMessage(msg))
           ) {
-            textParts.push(content.text.trim());
+            textParts.push(renderApiResponseMarkup(content.text, markupContext));
           }
         }
       }
@@ -266,6 +327,12 @@
       markdown = enrichApiMarkdownWithCitations(markdown, { metadata: { citations } });
       markdown = enrichApiMarkdownWithMemories(markdown, { metadata: { conversation_context_citation_metadata: memories } });
     }
+
+    const tokenFootnotes = formatChatGptFootnotes(markupContext);
+    if (tokenFootnotes) {
+      markdown = `${markdown.trim()}\n\n${tokenFootnotes}`;
+    }
+    mergeMarkupStats(markupStats, markupContext);
 
     if (!markdown && !thinkingMarkdown) {
       return null;
@@ -295,6 +362,55 @@
       imagesFailed: 0,
       captureMode: "fast"
     };
+  }
+
+  // A JSON-shaped text is dropped as a leaked tool payload unless ChatGPT marks
+  // the message as the user-facing final answer.
+  function isApiFinalAnswerMessage(msg) {
+    const channel = String(msg?.channel || "").toLowerCase();
+    const recipient = String(msg?.recipient || "").toLowerCase();
+    return (channel === "final" || msg?.end_turn === true) && (!recipient || recipient === "all");
+  }
+
+  function renderApiResponseMarkup(text, markupContext) {
+    return renderChatGptInlineTokens(renderChatGptWritingBlocks(String(text || "").trim()), markupContext);
+  }
+
+  function getApiStringParts(content) {
+    if (!content || typeof content !== "object") {
+      return [];
+    }
+
+    const parts = Array.isArray(content.parts) ? content.parts : [content.text];
+    return parts.filter((part) => typeof part === "string" && part.trim());
+  }
+
+  function createMarkupStats() {
+    return {
+      dilMessages: 0,
+      dilWithoutFallback: 0,
+      tokens: {},
+      unknownTokens: {},
+      citationFootnotes: 0,
+      unresolvedCitationRefs: 0
+    };
+  }
+
+  function mergeMarkupStats(stats, markupContext) {
+    if (!stats) {
+      return;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.tokenCounts)) {
+      stats.tokens[name] = (stats.tokens[name] || 0) + count;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.unknownTokenCounts)) {
+      stats.unknownTokens[name] = (stats.unknownTokens[name] || 0) + count;
+    }
+
+    stats.citationFootnotes += markupContext.footnotes.length;
+    stats.unresolvedCitationRefs += markupContext.unresolvedCitationRefs.length;
   }
 
   function isApiThinkingNode(msg) {
@@ -1357,8 +1473,11 @@
       }
     }
 
-    // Check sandbox files in parts
-    const parts = Array.isArray(message?.content?.parts) ? message.content.parts : [];
+    // Check sandbox files in the displayed text; DIL parts hold component
+    // source, so DIL messages are read from their fallback Markdown.
+    const parts = isDilMessage(message)
+      ? [getDilFallbackMarkdown(message)]
+      : (Array.isArray(message?.content?.parts) ? message.content.parts : []);
     for (const part of parts) {
       if (typeof part === "string") {
         const sandboxMatches = [...part.matchAll(/\[([^\]]+)\]\((sandbox:[^)]+)\)/g)];
