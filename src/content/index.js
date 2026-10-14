@@ -38,8 +38,11 @@
   const MAX_ADAPTIVE_MISSING_RECOVERY_MS = 120_000;
   const TURN_HYDRATION_SETTLE_MS = 70;
   const CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS = 3500;
-  const CONVERSATION_API_FETCH_TIMEOUT_MS = 15_000;
-  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 4500;
+  // A 2,700-node conversation takes about 10 s as one tree and 5-8 s per
+  // 100-turn page, so requests get a generous timeout; broken routes still
+  // fail fast with an HTTP error.
+  const CONVERSATION_API_FETCH_TIMEOUT_MS = 45_000;
+  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 45_000;
   const THINKING_FLYOUT_AUTO_OPEN_LIMIT = 48;
   const FAST_THINKING_FLYOUT_AUTO_OPEN_LIMIT = 0;
   const THINKING_FLYOUT_OPEN_TIMEOUT_MS = 1400;
@@ -415,7 +418,7 @@
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
     onProgress("Loading conversation data...");
-    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal });
+    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal, onProgress });
     throwIfCaptureCancelled(signal);
 
     if (!messages.length) {

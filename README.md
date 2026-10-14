@@ -22,6 +22,8 @@ Convo Vault 是一个本地优先的 Chrome 扩展，用来把 ChatGPT 对话导
 - **生成式界面回复（DIL）**：带卡片、流程框、按钮、单选组的新式回复，导出 ChatGPT 自带的 `fallbackMarkdown`，不再把 `<box>`、`<row>`、`{@body ...}` 等组件源码写进 Markdown
 - **内联标记**：`cite` 引用解析成带链接的脚注（同时支持新的 `search_result_groups` 和旧的 `grouped_webpages`），`entity` 输出实体名，`url` 输出 Markdown 链接，写作块（`:::writing`）输出为可复制的代码块
 - **Debug log 页面信息**：页面地址和标题在开始抓取时记录，导出期间切换对话不再写错
+- **超长对话加载**：Fast 先一次取回完整对话树（约 2700 个节点的对话约 10 秒），分页接口作为后备；单次请求超时放宽到 45 秒，翻页时面板显示页数和已载入消息数
+- **图片打包**：ChatGPT 上传的截图改由页面用当前登录状态下载后打包进 zip，失败时在面板上说明原因
 - **Fast 成为默认推荐模式**：面板默认选中 `Fast (Recommended)`，未指定模式的导出也走 Fast
 
 `0.8.5` 深度强化思考链（Thinking Trace）与文献引用可点击性：

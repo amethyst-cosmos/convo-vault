@@ -38,8 +38,11 @@
   const MAX_ADAPTIVE_MISSING_RECOVERY_MS = 120_000;
   const TURN_HYDRATION_SETTLE_MS = 70;
   const CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS = 3500;
-  const CONVERSATION_API_FETCH_TIMEOUT_MS = 15_000;
-  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 4500;
+  // A 2,700-node conversation takes about 10 s as one tree and 5-8 s per
+  // 100-turn page, so requests get a generous timeout; broken routes still
+  // fail fast with an HTTP error.
+  const CONVERSATION_API_FETCH_TIMEOUT_MS = 45_000;
+  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 45_000;
   const THINKING_FLYOUT_AUTO_OPEN_LIMIT = 48;
   const FAST_THINKING_FLYOUT_AUTO_OPEN_LIMIT = 0;
   const THINKING_FLYOUT_OPEN_TIMEOUT_MS = 1400;
@@ -415,7 +418,7 @@
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
     onProgress("Loading conversation data...");
-    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal });
+    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal, onProgress });
     throwIfCaptureCancelled(signal);
 
     if (!messages.length) {
@@ -7158,7 +7161,9 @@
     if (!replyNodes.length) {
       return {
         status: MANIFEST_REPLY_STATUS.NO_REPLY,
-        reason: "ChatGPT stored no assistant message after this prompt.",
+        // The tree API omits replies stopped before any content; only the
+        // paginated API keeps them, which classifies them as "interrupted".
+        reason: "ChatGPT stored no reply after this prompt (stopped before any content, or never generated).",
         nodeIds
       };
     }
@@ -7483,7 +7488,7 @@
     }, {});
     const reasons = [
       byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED] ? `${byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED]} stopped before any content` : "",
-      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} never answered` : "",
+      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} with no stored reply` : "",
       byStatus[MANIFEST_REPLY_STATUS.EMPTY] ? `${byStatus[MANIFEST_REPLY_STATUS.EMPTY]} answered with no visible content` : ""
     ].filter(Boolean);
 
@@ -7509,7 +7514,8 @@
     const data = await fetchConversationData(conversationId, {
       timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
       debugLog,
-      signal
+      signal,
+      onProgress: options.onProgress
     });
     throwIfCaptureCancelled(signal);
     const messages = buildMessagesFromConversationApi(data, debugLog);
@@ -9147,7 +9153,7 @@
     const debugLog = options.debugLog || null;
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
-    const timeoutMs = Number(options.timeoutMs || CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS);
+    const timeoutMs = Number(options.timeoutMs || CONVERSATION_API_FETCH_TIMEOUT_MS);
     const attemptTimeoutMs = Math.min(timeoutMs, CONVERSATION_API_ATTEMPT_TIMEOUT_MS);
     const accessToken = await getChatGptAccessToken(debugLog, attemptTimeoutMs, signal);
     throwIfCaptureCancelled(signal);
@@ -9167,7 +9173,8 @@
         data = await fetchRemainingConversationApiPages(data, attempt, {
           timeoutMs: attemptTimeoutMs,
           signal,
-          debugLog
+          debugLog,
+          onProgress: options.onProgress
         });
         throwIfCaptureCancelled(signal);
         const mapping = getConversationApiMapping(data);
@@ -9227,12 +9234,14 @@
 
   function buildConversationApiAttempts(conversationId, accessToken = "") {
     const encodedId = encodeURIComponent(conversationId);
+    // The full tree arrives in one request (about 10 s for 2,700 nodes); the
+    // paginated route costs 5-8 s per page regardless of page size, so it is
+    // the fallback, and only with the largest page size.
     const paths = uniqueStrings([
+      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=${FAST_CONVERSATION_API_PAGE_SIZE}`,
-      `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=10`,
       `/backend-api/conversations/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=true`,
-      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=false`,
       `/backend-api/conversation/${encodedId}?include_system_messages=true`,
       `/backend-api/conversation/${encodedId}?tree_format=true&include_system_messages=true`,
@@ -9310,6 +9319,7 @@
       mergedData = mergeConversationApiPages(pageData, mergedData);
       pageCount += 1;
       totalRawMessages = getConversationApiRawMessages(mergedData).length;
+      options.onProgress?.(`Loading conversation data: page ${pageCount}, ${totalRawMessages} messages...`);
       debugLog?.event("conversationApi.pagination.page", {
         label: attempt.label,
         pageCount,

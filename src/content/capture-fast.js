@@ -13,7 +13,8 @@
     const data = await fetchConversationData(conversationId, {
       timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
       debugLog,
-      signal
+      signal,
+      onProgress: options.onProgress
     });
     throwIfCaptureCancelled(signal);
     const messages = buildMessagesFromConversationApi(data, debugLog);
@@ -1651,7 +1652,7 @@
     const debugLog = options.debugLog || null;
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
-    const timeoutMs = Number(options.timeoutMs || CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS);
+    const timeoutMs = Number(options.timeoutMs || CONVERSATION_API_FETCH_TIMEOUT_MS);
     const attemptTimeoutMs = Math.min(timeoutMs, CONVERSATION_API_ATTEMPT_TIMEOUT_MS);
     const accessToken = await getChatGptAccessToken(debugLog, attemptTimeoutMs, signal);
     throwIfCaptureCancelled(signal);
@@ -1671,7 +1672,8 @@
         data = await fetchRemainingConversationApiPages(data, attempt, {
           timeoutMs: attemptTimeoutMs,
           signal,
-          debugLog
+          debugLog,
+          onProgress: options.onProgress
         });
         throwIfCaptureCancelled(signal);
         const mapping = getConversationApiMapping(data);
@@ -1731,12 +1733,14 @@
 
   function buildConversationApiAttempts(conversationId, accessToken = "") {
     const encodedId = encodeURIComponent(conversationId);
+    // The full tree arrives in one request (about 10 s for 2,700 nodes); the
+    // paginated route costs 5-8 s per page regardless of page size, so it is
+    // the fallback, and only with the largest page size.
     const paths = uniqueStrings([
+      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=${FAST_CONVERSATION_API_PAGE_SIZE}`,
-      `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=10`,
       `/backend-api/conversations/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=true`,
-      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=false`,
       `/backend-api/conversation/${encodedId}?include_system_messages=true`,
       `/backend-api/conversation/${encodedId}?tree_format=true&include_system_messages=true`,
@@ -1814,6 +1818,7 @@
       mergedData = mergeConversationApiPages(pageData, mergedData);
       pageCount += 1;
       totalRawMessages = getConversationApiRawMessages(mergedData).length;
+      options.onProgress?.(`Loading conversation data: page ${pageCount}, ${totalRawMessages} messages...`);
       debugLog?.event("conversationApi.pagination.page", {
         label: attempt.label,
         pageCount,

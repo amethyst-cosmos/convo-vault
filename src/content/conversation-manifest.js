@@ -140,7 +140,9 @@
     if (!replyNodes.length) {
       return {
         status: MANIFEST_REPLY_STATUS.NO_REPLY,
-        reason: "ChatGPT stored no assistant message after this prompt.",
+        // The tree API omits replies stopped before any content; only the
+        // paginated API keeps them, which classifies them as "interrupted".
+        reason: "ChatGPT stored no reply after this prompt (stopped before any content, or never generated).",
         nodeIds
       };
     }
@@ -465,7 +467,7 @@
     }, {});
     const reasons = [
       byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED] ? `${byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED]} stopped before any content` : "",
-      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} never answered` : "",
+      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} with no stored reply` : "",
       byStatus[MANIFEST_REPLY_STATUS.EMPTY] ? `${byStatus[MANIFEST_REPLY_STATUS.EMPTY]} answered with no visible content` : ""
     ].filter(Boolean);
 

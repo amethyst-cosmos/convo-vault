@@ -109,7 +109,7 @@ test("manifest completeness passes a complete export and explains same-role adja
   assert.equal(report.captured.uniqueIdentities, 6);
   assert.equal(report.expected.uniqueIdentities, 6);
   const adjacency = report.warnings.find((warning) => warning.code === "same-role-adjacency");
-  assert.match(adjacency.message, /no reply for 2 prompt\(s\) \(1 stopped before any content, 1 never answered\)/);
+  assert.match(adjacency.message, /no reply for 2 prompt\(s\) \(1 stopped before any content, 1 with no stored reply\)/);
 });
 
 test("manifest completeness rejects an exporter that drops or reorders messages", async () => {
