@@ -318,6 +318,12 @@
     const combinedImages = imagePointers.join("\n\n");
     const combinedFiles = uniqueStrings(fileEntries).join("\n\n");
 
+    const dilBlocks = nodes
+      .map((node) => node?.message)
+      .filter((msg) => msg && isDilMessage(msg) && !isApiThinkingNode(msg) && !isApiInternalToolCallNode(msg))
+      .map((msg) => buildDilRenderBlock(msg, markupContext.citationSources))
+      .filter(Boolean);
+
     let markdown = cleanApiMarkdown([
       combinedProse,
       combinedImages,
@@ -354,6 +360,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace,
+      ...(dilBlocks.length ? { dil: dilBlocks } : {}),
       preview: truncatePreview(cleanMarkdown(`${markdown}\n${thinkingMarkdown}`), 180),
       sourceMessageId: primaryMessage?.id || id,
       sourceTurnId: id,

@@ -23,6 +23,7 @@
 - **数据完整性门禁 (Integrity Gate)**：
   - 支持 `Full`、`Fast`、`Hybrid` 捕获模式。
   - 严格保持消息序列完整性，杜绝序号跳跃与角色异常。
+- **生成式界面 (DIL)**：Fast 把 `metadata.model_dil_v2` 打包为消息的 `dil` 字段，`tools/advanced-pdf/dil-runtime.js` 在 PDF 页面里执行并绘制；页面 CSP 禁止一切网络请求，失败时显示 Markdown fallback。
 - **每次交付都升版本号**：任何交给用户安装或测试的代码改动，都至少提升补丁版本（如 0.9.1 → 0.9.2），并同步 `package.json`、`manifest.json`、`tools/advanced-pdf/package.json`、`src/content/index.js` 的 `EXPORTER_VERSION`、`popup.html`、`tests/version.test.mjs` 和 README 的“当前版本”与更新说明，让用户能从面板和扩展页面看出装的是哪一版。
 
 ---

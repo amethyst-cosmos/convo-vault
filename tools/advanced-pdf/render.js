@@ -18,6 +18,10 @@ const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
   assistant: loadPngDataUri("artificial-intelligence.png")
 };
+const DIL_RUNTIME = fs.readFileSync(path.join(__dirname, "dil-runtime.js"), "utf8");
+// The page runs ChatGPT's compiled DIL code, so it may load only local files and
+// inline resources; no request can leave the machine.
+const PAGE_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src file: data: blob:; font-src file: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval'";
 const CJK_STRONG_OPEN = "CVSTRONGOPENX";
 const CJK_STRONG_CLOSE = "CVSTRONGCLOSEX";
 
@@ -159,6 +163,7 @@ function buildDocumentHtml(payload) {
 <html lang="${escapeAttr(documentLanguage)}">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="${PAGE_CONTENT_SECURITY_POLICY}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(payload.title)}</title>
   <style>${buildCss()}</style>
@@ -170,6 +175,7 @@ function buildDocumentHtml(payload) {
     ${messages.map((message, index) => renderMessage(md, message, index, imageRegistry)).join("\n")}
   </main>
 
+  <script>${DIL_RUNTIME}</script>
   <script>${buildPaginationScript()}</script>
 </body>
 </html>`;
@@ -1640,8 +1646,28 @@ function renderMessage(md, message, index, imageRegistry) {
       ${renderMessageMeta(message, index, time)}
       ${thinking}
     </div>
-    <div class="assistant-content">${content}</div>
+    <div class="assistant-content">${renderAssistantBody(message, content)}</div>
   </article>`;
+}
+
+// DIL answers are drawn from ChatGPT's compiled UI program by dil-runtime.js;
+// the Markdown rendering stays in the page and shows if the program fails.
+function renderAssistantBody(message, content) {
+  const blocks = Array.isArray(message.dil) ? message.dil.filter((block) => block && typeof block.code === "string") : [];
+
+  if (!blocks.length) {
+    return content;
+  }
+
+  const roots = blocks.map((block) => `<div class="dil-root"></div><script type="application/json">${serializeScriptJson(block)}</script>`).join("");
+  return `<div class="dil-message">${roots}<div class="dil-fallback">${content}</div></div>`;
+}
+
+function serializeScriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 // One muted line per message: avatar, speaker, turn number, and time. The
@@ -3751,6 +3777,296 @@ a {
 .hljs-variable,
 .hljs-params {
   color: #953800;
+}
+
+/* DIL (generative UI) answers drawn by dil-runtime.js */
+.dil-message.dil-ok .dil-fallback,
+.dil-message:not(.dil-ok) .dil-root {
+  display: none;
+}
+
+.dil-root {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #0d0d0d;
+}
+
+.dil-root > * + * {
+  margin-top: 12px;
+}
+
+.dil-box,
+.dil-row,
+.dil-grid {
+  gap: 8px;
+}
+
+.dil-root > .dil-title:not(:first-child) {
+  margin-top: 22px;
+}
+
+.dil-card,
+.dil-pressable,
+.dil-code,
+.dil-image,
+.dil-table {
+  break-inside: avoid;
+}
+
+:where(.dil-text, .dil-caption, .dil-title) {
+  margin: 0;
+}
+
+.dil-title {
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.dil-caption {
+  color: #8f8f8f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dil-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dil-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.dil-icon-inline {
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.dil-divider {
+  width: 100%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid #ececec;
+}
+
+.dil-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #0d0d0d;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.dil-button-outline,
+.dil-button-secondary,
+.dil-button-ghost {
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  color: #0d0d0d;
+}
+
+.dil-button-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.dil-button-disabled {
+  opacity: .45;
+}
+
+.dil-pressable {
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.dil-radio-group {
+  display: flex;
+  gap: 8px;
+}
+
+.dil-radio {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+}
+
+.dil-radio-dot,
+.dil-checkbox {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid #b4b4b4;
+  border-radius: 999px;
+}
+
+.dil-checkbox {
+  border-radius: 4px;
+}
+
+.dil-radio-dot-on,
+.dil-checkbox-on {
+  border-color: #0d0d0d;
+  box-shadow: inset 0 0 0 3px #ffffff;
+  background: #0d0d0d;
+}
+
+.dil-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.dil-blockquote {
+  margin: 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid #e3e3e3;
+  color: #4d4d4d;
+}
+
+.dil-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.dil-table th,
+.dil-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #ececec;
+  text-align: left;
+  vertical-align: top;
+}
+
+.dil-table th {
+  border-bottom-color: #d9d9d9;
+  font-weight: 650;
+}
+
+.dil-inline-code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: #ececec;
+  font-size: 0.86em;
+}
+
+.dil-cite-group {
+  white-space: nowrap;
+}
+
+.dil-cite {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f0f0f0;
+  color: #5d5d5d;
+  font-size: 10px;
+  line-height: 1.7;
+  text-decoration: none;
+  vertical-align: 1px;
+}
+
+.dil-entity {
+  text-decoration: underline dotted #b4b4b4;
+  text-underline-offset: 3px;
+}
+
+.dil-link {
+  color: #0d0d0d;
+  text-decoration-color: #b4b4b4;
+}
+
+.dil-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #1f6fd1;
+  font-weight: 550;
+}
+
+.dil-image {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #f4f4f4;
+  overflow: hidden;
+}
+
+.dil-image-caption {
+  color: #8f8f8f;
+  font-size: 9.5px;
+  line-height: 1.3;
+}
+
+.dil-writing {
+  border: 1px solid #e3e3e3;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.dil-writing-label,
+.dil-code-label {
+  padding: 6px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #8f8f8f;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dil-writing-body {
+  padding: 10px 16px;
+  white-space: pre-wrap;
+}
+
+.dil-writing-body p {
+  margin: 0;
+}
+
+.dil-writing-body p + p {
+  margin-top: 10px;
+}
+
+.dil-code {
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  background: #f9f9f9;
+  overflow: hidden;
+}
+
+.dil-code pre {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+
+.dil-math {
+  font-family: "Times New Roman", serif;
+  font-style: italic;
 }
 
 /* ==========================================================================

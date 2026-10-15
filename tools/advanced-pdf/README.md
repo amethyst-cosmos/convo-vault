@@ -51,6 +51,7 @@ them in an export session, then calls `/prepare-render-bundle`.
 - `assets.js` - asset manifest, SHA-256 asset store under `.convo-vault/assets`,
   and output-object accounting (rendered, referenced, or degraded).
 - `render.js` - HTML layout and PDF printing through local Chrome.
+- `dil-runtime.js` - draws ChatGPT generative-UI answers (DIL) in the PDF page.
 
 ## Render a payload directly
 
@@ -69,3 +70,18 @@ a one-line meta row (avatar, speaker, turn, time) per message, a prompt index
 instead of a full table of contents, clickable footnotes, formatted writing
 blocks, static formula, Mermaid, and chart rendering, and page breaks that keep
 each prompt with the start of its answer.
+
+## Generative UI (DIL) answers
+
+ChatGPT stores a generative answer as compiled JavaScript
+(`metadata.model_dil_v2.code`) plus constants, resolved component results, and
+client-defined widgets. Fast capture exports these as the message's `dil`
+blocks. `render.js` writes each block as JSON beside an empty `.dil-root`, and
+`dil-runtime.js` runs the program with static stand-ins for ChatGPT's globals
+(`DIL`, `__dil`, `GenUI`, `Cite`, `Entity`, `Link`, `AsyncImage`), drawing
+boxes, rows, grids, badges, icons, lists, tables, buttons, radio groups,
+citation chips, and writing/code widgets as HTML. Hooks return their initial
+state and actions do nothing. The page's Content-Security-Policy blocks all
+network access. If a program throws, the message shows the Markdown fallback.
+`AsyncImage` results carry only titles, so images render as captioned
+placeholders.

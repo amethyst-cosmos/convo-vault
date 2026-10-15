@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.9.2";
+  const EXPORTER_VERSION = "0.9.3";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -1631,6 +1631,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace: message?.agentTrace || null,
+      ...(Array.isArray(message?.dil) && message.dil.length ? { dil: message.dil } : {}),
       codeBlockCount: message?.codeBlockCount || 0,
       fileCount: message?.fileCount || 0,
       imageCount,

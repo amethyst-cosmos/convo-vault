@@ -224,6 +224,40 @@ test("advanced PDF renderer renders CJK bold, merged footnotes, and avatars in m
   assert.match(html, /class="message-meta assistant-meta"><div class="assistant-avatar"/);
 });
 
+test("advanced PDF renderer embeds DIL programs with the Markdown fallback beside them", async () => {
+  const payloadPath = path.join(outputDir, "dil.payload.json");
+  const htmlPath = path.join(outputDir, "dil.html");
+  const code = "DIL.render(__dil.jsx(\"text\",null,\"</script><b>x</b>\"))";
+  const payload = {
+    title: "DIL regression",
+    exportedAt: "2026-10-15T00:00:00.000Z",
+    messages: [
+      { id: "user-1", role: "user", turnNumber: 1, markdown: "Draw it" },
+      { id: "assistant-1", role: "assistant", turnNumber: 2, markdown: "Fallback **text**", dil: [{ version: 2, code, constants: {}, appData: {}, widgets: {}, citations: {} }] },
+      { id: "assistant-2", role: "assistant", turnNumber: 3, markdown: "Plain answer" }
+    ]
+  };
+
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(payloadPath, JSON.stringify(payload), "utf8");
+  await execFileAsync(process.execPath, [
+    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    payloadPath,
+    "--html",
+    htmlPath,
+    "--html-only"
+  ], { cwd: repoRoot, encoding: "utf8" });
+
+  const html = await readFile(htmlPath, "utf8");
+
+  assert.match(html, /<meta http-equiv="Content-Security-Policy" content="default-src 'none';[^"]*script-src 'unsafe-inline' 'unsafe-eval'">/);
+  assert.match(html, /window\.renderDilRoots = renderAll;/);
+  assert.equal((html.match(/<div class="dil-message">/g) || []).length, 1);
+  assert.match(html, /<div class="dil-root"><\/div><script type="application\/json">\{"version":2,"code":"DIL\.render\(__dil\.jsx\(\\"text\\",null,\\"\\u003c\/script>\\u003cb>x\\u003c\/b>\\"\)\)"/);
+  assert.match(html, /<div class="dil-fallback">[\s\S]*?Fallback <strong>text<\/strong>/);
+  assert.match(html, /<p>Plain answer<\/p>/);
+});
+
 test("advanced PDF renderer keeps attachments after prose, embedded images, and single line breaks", async () => {
   const payloadPath = path.join(outputDir, "attachment-linebreak.payload.json");
   const htmlPath = path.join(outputDir, "attachment-linebreak.html");

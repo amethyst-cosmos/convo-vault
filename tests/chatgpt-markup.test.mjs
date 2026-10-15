@@ -181,6 +181,72 @@ test("Fast builder exports DIL fallback Markdown with resolved citations instead
   assert.doesNotMatch(messages[1].markdown, /<box|<text|<Entity/);
 });
 
+test("DIL render block carries the program, widgets by invocation id, and resolved citations", async () => {
+  const markup = await loadMarkupModule();
+  const sources = markup.buildCitationSourceIndex([{
+    metadata: {
+      search_result_groups: [{
+        domain: "example.com",
+        entries: [{ url: "https://www.example.com/runner", title: "Runner docs", ref_id: { turn_index: 7, ref_type: "search", ref_index: 0 } }]
+      }]
+    }
+  }]);
+  const message = {
+    metadata: {
+      content_references: [
+        { type: "grouped_webpages" },
+        { type: "client_defined_widget", category: "writing_block", data: { content: "**Do this**", widget_type: "writing_block" } }
+      ],
+      model_dil_v2: {
+        code: "DIL.render(__dil.jsx(\"text\",null,__dilConstants[\"0\"]))",
+        constants: { "0": "Hello", "1": ["turn7search0", "turn9search4"], "2": null },
+        appData: { opGenui: { componentResults: { r1: { componentName: "Link", state: { url: "https://example.com" } } } } },
+        clientDefinedWidgets: { "inv-1": { refIndex: 0 }, "inv-missing": { refIndex: 5 } }
+      }
+    }
+  };
+
+  const block = markup.buildDilRenderBlock(message, sources);
+
+  assert.equal(block.version, 2);
+  assert.equal(block.code, message.metadata.model_dil_v2.code);
+  assert.deepEqual({ ...block.constants }, message.metadata.model_dil_v2.constants);
+  assert.deepEqual(JSON.parse(JSON.stringify(block.widgets)), {
+    "inv-1": { category: "writing_block", data: { content: "**Do this**", widget_type: "writing_block" } }
+  });
+  // Refs are found in constants as well as code; unknown refs are skipped.
+  assert.deepEqual(JSON.parse(JSON.stringify(block.citations)), {
+    turn7search0: { url: "https://www.example.com/runner", title: "Runner docs", label: "example.com" }
+  });
+  assert.equal(markup.buildDilRenderBlock({ metadata: { model_dil_v2: { fallbackMarkdown: "only text" } } }, sources), null);
+});
+
+test("Fast builder attaches the DIL program to the assistant message", async () => {
+  const fast = await loadFastModule();
+  const messages = fast.buildMessagesFromConversationApi({
+    messages: [
+      apiMessage("u1", "user", "Draw the plan"),
+      apiMessage("a1", "assistant", "<text>Plan</text>", {
+        channel: "final",
+        end_turn: true,
+        metadata: {
+          model_dil_v2: {
+            code: "DIL.render(__dil.jsx(\"text\",null,\"Plan\"))",
+            constants: {},
+            fallbackMarkdown: "Plan"
+          }
+        }
+      })
+    ],
+    page_info: { has_previous_page: false }
+  });
+
+  assert.equal(messages[1].markdown, "Plan");
+  assert.equal(messages[1].dil.length, 1);
+  assert.equal(messages[1].dil[0].code, "DIL.render(__dil.jsx(\"text\",null,\"Plan\"))");
+  assert.equal(messages[0].dil, undefined);
+});
+
 test("Fast builder keeps a final answer whose text looks like JSON", async () => {
   const fast = await loadFastModule();
   const messages = fast.buildMessagesFromConversationApi({
@@ -292,9 +358,10 @@ test("DIL loops over non-literal data keep ChatGPT's fallback Markdown", async (
 
 async function loadMarkupModule() {
   const source = await readFile(path.join(repoRoot, "src", "content", "chatgpt-markup.js"), "utf8");
-  const context = vm.createContext({ makeFence, escapeMarkdownLinkLabel });
+  const context = vm.createContext({ makeFence, escapeMarkdownLinkLabel, URL });
   vm.runInContext(`${source}\nglobalThis.__markupTest = {
     buildCitationSourceIndex,
+    buildDilRenderBlock,
     chooseDilMarkdown,
     parseDilLiteral,
     createChatGptMarkupContext,

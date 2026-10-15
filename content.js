@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.9.2";
+  const EXPORTER_VERSION = "0.9.3";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -2027,6 +2027,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace: message?.agentTrace || null,
+      ...(Array.isArray(message?.dil) && message.dil.length ? { dil: message.dil } : {}),
       codeBlockCount: message?.codeBlockCount || 0,
       fileCount: message?.fileCount || 0,
       imageCount,
@@ -5939,6 +5940,59 @@
     return result === fail || index !== text.length ? null : result;
   }
 
+  /**
+   * Packs what the PDF renderer needs to draw a DIL message the way ChatGPT
+   * does: the compiled UI program, its constants and resolved component
+   * results, the client-defined widgets it embeds (by invocation id), and the
+   * pages its citations point to. Returns null when there is no program.
+   */
+  function buildDilRenderBlock(message, citationSources) {
+    const dil = message?.metadata?.model_dil_v2;
+
+    if (!dil || typeof dil.code !== "string" || !dil.code.trim()) {
+      return null;
+    }
+
+    const widgetReferences = (Array.isArray(message.metadata?.content_references) ? message.metadata.content_references : [])
+      .filter((reference) => reference?.type === "client_defined_widget");
+    const widgets = {};
+
+    for (const [invocationId, widget] of Object.entries(dil.clientDefinedWidgets || {})) {
+      const reference = widgetReferences[Number(widget?.refIndex)];
+      if (reference) {
+        widgets[invocationId] = { category: reference.category || "", data: reference.data || {} };
+      }
+    }
+
+    const citations = {};
+    const searchable = `${dil.code}\n${JSON.stringify(dil.constants || {})}`;
+
+    for (const ref of new Set(searchable.match(/turn\d+[a-z_]+\d+/gi) || [])) {
+      const source = citationSources?.get(ref);
+      if (source) {
+        citations[ref] = { url: source.url, title: source.title, label: getCitationLabel(source) };
+      }
+    }
+
+    return {
+      version: 2,
+      code: dil.code,
+      constants: dil.constants || {},
+      appData: dil.appData || {},
+      widgets,
+      citations
+    };
+  }
+
+  function getCitationLabel(source) {
+    try {
+      return new URL(source.url).hostname.replace(/^www\./, "");
+    } catch (error) {
+      // A non-URL citation keeps its title as the chip label.
+      return source.title;
+    }
+  }
+
   function isDilMessage(message) {
     const dil = message?.metadata?.model_dil_v2;
     return Boolean(dil && typeof dil === "object");
@@ -7518,6 +7572,12 @@
     const combinedImages = imagePointers.join("\n\n");
     const combinedFiles = uniqueStrings(fileEntries).join("\n\n");
 
+    const dilBlocks = nodes
+      .map((node) => node?.message)
+      .filter((msg) => msg && isDilMessage(msg) && !isApiThinkingNode(msg) && !isApiInternalToolCallNode(msg))
+      .map((msg) => buildDilRenderBlock(msg, markupContext.citationSources))
+      .filter(Boolean);
+
     let markdown = cleanApiMarkdown([
       combinedProse,
       combinedImages,
@@ -7554,6 +7614,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace,
+      ...(dilBlocks.length ? { dil: dilBlocks } : {}),
       preview: truncatePreview(cleanMarkdown(`${markdown}\n${thinkingMarkdown}`), 180),
       sourceMessageId: primaryMessage?.id || id,
       sourceTurnId: id,
