@@ -22,6 +22,8 @@ __dil.jsx("box",{"border":true,"radius":"xl","padding":3,"gap":3},
 __dil.jsx("box",{"gap":2},__dilSafe(()=>(([{n:"P0",name:"Check"},{n:"P1",name:"Test"}]).map((item,i)=>__dilSafe(()=>(__dil.jsx(__dil.Fragment,null,__dil.jsx("row",null,__dil.jsx("text",null,item.n),__dil.jsx("text",null,item.name)),(__dilSafe(()=>(i<1),false))?__dil.jsx("divider",{"color":"subtle"}):null)),null))),[])),
 __dil.jsx("text",null,"Mode: ",task),
 __dil.jsx("text",null,__dilSafe(()=>(__dil.jsx(Link,{"url":"https://example.test/docs","__resolutionId":__dilConstants["7"]})),null)),
+__dil.jsx("text",null,__dilSafe(()=>(__dil.jsx(Link,{"url":"sandbox:/mnt/data/review.md","__resolutionId":__dilConstants["10"]})),null)),
+__dil.jsx("text",null,__dilSafe(()=>(__dil.jsx(Link,{"url":"sandbox:/mnt/data/notes.md","__resolutionId":__dilConstants["11"]})),null)),
 (__dilConstants["9"]===null?__dil.jsx("__chatgptClientDefinedWidget",{"key":"cdw:0","invocationId":__dilConstants["8"]}):null)
 );},{"key":"body:0"}));`;
 
@@ -38,13 +40,17 @@ const BLOCK = {
     6: " Download plan",
     7: "res-link-web",
     8: "inv-1",
-    9: null
+    9: null,
+    10: "res-link-titled",
+    11: "res-link-bare"
   },
   appData: {
     opGenui: {
       componentResults: {
         "res-link-file": { componentName: "Link", state: { url: "sandbox:/mnt/data/plan.md", title: "sandbox:/mnt/data/plan.md" } },
-        "res-link-web": { componentName: "Link", state: { url: "https://example.test/docs", title: "Runner docs" } }
+        "res-link-web": { componentName: "Link", state: { url: "https://example.test/docs", title: "Runner docs" } },
+        "res-link-titled": { componentName: "Link", state: { url: "sandbox:/mnt/data/review.md", title: "Download review sheet" } },
+        "res-link-bare": { componentName: "Link", state: { url: "sandbox:/mnt/data/notes.md", title: "sandbox:/mnt/data/notes.md" } }
       }
     }
   },
@@ -66,6 +72,10 @@ test("DIL runtime draws a compiled ChatGPT program as static HTML", () => {
   // A sandbox file link keeps its label and gets no unreachable href.
   assert.match(html, /<span class="dil-link dil-file-link" title="plan\.md"><span class="dil-icon dil-icon-inline"[^>]*><svg[\s\S]*?<\/span> Download plan<\/span>/);
   assert.match(html, /<a class="dil-link" href="https:\/\/example\.test\/docs">Runner docs<\/a>/);
+  // Without children, a file link shows its resolved title, or the file name
+  // when the title only repeats the sandbox URL.
+  assert.match(html, /<span class="dil-link dil-file-link" title="review\.md">Download review sheet<\/span>/);
+  assert.match(html, /<span class="dil-link dil-file-link" title="notes\.md">notes\.md<\/span>/);
   // Loop items render once each, with the conditional divider between them.
   assert.match(html, /<p class="dil-text">P0<\/p><p class="dil-text">Check<\/p><\/div><hr class="dil-divider"[^>]*>(?:<\/hr>)?<div class="dil-row"[^>]*><p class="dil-text">P1<\/p>/);
   assert.equal((html.match(/dil-divider/g) || []).length, 1);

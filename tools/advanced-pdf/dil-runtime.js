@@ -405,7 +405,7 @@
       const link = el(sandboxFile ? "span" : "a", sandboxFile ? "dil-link dil-file-link" : "dil-link");
       if (!sandboxFile) link.href = props.url;
       if (flatten(children).some((child) => child != null && child !== false && child !== "")) appendChildren(link, children, ctx);
-      else link.textContent = sandboxFile || props.title;
+      else link.textContent = props.title && props.title !== props.url ? props.title : (sandboxFile || props.title);
       if (sandboxFile) link.title = sandboxFile;
       return link;
     },
