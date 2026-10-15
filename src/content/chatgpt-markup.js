@@ -576,10 +576,6 @@
       && !/^[{[]/.test(text);
   }
 
-  function escapeMarkdownLinkLabel(value) {
-    return String(value || "").replace(/[[\]]/g, "\\$&");
-  }
-
   function formatChatGptFootnotes(context) {
     return context.footnotes
       .map((footnote) => `[^${footnote.index}]: [${escapeMarkdownLinkLabel(footnote.title)}](${footnote.url})`)

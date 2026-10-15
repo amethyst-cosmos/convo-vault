@@ -2133,20 +2133,6 @@
     }
   }
 
-  function parseEncodedJsonHeader(value) {
-    const decoded = decodeHeaderValue(value);
-
-    if (!decoded) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(decoded);
-    } catch (_) {
-      return null;
-    }
-  }
-
   function createDebugLog(options = {}) {
     const startedAt = new Date();
     // ChatGPT is a single-page app: the user can open another conversation
@@ -4995,10 +4981,6 @@
     return roleElement;
   }
 
-  function isPotentialMessageNode(node) {
-    return getPotentialMessageNodeResult(node).ok;
-  }
-
   function getPotentialMessageNodeResult(node) {
     const main = document.querySelector("main");
 
@@ -5970,32 +5952,6 @@
     return THINKING_CUE_RE.test(`${attrs} ${text.slice(0, 700)}`);
   }
 
-  async function revealExpandableThinking(root = document) {
-    return revealExpandableContent(root);
-  }
-
-  async function revealExpandableContent(root = document, debugLog = null) {
-    const clickDisabled = true;
-    let expandableButtonCount = 0;
-
-    const buttons = uniqueElements([
-      ...root.querySelectorAll('main button[aria-expanded="false"], main button[aria-controls], main button'),
-      ...EXPANDABLE_BUTTON_SELECTORS.flatMap((selector) => [...root.querySelectorAll(`main ${selector}`)])
-    ]);
-    expandableButtonCount = buttons.filter((button) => isExpandableCueElement(button) || isExpandableContentButton(button)).length;
-
-    debugLog?.event("expandable.reveal", {
-      detailsOpened: 0,
-      expandableButtonCount,
-      clicked: 0,
-      clickDisabled
-    });
-  }
-
-  function isThinkingCueElement(element) {
-    return isExpandableCueElement(element) && THINKING_CUE_RE.test(getExpandableCueText(element));
-  }
-
   function isExpandableCueElement(element) {
     const text = getExpandableCueText(element);
 
@@ -6789,10 +6745,6 @@
     return Boolean(text)
       && !CHATGPT_CITATION_REF_RE.test(text)
       && !/^[{[]/.test(text);
-  }
-
-  function escapeMarkdownLinkLabel(value) {
-    return String(value || "").replace(/[[\]]/g, "\\$&");
   }
 
   function formatChatGptFootnotes(context) {
@@ -8331,112 +8283,8 @@
     return false;
   }
 
-  function getApiMessageStructuralSkipReason(message, role) {
-    if (!message) {
-      return "missing-message";
-    }
-
-    if (!role) {
-      return "unsupported-role";
-    }
-
-    const metadata = message.metadata || {};
-    const authorMetadata = message.author?.metadata || {};
-    const contentType = normalizeApiField(message.content?.content_type || message.content?.contentType);
-    const recipient = normalizeApiField(
-      message.recipient
-      || metadata.recipient
-      || authorMetadata.recipient
-    );
-    const channel = normalizeApiField(
-      message.channel
-      || metadata.channel
-      || authorMetadata.channel
-    );
-    const messageType = normalizeApiField(metadata.message_type || metadata.messageType || authorMetadata.message_type);
-
-    if (
-      isTruthyApiFlag(metadata.is_visually_hidden_from_conversation)
-      || isTruthyApiFlag(metadata.is_hidden)
-      || isTruthyApiFlag(metadata.hidden)
-      || isTruthyApiFlag(authorMetadata.is_visually_hidden_from_conversation)
-      || isTruthyApiFlag(authorMetadata.is_hidden)
-      || isTruthyApiFlag(authorMetadata.hidden)
-    ) {
-      return "hidden";
-    }
-
-    if (role === "assistant" && message.end_turn === false) {
-      return "assistant-not-final";
-    }
-
-    if (role === "assistant" && recipient && !isFinalAssistantRecipient(recipient)) {
-      return `recipient:${recipient}`;
-    }
-
-    if (role === "assistant" && channel && !isFinalAssistantChannel(channel)) {
-      return `channel:${channel}`;
-    }
-
-    if (messageType && isInternalApiMessageType(messageType)) {
-      return `message-type:${messageType}`;
-    }
-
-    if (contentType && !isExportableApiContentType(contentType)) {
-      return `content-type:${contentType}`;
-    }
-
-    return "";
-  }
-
-  function getApiMessageContentSkipReason(message, role, markdown) {
-    if (role !== "assistant") {
-      return "";
-    }
-
-    if (message?.end_turn === true) {
-      return "";
-    }
-
-    return looksLikeInternalApiToolCall(markdown) ? "tool-call-text" : "";
-  }
-
-  function normalizeApiField(value) {
-    return String(value || "").trim().toLowerCase();
-  }
-
   function isTruthyApiFlag(value) {
     return value === true || String(value || "").toLowerCase() === "true";
-  }
-
-  function isFinalAssistantRecipient(recipient) {
-    return ["", "all", "assistant", "user"].includes(recipient);
-  }
-
-  function isFinalAssistantChannel(channel) {
-    return ["", "all", "final"].includes(channel);
-  }
-
-  function isInternalApiMessageType(messageType) {
-    return [
-      "browser_result",
-      "code",
-      "execution",
-      "execution_output",
-      "search_query",
-      "search_result",
-      "system",
-      "tool",
-      "tool_call",
-      "tool_result"
-    ].includes(messageType);
-  }
-
-  function isExportableApiContentType(contentType) {
-    return [
-      "multimodal_text",
-      "text"
-    ].includes(contentType);
   }
 
   function looksLikeInternalApiToolCall(markdown) {
@@ -8445,32 +8293,6 @@
     return /^search\(/i.test(text)
       || /^\{\s*"search_query"\s*:/i.test(text)
       || /^\{\s*"queries"\s*:/i.test(text);
-  }
-
-  function extractSkippedApiThinkingMarkdown(message, role, skipReason) {
-    if (role !== "assistant" || !isPotentialApiThinkingSkipReason(skipReason)) {
-      return "";
-    }
-
-    const explicitThinking = cleanApiMarkdown(extractApiThinkingMarkdown(message));
-    if (explicitThinking) {
-      return explicitThinking;
-    }
-
-    const markdown = cleanApiMarkdown(extractApiContentMarkdown(message?.content));
-    if (!markdown || looksLikeInternalApiToolCall(markdown) || looksLikeApiJsonPayload(markdown)) {
-      return "";
-    }
-
-    return markdown;
-  }
-
-  function isPotentialApiThinkingSkipReason(reason) {
-    return reason === "assistant-not-final"
-      || reason === "channel:analysis"
-      || reason === "channel:reasoning"
-      || reason === "content-type:thoughts"
-      || reason === "content-type:reasoning";
   }
 
   function looksLikeApiJsonPayload(markdown) {
@@ -8543,16 +8365,6 @@
     return getConversationApiRawMessages(data)
       ?.map((item) => item?.message || item)
       .filter((message) => message && typeof message === "object") || [];
-  }
-
-  function normalizeApiRole(role) {
-    const normalized = String(role || "").toLowerCase();
-
-    if (normalized === "user" || normalized === "assistant") {
-      return normalized;
-    }
-
-    return "";
   }
 
   function cleanApiMarkdown(value) {
@@ -10949,14 +10761,6 @@
     return sources;
   }
 
-  function isThinkingFlyoutNoiseLine(line) {
-    return THINKING_FLYOUT_TITLE_RE.test(line)
-      || /^activity\s*[·:]/i.test(line)
-      || /^\u6d3b\u52a8\s*[·:]/.test(line)
-      || /^close$/i.test(line)
-      || /^\u5173\u95ed$/.test(line);
-  }
-
   function isThinkingFlyoutNoiseLineSafe(line) {
     return THINKING_FLYOUT_TITLE_RE.test(line)
       || /^activity\s*(?:[\u00b7:])?/i.test(line)
@@ -11101,14 +10905,6 @@
     }
 
     return `- ${value}`;
-  }
-
-  function isLikelyThinkingFlyoutHeading(line, nextLine) {
-    return line.length <= 38
-      && nextLine.length >= 24
-      && !/[.?!。？！:：]$/.test(line)
-      && !THINKING_STATUS_RE.test(line)
-      && !THINKING_FLYOUT_DONE_RE.test(line);
   }
 
   function isLikelyThinkingFlyoutHeadingSafe(line, nextLine) {
@@ -12078,11 +11874,6 @@
 
   function sanitizeFileAttachmentName(name) {
     return String(name || "").replace(/\s+/g, " ").trim().slice(0, 160);
-  }
-
-  function getFileAttachmentExtension(name) {
-    const match = String(name || "").match(/\.([a-z0-9]{1,6})$/i);
-    return (match?.[1] || "FILE").toUpperCase();
   }
 
   async function serializeList(listElement, state, ordered) {

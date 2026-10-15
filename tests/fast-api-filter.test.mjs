@@ -781,6 +781,7 @@ async function loadFastCaptureModule(overrides = {}) {
     },
     getCodeBlockDiagnostics,
     makeFence,
+    escapeMarkdownLinkLabel,
     normalizeCaptureMode(value) {
       const mode = String(value || "").toLowerCase();
       return ["fast", "full", "hybrid"].includes(mode) ? mode : "full";
@@ -847,6 +848,10 @@ function makeJsonResponse(status, data) {
       return body;
     }
   };
+}
+
+function escapeMarkdownLinkLabel(text) {
+  return String(text || "").replace(/[[\]\\]/g, "\\$&");
 }
 
 function makeFence(code) {

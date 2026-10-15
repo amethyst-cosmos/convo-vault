@@ -101,7 +101,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.doesNotMatch(generated, /fetch\(`\$\{rendererUrl\}\/render-bundle`/);
   assert.match(debugModule, /function downloadDebugLog/);
   assert.match(fastModule, /function buildMessagesFromConversationApi/);
-  assert.match(fastModule, /function getApiMessageStructuralSkipReason/);
+  assert.match(fastModule, /function isApiInternalToolCallNode/);
   assert.match(fastModule, /asset_pointer/);
   assert.match(fastModule, /fastCapture\.thinkingMerged/);
   assert.match(fastModule, /removeApiPrivateUseArtifacts/);

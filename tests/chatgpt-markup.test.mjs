@@ -292,7 +292,7 @@ test("DIL loops over non-literal data keep ChatGPT's fallback Markdown", async (
 
 async function loadMarkupModule() {
   const source = await readFile(path.join(repoRoot, "src", "content", "chatgpt-markup.js"), "utf8");
-  const context = vm.createContext({ makeFence });
+  const context = vm.createContext({ makeFence, escapeMarkdownLinkLabel });
   vm.runInContext(`${source}\nglobalThis.__markupTest = {
     buildCitationSourceIndex,
     chooseDilMarkdown,
@@ -318,6 +318,7 @@ async function loadFastModule() {
     formatConversationTimestamp: () => "",
     getCodeBlockDiagnostics: () => [],
     makeFence,
+    escapeMarkdownLinkLabel,
     sanitizeFileAttachmentName: (value) => String(value || "").trim(),
     filenameFromUrl: (value) => String(value || "").split("/").filter(Boolean).pop() || "",
     truncatePreview: (value, maxLength) => String(value || "").slice(0, maxLength),
@@ -337,6 +338,10 @@ function apiMessage(id, role, text, options = {}) {
     end_turn: options.end_turn ?? null,
     metadata: options.metadata || {}
   };
+}
+
+function escapeMarkdownLinkLabel(text) {
+  return String(text || "").replace(/[[\]\\]/g, "\\$&");
 }
 
 function makeFence(code) {

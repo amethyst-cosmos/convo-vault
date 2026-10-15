@@ -2133,20 +2133,6 @@
     }
   }
 
-  function parseEncodedJsonHeader(value) {
-    const decoded = decodeHeaderValue(value);
-
-    if (!decoded) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(decoded);
-    } catch (_) {
-      return null;
-    }
-  }
-
   // @convo-vault-include debug-log
   function createMessageDebugSnapshot(message, body, roleReason = "") {
     const markdown = String(message?.markdown || "");
@@ -3872,10 +3858,6 @@
     return roleElement;
   }
 
-  function isPotentialMessageNode(node) {
-    return getPotentialMessageNodeResult(node).ok;
-  }
-
   function getPotentialMessageNodeResult(node) {
     const main = document.querySelector("main");
 
@@ -4845,32 +4827,6 @@
     const text = getElementText(element);
 
     return THINKING_CUE_RE.test(`${attrs} ${text.slice(0, 700)}`);
-  }
-
-  async function revealExpandableThinking(root = document) {
-    return revealExpandableContent(root);
-  }
-
-  async function revealExpandableContent(root = document, debugLog = null) {
-    const clickDisabled = true;
-    let expandableButtonCount = 0;
-
-    const buttons = uniqueElements([
-      ...root.querySelectorAll('main button[aria-expanded="false"], main button[aria-controls], main button'),
-      ...EXPANDABLE_BUTTON_SELECTORS.flatMap((selector) => [...root.querySelectorAll(`main ${selector}`)])
-    ]);
-    expandableButtonCount = buttons.filter((button) => isExpandableCueElement(button) || isExpandableContentButton(button)).length;
-
-    debugLog?.event("expandable.reveal", {
-      detailsOpened: 0,
-      expandableButtonCount,
-      clicked: 0,
-      clickDisabled
-    });
-  }
-
-  function isThinkingCueElement(element) {
-    return isExpandableCueElement(element) && THINKING_CUE_RE.test(getExpandableCueText(element));
   }
 
   function isExpandableCueElement(element) {
@@ -6022,14 +5978,6 @@
     return sources;
   }
 
-  function isThinkingFlyoutNoiseLine(line) {
-    return THINKING_FLYOUT_TITLE_RE.test(line)
-      || /^activity\s*[·:]/i.test(line)
-      || /^\u6d3b\u52a8\s*[·:]/.test(line)
-      || /^close$/i.test(line)
-      || /^\u5173\u95ed$/.test(line);
-  }
-
   function isThinkingFlyoutNoiseLineSafe(line) {
     return THINKING_FLYOUT_TITLE_RE.test(line)
       || /^activity\s*(?:[\u00b7:])?/i.test(line)
@@ -6174,14 +6122,6 @@
     }
 
     return `- ${value}`;
-  }
-
-  function isLikelyThinkingFlyoutHeading(line, nextLine) {
-    return line.length <= 38
-      && nextLine.length >= 24
-      && !/[.?!。？！:：]$/.test(line)
-      && !THINKING_STATUS_RE.test(line)
-      && !THINKING_FLYOUT_DONE_RE.test(line);
   }
 
   function isLikelyThinkingFlyoutHeadingSafe(line, nextLine) {
@@ -7151,11 +7091,6 @@
 
   function sanitizeFileAttachmentName(name) {
     return String(name || "").replace(/\s+/g, " ").trim().slice(0, 160);
-  }
-
-  function getFileAttachmentExtension(name) {
-    const match = String(name || "").match(/\.([a-z0-9]{1,6})$/i);
-    return (match?.[1] || "FILE").toUpperCase();
   }
 
   async function serializeList(listElement, state, ordered) {
