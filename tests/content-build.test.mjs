@@ -63,7 +63,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function reconcileHybridMessages/);
   assert.match(generated, /hybridCapture\.reconciled/);
   assert.match(generated, /hybridCapture\.fullOnlyCandidates/);
-  assert.match(generated, /function refreshPortableMessageImageStats/);
+  assert.match(generated, /function downloadChatGptFileImages/);
   assert.match(generated, /imagesDeferred/);
   assert.match(generated, /base64 embedding deferred until export/);
   assert.doesNotMatch(generated, /base64 embedding disabled during message scan/);
@@ -91,11 +91,10 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.doesNotMatch(generated, /Export Loaded Hybrid Bundle/);
   assert.match(generated, /Switch to Full mode if you want to scan the page/);
   assert.doesNotMatch(generated, /falling back to Full scan/);
-  assert.match(generated, /assetEmbed\.start/);
-  assert.match(generated, /assetEmbed\.domFallback/);
-  assert.match(generated, /resolveMountedMessageNodeForPortableMessage/);
+  assert.match(generated, /assetDownload\.done/);
+  assert.match(generated, /function fetchChatGptFileImage/);
   assert.match(generated, /sediment/);
-  assert.match(generated, /ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY/);
+  assert.match(generated, /BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY/);
   assert.match(generated, /CONVO_VAULT_LOCAL_RENDERER_BUNDLE/);
   assert.match(generated, /function requestBackgroundBundleExport/);
   assert.doesNotMatch(generated, /fetch\(`\$\{rendererUrl\}\/render-bundle`/);

@@ -1,6 +1,5 @@
 (() => {
   const EXPORTER_VERSION = "0.9.2";
-  const IS_EXTENSION_ENV = typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -37,7 +36,6 @@
   const MAX_ADAPTIVE_HYDRATE_RESERVED_MS = 60_000;
   const MAX_ADAPTIVE_MISSING_RECOVERY_MS = 120_000;
   const TURN_HYDRATION_SETTLE_MS = 70;
-  const CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS = 3500;
   // A 2,700-node conversation takes about 10 s as one tree and 5-8 s per
   // 100-turn page, so requests get a generous timeout; broken routes still
   // fail fast with an HTTP error.
@@ -53,15 +51,8 @@
   const THINKING_FLYOUT_NO_PANEL_GRACE_MS = 700;
   const DEBUG_EVENT_LIMIT = 500;
   const DETAILED_DEBUG_LOG = false;
-  const ADVANCED_PDF_IMAGE_EMBED_LIMIT = 160;
-  const ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY = 4;
   const BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY = 12;
   const BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS = 20_000;
-  const SETTINGS_STORAGE_KEY = "convoVaultSettings";
-  const DEFAULT_EXPORTER_SETTINGS = {
-    port: 38474,
-    backendToken: ""
-  };
   const DEFAULT_ADVANCED_PDF_RENDERER_URL = "http://127.0.0.1:38474";
   const LOCAL_RENDERER_BUNDLE_PORT = "CONVO_VAULT_LOCAL_RENDERER_BUNDLE";
   const LOCAL_RENDERER_REQUEST_CHUNK_CHARACTERS = 512 * 1024;
@@ -227,7 +218,6 @@
   const NON_MESSAGE_TEXT_RE = /chatgpt\s+(can|may|might)\s+make\s+mistakes|check\s+important\s+info|verify\s+important\s+information|chatgpt\s*\u4e5f?\u53ef\u80fd\u4f1a?\u72af\u9519|\u8bf7\u6838\u67e5\u91cd\u8981\u4fe1\u606f|\u8bf7\u6838\u5bf9\u91cd\u8981\u4fe1\u606f|\u6838\u67e5\u91cd\u8981\u4fe1\u606f/i;
   const NON_MESSAGE_ROLE_RE = /\b(alert|status|banner|complementary|navigation|contentinfo|dialog|tooltip|menu|menubar|search)\b/i;
   const ASSISTANT_SIGNAL_RE = /\b(assistant|bot-message|bot|model-response|model|response|answer|completion|markdown|prose)\b/i;
-  const USER_SIGNAL_RE = /\b(user|human|prompt|question|whitespace-pre-wrap)\b/i;
   const FILE_NAME_RE = /[^\\/:*?"<>|\n\r]{1,140}\.(?:pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav)/i;
   const FILE_ATTACHMENT_RE = /\b(file|attachment|download|uploaded|pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav|document)\b|\u6587\u4ef6|\u9644\u4ef6|\u4e0b\u8f7d|\u6587\u6863/i;
   const IMAGE_DATA_URI_CACHE = new Map();
@@ -282,19 +272,11 @@
   ]);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "OPEN_CHATGPT_EXPORT_SELECTOR") {
-      openMessageSelectorPanel()
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
-
-      return true;
-    }
-
-    if (message?.type !== "EXPORT_CHATGPT_CONVERSATION") {
+    if (message?.type !== "OPEN_CHATGPT_EXPORT_SELECTOR") {
       return false;
     }
 
-    exportConversation()
+    openMessageSelectorPanel()
       .then((result) => sendResponse(result))
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
 
@@ -310,8 +292,6 @@
   };
 
   const markdownBuilder = {
-    build: buildMarkdown,
-    download: downloadMarkdown,
     metadata: createExportMetadata,
     filename: makeFilename
   };
@@ -327,25 +307,6 @@
         });
       },
       exportMessages: (messages, options) => exportSelectedMessages(messages, options)
-    });
-  }
-
-  async function exportConversation() {
-    const result = await messageExtractor.collect();
-    const messages = result.messages || result;
-
-    if (!messages.length) {
-      throw new Error("No conversation messages were found on this page.");
-    }
-
-    if (!result.completeness?.complete) {
-      throw new Error(formatCaptureCompletenessError(result.completeness));
-    }
-
-    return exportSelectedMessages(messages, {
-      captureMode: result.captureMode,
-      completeness: result.completeness,
-      debugLog: result.debugLog || null
     });
   }
 
@@ -1255,6 +1216,8 @@
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : index + 1;
   }
 
+  // The selector panel exports one format: the local renderer's ZIP bundle
+  // (Markdown, PDF, data files, and assets).
   async function exportSelectedMessages(messages, options = {}) {
     if (!messages.length) {
       throw new Error("Select at least one message to export.");
@@ -1266,126 +1229,38 @@
 
     const exportedAt = new Date();
     const metadata = markdownBuilder.metadata(messages, exportedAt);
-    const requestedFormat = options.format;
-    const format = requestedFormat === "bundle"
-      ? "bundle"
-      : requestedFormat === "pdf"
-      ? "advanced-pdf"
-      : requestedFormat === "advanced-pdf" || requestedFormat === "advanced-markdown"
-        ? requestedFormat
-        : "markdown";
-    let filename = "";
-
-    if (format === "bundle") {
-      const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
-        captureMode: options.captureMode,
-        debugLog: options.debugLog,
-        onProgress: options.onProgress
-      });
-      filename = bundleResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("bundle.generated", {
-          filename,
-          rendererUrl: bundleResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          captureMode: normalizeCaptureMode(options.captureMode),
-          assetCount: bundleResult.assetCount || 0,
-          assetStats: bundleResult.assetStats,
-          rendererTimings: bundleResult.rendererTimings || null
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        imagesEmbedded: bundleResult.imagesEmbedded || 0,
-        imagesFailed: bundleResult.imagesFailed || 0,
-        assetCount: bundleResult.assetCount || 0,
-        bundleFiles: bundleResult.bundleFiles || ""
-      };
-    }
-
-    if (format === "advanced-markdown") {
-      const markdownResult = await downloadAdvancedMarkdown(metadata, messages, exportedAt);
-      filename = markdownResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("advancedMarkdown.generated", {
-          engine: markdownResult.markdownEngine,
-          filename,
-          rendererUrl: markdownResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          captureWarning: markdownResult.captureWarning || ""
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.md$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        imagesEmbedded: messages.reduce((total, message) => total + message.imagesEmbedded, 0),
-        imagesFailed: messages.reduce((total, message) => total + message.imagesFailed, 0),
-        markdownEngine: markdownResult.markdownEngine,
-        captureWarning: markdownResult.captureWarning || ""
-      };
-    }
-
-    if (format === "advanced-pdf") {
-      const pdfResult = await downloadAdvancedPdf(metadata, messages, exportedAt);
-      filename = pdfResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("advancedPdf.generated", {
-          engine: pdfResult.pdfEngine,
-          filename,
-          rendererUrl: pdfResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          dataDir: pdfResult.dataDir || "",
-          dataFiles: pdfResult.dataFiles || "",
-          captureWarning: pdfResult.captureWarning || ""
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.pdf$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        pageCount: pdfResult.pageCount,
-        pdfEngine: pdfResult.pdfEngine,
-        imagesEmbedded: pdfResult.imagesEmbedded || 0,
-        imagesFailed: pdfResult.imagesFailed || 0,
-        imageLinks: messages.reduce((total, message) => total + (message.imageCount || 0), 0),
-        dataDir: pdfResult.dataDir || "",
-        dataFiles: pdfResult.dataFiles || "",
-        captureWarning: pdfResult.captureWarning || ""
-      };
-    }
-
-    const markdown = markdownBuilder.build(metadata, messages);
-    filename = markdownBuilder.filename(metadata.title, exportedAt, "md");
-    markdownBuilder.download(filename, markdown);
+    const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
+      captureMode: options.captureMode,
+      debugLog: options.debugLog,
+      onProgress: options.onProgress
+    });
+    const filename = bundleResult.filename;
 
     if (options.debugLog) {
-      downloadDebugLog(options.debugLog, filename.replace(/\.md$/i, "-debug.json"));
+      options.debugLog.event?.("bundle.generated", {
+        filename,
+        rendererUrl: bundleResult.rendererUrl,
+        exporterVersion: EXPORTER_VERSION,
+        captureMode: normalizeCaptureMode(options.captureMode),
+        assetCount: bundleResult.assetCount || 0,
+        assetStats: bundleResult.assetStats,
+        rendererTimings: bundleResult.rendererTimings || null
+      });
+      downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
     }
 
     return {
       ok: true,
-      format,
+      format: "bundle",
       filename,
       messageCount: messages.length,
-      imagesEmbedded: messages.reduce((total, message) => total + message.imagesEmbedded, 0),
-      imagesFailed: messages.reduce((total, message) => total + message.imagesFailed, 0)
+      imagesEmbedded: bundleResult.imagesEmbedded || 0,
+      imagesFailed: bundleResult.imagesFailed || 0,
+      assetCount: bundleResult.assetCount || 0,
+      bundleFiles: bundleResult.bundleFiles || ""
     };
   }
+
 
   function formatCaptureCompletenessError(report) {
     const issueText = (report?.issues || [])
@@ -1414,30 +1289,6 @@
       imagesSkipped: 0
     };
 
-    if (options.embedImages) {
-      const embedStartedAt = Date.now();
-      const imageReferenceCount = countPortableMarkdownImages(portableMessages);
-      options.debugLog?.event?.("assetEmbed.start", {
-        captureMode,
-        imageReferenceCount,
-        concurrency: ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY,
-        limit: ADVANCED_PDF_IMAGE_EMBED_LIMIT
-      });
-      await embedImagesForPortableMessages(portableMessages, assetStats, {
-        captureMode,
-        debugLog: options.debugLog
-      });
-      portableMessages.forEach((message) => refreshPortableMessageImageStats(message, {
-        embedAttempted: true
-      }));
-      options.debugLog?.event?.("assetEmbed.done", {
-        captureMode,
-        imageReferenceCount,
-        durationMs: Date.now() - embedStartedAt,
-        ...assetStats
-      });
-    }
-
     return {
       schemaVersion: 1,
       exporterVersion: EXPORTER_VERSION,
@@ -1451,51 +1302,10 @@
     };
   }
 
-  async function getExporterSettings() {
-    if (typeof chrome === "undefined" || !chrome.storage?.local) {
-      return Promise.resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-    }
-
-    return new Promise((resolve) => {
-      try {
-        chrome.storage.local.get([SETTINGS_STORAGE_KEY], (result) => {
-          if (chrome.runtime?.lastError) {
-            resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-            return;
-          }
-          resolve(normalizeExporterSettings(result?.[SETTINGS_STORAGE_KEY]));
-        });
-      } catch (_) {
-        resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-      }
-    });
-  }
-
-  function normalizeExporterSettings(settings = {}) {
-    return {
-      port: DEFAULT_EXPORTER_SETTINGS.port,
-      backendToken: String(settings.backendToken || "").trim()
-    };
-  }
-
-  function getAdvancedPdfRendererUrl(settings = DEFAULT_EXPORTER_SETTINGS) {
-    return settings.port === DEFAULT_EXPORTER_SETTINGS.port
-      ? DEFAULT_ADVANCED_PDF_RENDERER_URL
-      : `http://127.0.0.1:${settings.port}`;
-  }
-
-  function getLocalApiHeaders(settings = DEFAULT_EXPORTER_SETTINGS) {
-    return settings.backendToken
-      ? { "X-Convo-Vault-Token": settings.backendToken }
-      : {};
-  }
-
   async function downloadExportBundle(metadata, messages, exportedAt = new Date(), options = {}) {
     const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "zip");
     const payload = await createStructuredExportPayload(messages, exportedAt, {
-      embedImages: false,
-      captureMode: options.captureMode,
-      debugLog: options.debugLog
+      captureMode: options.captureMode
     });
 
     const pageImageDownloads = await downloadChatGptFileImages(payload.messages, {
@@ -1727,410 +1537,8 @@
     });
   }
 
-  async function downloadAdvancedMarkdown(metadata, messages, exportedAt = new Date()) {
-    const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "md");
-    const payload = await createStructuredExportPayload(messages, exportedAt);
-
-    const rendererSettings = await getExporterSettings();
-    const rendererUrl = getAdvancedPdfRendererUrl(rendererSettings);
-    let response;
-    try {
-      response = await fetch(`${rendererUrl}/render-markdown`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getLocalApiHeaders(rendererSettings)
-        },
-        body: JSON.stringify({
-          exportPayload: payload,
-          fileName: defaultFileName
-        })
-      });
-    } catch (error) {
-      throw new Error(`Local renderer is not running at ${rendererUrl}. Details: ${error.message || error}`);
-    }
-
-    if (!response.ok) {
-      await throwRendererResponseError(response, "Markdown renderer");
-    }
-
-    const blob = await response.blob();
-    const filename = getFilenameFromContentDisposition(response.headers.get("content-disposition")) || defaultFileName;
-    downloadBlob(filename, blob);
-
-    return {
-      filename,
-      rendererUrl,
-      markdownEngine: response.headers.get("x-markdown-engine") || "advanced-local",
-      captureWarning: response.headers.get("x-capture-warning") || ""
-    };
-  }
-
-  async function downloadAdvancedPdf(metadata, messages, exportedAt = new Date()) {
-    const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "pdf");
-    const payload = await createStructuredExportPayload(messages, exportedAt, {
-      embedImages: true
-    });
-
-    const rendererSettings = await getExporterSettings();
-    const rendererUrl = getAdvancedPdfRendererUrl(rendererSettings);
-    let response;
-    try {
-      response = await fetch(`${rendererUrl}/render-pdf`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getLocalApiHeaders(rendererSettings)
-        },
-        body: JSON.stringify({
-          exportPayload: payload,
-          fileName: defaultFileName
-        })
-      });
-    } catch (error) {
-      throw new Error(`Local renderer is not running at ${rendererUrl}. Details: ${error.message || error}`);
-    }
-
-    if (!response.ok) {
-      await throwRendererResponseError(response, "PDF renderer");
-    }
-
-    const blob = await response.blob();
-    const filename = getFilenameFromContentDisposition(response.headers.get("content-disposition")) || defaultFileName;
-    downloadBlob(filename, blob);
-
-    return {
-      filename,
-      rendererUrl,
-      pageCount: Number(response.headers.get("x-page-count")) || null,
-      pdfEngine: response.headers.get("x-pdf-engine") || "advanced-local-chrome",
-      captureWarning: response.headers.get("x-capture-warning") || "",
-      dataDir: decodeHeaderValue(response.headers.get("x-data-dir")),
-      dataFiles: decodeHeaderValue(response.headers.get("x-data-files")),
-      imagesEmbedded: payload.assetStats?.imagesEmbedded || 0,
-      imagesFailed: payload.assetStats?.imagesFailed || 0
-    };
-  }
-
-  async function throwRendererResponseError(response, label) {
-    const errorText = await response.text().catch(() => "");
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("Local renderer rejected the extension token. Copy a fresh start command from the popup and restart the local renderer.");
-    }
-
-    throw new Error(`${label} failed (${response.status}). ${errorText || response.statusText}`);
-  }
-
-  async function embedImagesForPortableMessages(messages, stats, options = {}) {
-    const domFallbackStats = await embedInternalAssetImagesFromMountedDom(messages, stats);
-
-    if (domFallbackStats.attempted || domFallbackStats.embedded || domFallbackStats.failed) {
-      options.debugLog?.event?.("assetEmbed.domFallback", {
-        captureMode: options.captureMode || "",
-        ...domFallbackStats
-      });
-    }
-
-    const plan = collectImageEmbeddingPlan(messages, ADVANCED_PDF_IMAGE_EMBED_LIMIT);
-    stats.imagesSkipped += plan.skipped;
-
-    if (!plan.urls.length) {
-      return;
-    }
-
-    const embeddedImagesByUrl = await fetchImageDataUrisForEmbedding(plan.urls, stats, options);
-
-    for (const message of messages) {
-      message.markdown = replaceEmbeddedMarkdownImages(message.markdown, embeddedImagesByUrl);
-      message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, embeddedImagesByUrl);
-    }
-  }
-
-  async function embedInternalAssetImagesFromMountedDom(messages, stats) {
-    const result = {
-      attempted: 0,
-      embedded: 0,
-      failed: 0,
-      missingNode: 0,
-      missingDomImage: 0
-    };
-
-    for (const message of messages) {
-      const refs = [
-        ...extractInternalAssetMarkdownImageRefs(message.markdown, "markdown"),
-        ...extractInternalAssetMarkdownImageRefs(message.thinkingMarkdown, "thinkingMarkdown")
-      ];
-
-      if (!refs.length) {
-        continue;
-      }
-
-      result.attempted += refs.length;
-      const node = resolveMountedMessageNodeForPortableMessage(message);
-
-      if (!node) {
-        const globalDomImages = Array.from(document.querySelectorAll("img"));
-        const replacements = new Map();
-        for (const ref of refs) {
-          const fileMatch = ref.url.match(/(file_[a-f0-9]{32}|file-[a-zA-Z0-9_-]+)/i);
-          const fileId = fileMatch ? fileMatch[1] : "";
-          if (!fileId) continue;
-          const match = globalDomImages.find((img) => {
-            const src = img.currentSrc || img.src || "";
-            return src && !isInternalAssetImageUrl(src) && (src.includes(fileId) || img.alt?.includes(fileId));
-          });
-          if (match) {
-            try {
-              const dataUri = await imageToDataUri(match, match.currentSrc || match.src);
-              replacements.set(ref.url, dataUri);
-              result.embedded += 1;
-              stats.imagesEmbedded += 1;
-            } catch (_) {}
-          }
-        }
-        if (replacements.size) {
-          message.markdown = replaceEmbeddedMarkdownImages(message.markdown, replacements);
-          message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, replacements);
-        }
-        result.missingNode += refs.length - replacements.size;
-        continue;
-      }
-
-      const candidates = getCandidateDomImagesForEmbedding(node);
-
-      if (!candidates.length) {
-        result.missingDomImage += refs.length;
-        continue;
-      }
-
-      const replacements = new Map();
-
-      for (let index = 0; index < refs.length; index += 1) {
-        const ref = refs[index];
-        const candidate = candidates[index] || candidates[candidates.length - 1];
-
-        try {
-          const dataUri = await imageToDataUri(candidate.image, candidate.src);
-          replacements.set(ref.url, dataUri);
-          result.embedded += 1;
-          stats.imagesEmbedded += 1;
-        } catch (_) {
-          result.failed += 1;
-        }
-      }
-
-      if (replacements.size) {
-        message.markdown = replaceEmbeddedMarkdownImages(message.markdown, replacements);
-        message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, replacements);
-      }
-    }
-
-    return result;
-  }
-
-  function extractInternalAssetMarkdownImageRefs(markdown, field) {
-    return extractEmbeddableMarkdownImageUrls(markdown)
-      .filter(isInternalAssetImageUrl)
-      .map((url) => ({ field, url }));
-  }
-
-  function resolveMountedMessageNodeForPortableMessage(message) {
-    const candidates = [
-      message?.sourceMessageId
-        ? document.querySelector(`[data-message-id="${cssString(message.sourceMessageId)}"]`)
-        : null,
-      message?.sourceTurnId
-        ? document.querySelector(`[data-turn-id="${cssString(message.sourceTurnId)}"]`)
-        : null,
-      message?.sourceTurnContainer
-        ? document.querySelector(`[data-turn-id-container="${cssString(message.sourceTurnContainer)}"], [data-turn-container="${cssString(message.sourceTurnContainer)}"]`)
-        : null,
-      findTurnNodeByConversationOrder(message?.order ?? message?.turnNumber)
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      const turn = candidate.closest?.("[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^='conversation-turn-'], [data-testid*='conversation-turn']");
-      if (turn) {
-        return turn;
-      }
-
-      return candidate;
-    }
-
-    return null;
-  }
-
-  function getCandidateDomImagesForEmbedding(root) {
-    return Array.from(root.querySelectorAll?.("img") || [])
-      .map((image) => ({
-        image,
-        src: image.currentSrc || image.src || image.getAttribute("src") || "",
-        width: getMediaWidth(image),
-        height: getMediaHeight(image)
-      }))
-      .filter((candidate) => {
-        if (!candidate.src || isLikelyDecorativeImage(candidate.image)) {
-          return false;
-        }
-
-        if (/google\.com\/s2\/favicons|favicon|avatar|openai/i.test(candidate.src)) {
-          return false;
-        }
-
-        return Math.max(candidate.width || 0, candidate.height || 0) >= 72;
-      });
-  }
-
-  function collectImageEmbeddingPlan(messages, limit) {
-    const urls = [];
-    const seen = new Set();
-    let skipped = 0;
-
-    for (const message of messages) {
-      for (const url of [
-        ...extractEmbeddableMarkdownImageUrls(message.markdown),
-        ...extractEmbeddableMarkdownImageUrls(message.thinkingMarkdown)
-      ]) {
-        if (seen.has(url)) {
-          continue;
-        }
-
-        seen.add(url);
-
-        if (urls.length >= limit) {
-          skipped += 1;
-          continue;
-        }
-
-        urls.push(url);
-      }
-    }
-
-    return { urls, skipped };
-  }
-
-  function extractEmbeddableMarkdownImageUrls(markdown) {
-    const urls = [];
-    const source = String(markdown || "");
-    const imagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    let match;
-
-    while ((match = imagePattern.exec(source))) {
-      const url = match[2] || "";
-      if (isEmbeddableImageUrl(url)) {
-        urls.push(url);
-      }
-    }
-
-    return urls;
-  }
-
-  async function fetchImageDataUrisForEmbedding(urls, stats, options = {}) {
-    const embeddedImagesByUrl = new Map();
-    const failures = [];
-    let cursor = 0;
-    const workerCount = Math.min(ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY, urls.length);
-
-    async function worker() {
-      while (cursor < urls.length) {
-        const url = urls[cursor];
-        cursor += 1;
-
-        try {
-          const dataUri = await imageToDataUriFromSrc(url);
-          embeddedImagesByUrl.set(url, dataUri);
-          stats.imagesEmbedded += 1;
-        } catch (error) {
-          stats.imagesFailed += 1;
-          if (failures.length < 12) {
-            failures.push({
-              url: summarizeImageUrlForDebug(url),
-              error: error?.message || String(error)
-            });
-          }
-        }
-      }
-    }
-
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-
-    if (failures.length) {
-      options.debugLog?.event?.("assetEmbed.fetchFailures", {
-        captureMode: options.captureMode || "",
-        failureCount: stats.imagesFailed,
-        samples: failures
-      });
-    }
-
-    return embeddedImagesByUrl;
-  }
-
-  function summarizeImageUrlForDebug(url) {
-    const value = String(url || "");
-
-    if (/^data:/i.test(value)) {
-      return `${value.slice(0, 40)}...`;
-    }
-
-    return value.length > 240 ? `${value.slice(0, 220)}...` : value;
-  }
-
-  function replaceEmbeddedMarkdownImages(markdown, embeddedImagesByUrl) {
-    const source = String(markdown || "");
-    const imagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    return source.replace(imagePattern, (fullMatch, alt, url) => {
-      const embedded = embeddedImagesByUrl.get(url);
-      return embedded ? `![${alt || "image"}](${embedded})` : fullMatch;
-    });
-  }
-
-  function isEmbeddableImageUrl(url) {
-    return /^https?:\/\//i.test(url) || isInternalAssetImageUrl(url);
-  }
-
-  function isInternalAssetImageUrl(url) {
-    return /^(?:file-service|sediment):\/\//i.test(String(url || ""));
-  }
-
-  function countPortableMarkdownImages(messages) {
-    return messages.reduce((sum, message) => {
-      return sum + countMarkdownImages(message.markdown) + countMarkdownImages(message.thinkingMarkdown);
-    }, 0);
-  }
-
   function countMarkdownImages(markdown) {
     return (String(markdown || "").match(/!\[[^\]]*]\([^)]+\)/g) || []).length;
-  }
-
-  function getFilenameFromContentDisposition(header) {
-    if (!header) {
-      return "";
-    }
-
-    const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
-    if (utf8Match) {
-      try {
-        return decodeURIComponent(utf8Match[1]);
-      } catch (_) {
-        return utf8Match[1];
-      }
-    }
-
-    const quotedMatch = header.match(/filename="([^"]+)"/i);
-    return quotedMatch ? quotedMatch[1] : "";
-  }
-
-  function decodeHeaderValue(value) {
-    if (!value) {
-      return "";
-    }
-
-    try {
-      return decodeURIComponent(value);
-    } catch (_) {
-      return value;
-    }
   }
 
   // @convo-vault-include debug-log
@@ -2201,21 +1609,6 @@
       hybridMarkdownSource: message?.hybridMarkdownSource || "",
       hybridThinkingSource: message?.hybridThinkingSource || ""
     };
-  }
-
-  function refreshPortableMessageImageStats(message, options = {}) {
-    const imageCount = countMarkdownImages(`${message?.markdown || ""}\n${message?.thinkingMarkdown || ""}`);
-    const embedded = countEmbeddedMarkdownImages(`${message?.markdown || ""}\n${message?.thinkingMarkdown || ""}`);
-    const priorFailures = Math.max(0, message.imagesFailed || 0);
-    message.imageCount = imageCount;
-    message.imagesEmbedded = embedded;
-    message.imagesFailed = options.embedAttempted
-      ? Math.max(0, imageCount - embedded) + Math.max(0, priorFailures - imageCount)
-      : priorFailures;
-    message.imagesDeferred = options.embedAttempted
-      ? 0
-      : Math.min(message.imagesDeferred || 0, Math.max(0, imageCount - embedded - message.imagesFailed));
-    return message;
   }
 
   function dedupeMarkdownImageReferences(markdown) {
@@ -3050,25 +2443,13 @@
     }
 
     function formatExportResult(result) {
-      if (result.format === "bundle") {
-        const imageSummary = result.imagesEmbedded || result.imagesFailed
-          ? `, ${result.imagesEmbedded} image(s) embedded`
-          : "";
-        const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) could not be downloaded and are left as links` : "";
-        return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${imageSummary}${failedSummary}.`;
-      }
-
-      if (result.format === "pdf" || result.format === "advanced-pdf") {
-        const pageSummary = result.pageCount ? `, ${result.pageCount} page(s)` : "";
-        const imageSummary = result.imageLinks ? `, ${result.imageLinks} image attachment(s)` : "";
-        const captureSummary = result.captureWarning ? ` Backend capture warning: ${result.captureWarning}` : "";
-        return `Saved ${result.filename}. ${result.messageCount} message(s)${pageSummary}${imageSummary}.${captureSummary}`;
-      }
-
-      const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) left as links` : "";
-      const captureSummary = result.captureWarning ? ` Backend capture warning: ${result.captureWarning}` : "";
-      return `Saved ${result.filename}. ${result.messageCount} message(s), ${result.imagesEmbedded} image(s) embedded${failedSummary}.${captureSummary}`;
+      const imageSummary = result.imagesEmbedded || result.imagesFailed
+        ? `, ${result.imagesEmbedded} image(s) embedded`
+        : "";
+      const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) could not be downloaded and are left as links` : "";
+      return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${imageSummary}${failedSummary}.`;
     }
+
 
     function updateExportButtonLabel() {
       const exportButton = shadow.querySelector("[data-action='export']");
@@ -7305,18 +6686,6 @@
     return Number(element.getAttribute?.("height")) || element.naturalHeight || element.height || element.clientHeight || 0;
   }
 
-  async function imageToDataUri(image, src) {
-    if (src.startsWith("data:")) {
-      return src;
-    }
-
-    try {
-      return await imageToDataUriFromSrc(src);
-    } catch (backgroundError) {
-      return imageToDataUriWithCanvas(image);
-    }
-  }
-
   async function imageToDataUriFromSrc(src) {
     if (src.startsWith("data:")) {
       return src;
@@ -7373,22 +6742,6 @@
         }
       );
     });
-  }
-
-  function imageToDataUriWithCanvas(image) {
-    const canvas = document.createElement("canvas");
-    const width = image.naturalWidth || image.width;
-    const height = image.naturalHeight || image.height;
-
-    if (!width || !height) {
-      throw new Error("Image dimensions are not available.");
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    context.drawImage(image, 0, 0);
-    return canvas.toDataURL("image/png");
   }
 
   function formatCodeBlock(pre) {
@@ -7504,60 +6857,6 @@
 
     const fence = trimmed.includes("`") ? "``" : "`";
     return `${fence}${trimmed}${fence}`;
-  }
-
-  function buildMarkdown(metadata, messages) {
-    const lines = [
-      "---",
-      `title: "${escapeYaml(metadata.title)}"`,
-      `source: "${escapeYaml(metadata.source)}"`,
-      `exported_at: "${metadata.exportedAt.toISOString()}"`,
-      `exporter: "Convo Vault ${metadata.exporterVersion}"`,
-      `message_count: ${metadata.messageCount}`,
-      "---",
-      "",
-      `# ${metadata.title}`,
-      "",
-      `Exported: ${metadata.exportedAt.toLocaleString()}`,
-      "",
-      `Source: ${metadata.source}`,
-      ""
-    ];
-
-    messages.forEach((message, index) => {
-      lines.push(`## ${index + 1}. ${formatRole(message.role)}`, "");
-
-      if (message.timestamp) {
-        lines.push(`_Time: ${message.timestamp}_`, "");
-      }
-
-      if (message.thinkingMarkdown) {
-        lines.push("### Thinking", "", message.thinkingMarkdown, "", "### Message", "");
-      }
-
-      lines.push(message.markdown || "_No text content found._", "");
-    });
-
-    return `${lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trim()}\n`;
-  }
-
-  function downloadMarkdown(filename, markdown) {
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    downloadBlob(filename, blob);
-  }
-
-  function downloadBlob(filename, blob) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = filename;
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-
-    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
   function getConversationTitle() {
@@ -7973,10 +7272,6 @@
 
   function escapeHtmlComment(text) {
     return String(text || "").replace(/--/g, "- -").replace(/[<>]/g, "");
-  }
-
-  function escapeYaml(text) {
-    return String(text || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
 
   function escapeRegExp(text) {

@@ -760,7 +760,6 @@ async function loadFastCaptureModule(overrides = {}) {
   const context = vm.createContext({
     AbortController,
     CONVERSATION_API_FETCH_TIMEOUT_MS: 15_000,
-    CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS: 3_500,
     CONVERSATION_API_ATTEMPT_TIMEOUT_MS: 4_500,
     URL,
     URLSearchParams,
