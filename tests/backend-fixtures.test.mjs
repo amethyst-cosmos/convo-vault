@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -14,8 +15,29 @@ const fixturesDir = path.join(repoRoot, "tests", "fixtures");
 const cases = JSON.parse(
   await readFile(path.join(fixturesDir, "export-regression-cases.json"), "utf8")
 );
+const { buildDataBundle, buildMarkdownDocument, normalizePayload } = createRequire(import.meta.url)(
+  path.join(repoRoot, "tools", "advanced-pdf", "bundle-content.js")
+);
 
-test("backend Markdown and data endpoints preserve export fixture text", async (t) => {
+test("bundle Markdown and data builders preserve export fixture text", async () => {
+  for (const fixtureCase of cases) {
+    const payload = JSON.parse(await readFile(path.join(fixturesDir, fixtureCase.payload), "utf8"));
+    const normalized = normalizePayload({ exportPayload: payload });
+
+    const markdown = buildMarkdownDocument(normalized);
+    assertFixtureText(markdown, fixtureCase, "markdown");
+    assert.ok(
+      markdown.includes(`**Messages:** ${fixtureCase.expectedCounts.messages}`),
+      `Expected ${fixtureCase.name} markdown to report message count`
+    );
+
+    const data = buildDataBundle(normalized);
+    assertFixtureText(collectDataText(data), fixtureCase, "data");
+    assertFixtureData(data, fixtureCase);
+  }
+});
+
+test("backend renderer prepares and serves export bundles", async (t) => {
   const port = await getAvailablePort();
   const token = `fixture-token-${process.pid}-${Date.now()}`;
   const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "convo-vault-backend-cache-"));
@@ -54,26 +76,6 @@ test("backend Markdown and data endpoints preserve export fixture text", async (
   });
 
   await waitForHealth(port, token, () => `${stdout}\n${stderr}`);
-
-  for (const fixtureCase of cases) {
-    const payload = JSON.parse(await readFile(path.join(fixturesDir, fixtureCase.payload), "utf8"));
-    const requestBody = JSON.stringify({
-      exportPayload: payload,
-      fileName: `${fixtureCase.name}.fixture`
-    });
-
-    const markdown = await postText(port, token, "/render-markdown", requestBody);
-    assertFixtureText(markdown, fixtureCase, "markdown");
-    assert.ok(
-      markdown.includes(`**Messages:** ${fixtureCase.expectedCounts.messages}`),
-      `Expected ${fixtureCase.name} markdown to report message count`
-    );
-
-    const dataJson = await postText(port, token, "/render-data", requestBody);
-    const data = JSON.parse(dataJson);
-    assertFixtureText(collectDataText(data), fixtureCase, "data");
-    assertFixtureData(data, fixtureCase);
-  }
 
   const bundleFixture = cases[0];
   const bundlePayload = JSON.parse(await readFile(path.join(fixturesDir, bundleFixture.payload), "utf8"));
@@ -266,21 +268,6 @@ async function waitForHealth(port, token, getLogs) {
   }
 
   throw new Error(`Backend fixture server did not become healthy: ${lastError}\n${getLogs()}`);
-}
-
-async function postText(port, token, endpoint, body) {
-  const response = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Convo-Vault-Token": token
-    },
-    body
-  });
-
-  const text = await response.text();
-  assert.equal(response.ok, true, `${endpoint} failed: ${response.status} ${text}`);
-  return text;
 }
 
 function assertFixtureText(output, fixtureCase, label) {
