@@ -52,6 +52,309 @@
     return typeof fallback === "string" ? fallback.trim() : "";
   }
 
+  /**
+   * Picks the Markdown for a DIL message. ChatGPT's fallbackMarkdown leaves
+   * out everything a {#each} loop generates (lists, score bars), so a message
+   * with loops is rendered from its source when every loop iterates over a
+   * literal array. Otherwise the fallback is used and the gap is reported.
+   *
+   * @returns {{ markdown: string, origin: "fallback" | "source", unexpandedLoops: number }}
+   */
+  function chooseDilMarkdown(source, fallbackMarkdown) {
+    const text = String(source || "");
+
+    if (!DIL_LOOP_OPEN_RE.test(text)) {
+      return {
+        markdown: normalizeDilFallbackMarkdown(fallbackMarkdown) || renderDilSourceAsMarkdown(text),
+        origin: fallbackMarkdown ? "fallback" : "source",
+        unexpandedLoops: 0
+      };
+    }
+
+    const expanded = expandDilTemplateBlocks(text);
+
+    if (!expanded.failed) {
+      return { markdown: renderDilSourceAsMarkdown(text), origin: "source", unexpandedLoops: 0 };
+    }
+
+    return {
+      markdown: normalizeDilFallbackMarkdown(fallbackMarkdown) || renderDilSourceAsMarkdown(text),
+      origin: fallbackMarkdown ? "fallback" : "source",
+      unexpandedLoops: expanded.failed
+    };
+  }
+
+  // The fallback writes AsyncImage as "[images: query]"; exports label image
+  // searches the same way everywhere.
+  function normalizeDilFallbackMarkdown(markdown) {
+    return String(markdown || "").replace(/^\[images:\s*(.+?)\]\s*$/gm, (match, query) => `*[Image search: ${escapeMarkdownLinkLabel(query)}]*`);
+  }
+
+  const DIL_LOOP_OPEN_RE = /\{#each\s/;
+
+  /**
+   * Expands {#each LITERAL as item[, index]}...{/each} and {#if ...}...{/if}
+   * blocks. Only literal data (arrays, objects, strings, numbers, booleans)
+   * is read and only {item.path} / {index} placeholders are substituted;
+   * nothing in the source is executed. A loop over anything else stays in
+   * place and is counted in `failed`.
+   */
+  function expandDilTemplateBlocks(text, scope = {}) {
+    let output = "";
+    let failed = 0;
+    let index = 0;
+
+    while (index < text.length) {
+      const open = text.indexOf("{#", index);
+
+      if (open < 0) {
+        output += substituteDilPlaceholders(text.slice(index), scope);
+        break;
+      }
+
+      output += substituteDilPlaceholders(text.slice(index, open), scope);
+      const headEnd = findBalancedBraceEnd(text, open);
+      const head = headEnd > open ? text.slice(open + 2, headEnd) : "";
+      const keyword = head.match(/^(each|if)\s/)?.[1];
+      const blockEnd = keyword ? findDilBlockEnd(text, headEnd + 1, keyword) : null;
+
+      if (!keyword || !blockEnd) {
+        output += text.slice(open, open + 2);
+        index = open + 2;
+        continue;
+      }
+
+      const body = text.slice(headEnd + 1, blockEnd.start);
+
+      if (keyword === "each") {
+        const match = head.match(/^each\s+([\s\S]+?)\s+as\s+([A-Za-z_$][\w$]*)(?:\s*,\s*([A-Za-z_$][\w$]*))?\s*$/);
+        const items = match ? parseDilLiteral(match[1]) : null;
+
+        if (!Array.isArray(items)) {
+          failed += 1;
+          output += text.slice(open, blockEnd.end);
+        } else {
+          const names = [match[2], match[3]].filter(Boolean);
+          items.forEach((item, itemIndex) => {
+            const inner = expandDilTemplateBlocks(body, { ...scope, [match[2]]: item, ...(match[3] ? { [match[3]]: itemIndex } : {}) });
+            failed += inner.failed + countUnresolvedDilPlaceholders(inner.text, names);
+            output += inner.text;
+          });
+        }
+      } else {
+        const [whenTrue, whenFalse = ""] = splitDilElse(body);
+        const condition = evaluateDilCondition(head.slice(3), scope);
+        const inner = expandDilTemplateBlocks(condition === false ? whenFalse : whenTrue, scope);
+        failed += inner.failed;
+        output += inner.text;
+      }
+
+      index = blockEnd.end;
+    }
+
+    return { text: output, failed };
+  }
+
+  // A loop body expression that still names the loop variable could not be
+  // resolved from literals (for example {tasks[t.id].name}). Attribute values
+  // (={...}) are ignored because attributes are dropped when rendering.
+  function countUnresolvedDilPlaceholders(text, names) {
+    let count = 0;
+
+    for (let index = text.indexOf("{"); index >= 0; index = text.indexOf("{", index + 1)) {
+      const close = findBalancedBraceEnd(text, index);
+
+      if (close < 0) {
+        break;
+      }
+
+      const expression = text.slice(index + 1, close);
+      const isAttribute = /=\s*$/.test(text.slice(Math.max(0, index - 3), index));
+
+      if (!isAttribute && names.some((name) => new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, "\\$")}\\b`).test(expression))) {
+        count += 1;
+      }
+
+      index = close;
+    }
+
+    return count;
+  }
+
+  function findDilBlockEnd(text, from, keyword) {
+    const pattern = new RegExp(`\\{(#${keyword}\\s|\\/${keyword}\\})`, "g");
+    pattern.lastIndex = from;
+    let depth = 1;
+    let match;
+
+    while ((match = pattern.exec(text))) {
+      depth += match[1].startsWith("#") ? 1 : -1;
+
+      if (depth === 0) {
+        return { start: match.index, end: match.index + match[0].length };
+      }
+    }
+
+    return null;
+  }
+
+  function splitDilElse(body) {
+    const marker = body.search(/\{:else\}/);
+    return marker < 0 ? [body] : [body.slice(0, marker), body.slice(marker + "{:else}".length)];
+  }
+
+  function substituteDilPlaceholders(text, scope) {
+    if (!Object.keys(scope).length) {
+      return text;
+    }
+
+    return text.replace(/\{\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}/g, (match, path, offset) => {
+      const value = resolveDilPath(path, scope);
+
+      if (value === undefined || (value !== null && typeof value === "object")) {
+        return match;
+      }
+
+      // An attribute value (name={item.icon}) must stay a quoted string.
+      return /=\s*$/.test(text.slice(Math.max(0, offset - 3), offset)) ? JSON.stringify(String(value ?? "")) : String(value ?? "");
+    });
+  }
+
+  function resolveDilPath(path, scope) {
+    const [head, ...rest] = path.split(".");
+
+    if (!Object.prototype.hasOwnProperty.call(scope, head)) {
+      return undefined;
+    }
+
+    return rest.reduce((value, key) => (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined), scope[head]);
+  }
+
+  // Supports `path OP literal` with <, <=, >, >=, ==, ===, !=, !== and a bare
+  // path; anything else is unknown (null) and keeps the {#if} branch.
+  function evaluateDilCondition(expression, scope) {
+    const match = String(expression).trim().match(/^([A-Za-z_$][\w$.]*)\s*(?:(<=|>=|===|!==|==|!=|<|>)\s*(.+))?$/);
+
+    if (!match) {
+      return null;
+    }
+
+    const left = resolveDilPath(match[1], scope);
+
+    if (left === undefined) {
+      return null;
+    }
+
+    if (!match[2]) {
+      return Boolean(left);
+    }
+
+    const right = parseDilLiteral(match[3]);
+
+    switch (match[2]) {
+      case "<": return left < right;
+      case "<=": return left <= right;
+      case ">": return left > right;
+      case ">=": return left >= right;
+      case "==":
+      case "===": return left === right;
+      default: return left !== right;
+    }
+  }
+
+  /**
+   * Parses a JavaScript literal (arrays, objects with bare or quoted keys,
+   * strings without interpolation, numbers, true/false/null). Returns null
+   * for anything else, including identifiers and calls.
+   */
+  function parseDilLiteral(source) {
+    const text = String(source ?? "");
+    let index = 0;
+    const fail = {};
+
+    const skip = () => {
+      while (/\s/.test(text[index] || "")) index += 1;
+    };
+
+    const value = () => {
+      skip();
+      const char = text[index];
+
+      if (char === "[") {
+        index += 1;
+        const items = [];
+        skip();
+        while (text[index] !== "]") {
+          const item = value();
+          if (item === fail) return fail;
+          items.push(item);
+          skip();
+          if (text[index] === ",") { index += 1; skip(); continue; }
+          if (text[index] !== "]") return fail;
+        }
+        index += 1;
+        return items;
+      }
+
+      if (char === "{") {
+        index += 1;
+        const object = {};
+        skip();
+        while (text[index] !== "}") {
+          let key;
+          if (text[index] === "\"" || text[index] === "'") {
+            key = value();
+            if (typeof key !== "string") return fail;
+          } else {
+            const match = text.slice(index).match(/^[A-Za-z_$][\w$]*/);
+            if (!match) return fail;
+            key = match[0];
+            index += key.length;
+          }
+          skip();
+          if (text[index] !== ":") return fail;
+          index += 1;
+          const item = value();
+          if (item === fail) return fail;
+          object[key] = item;
+          skip();
+          if (text[index] === ",") { index += 1; skip(); continue; }
+          if (text[index] !== "}") return fail;
+        }
+        index += 1;
+        return object;
+      }
+
+      if (char === "\"" || char === "'" || char === "`") {
+        let result = "";
+        index += 1;
+        while (index < text.length && text[index] !== char) {
+          if (char === "`" && text.startsWith("${", index)) return fail;
+          if (text[index] === "\\") {
+            const next = text[index + 1];
+            result += { n: "\n", t: "\t", r: "\r" }[next] ?? next;
+            index += 2;
+            continue;
+          }
+          result += text[index];
+          index += 1;
+        }
+        if (text[index] !== char) return fail;
+        index += 1;
+        return result;
+      }
+
+      const literal = text.slice(index).match(/^(?:-?\d+(?:\.\d+)?(?:e[+-]?\d+)?|true|false|null)/i);
+      if (!literal) return fail;
+      index += literal[0].length;
+      return literal[0] === "true" ? true : literal[0] === "false" ? false : literal[0] === "null" ? null : Number(literal[0]);
+    };
+
+    const result = value();
+    skip();
+    return result === fail || index !== text.length ? null : result;
+  }
+
   function isDilMessage(message) {
     const dil = message?.metadata?.model_dil_v2;
     return Boolean(dil && typeof dil === "object");
@@ -300,15 +603,33 @@
    * DIL message lacks fallbackMarkdown; code fences are left untouched.
    */
   function renderDilSourceAsMarkdown(source) {
-    return mapOutsideCodeFences(String(source || ""), (segment) => {
+    return mapOutsideCodeFences(expandDilTemplateBlocks(String(source || "")).text, (segment) => {
       const withoutStatements = stripDilExpressionBlocks(segment);
       // Component nesting indents source lines; four spaces would turn them
       // into Markdown code blocks, so only list items keep their indentation.
-      return renderDilComponents(withoutStatements)
+      return joinDilRows(renderDilComponents(withoutStatements))
         .replace(/^[ \t]+(?![-*+][ \t]|\d+[.)][ \t])/gm, "")
         .replace(/[ \t]+\n/g, "\n")
         .replace(/\n{3,}/g, "\n\n");
     });
+  }
+
+  const DIL_ROW_OPEN = "\u0001DILROW<";
+  const DIL_ROW_CLOSE = "\u0001DILROW>";
+
+  // A <row> lays its children out horizontally; in Markdown its text parts
+  // become one line joined with " · ". Inner rows are joined first.
+  function joinDilRows(text) {
+    const innermost = new RegExp(`${DIL_ROW_OPEN}((?:(?!${DIL_ROW_OPEN})[\\s\\S])*?)${DIL_ROW_CLOSE}`);
+    let output = text;
+    let match;
+
+    while ((match = output.match(innermost))) {
+      const parts = match[1].split("\n").map((line) => line.trim()).filter(Boolean);
+      output = output.slice(0, match.index) + `\n\n${parts.join(" · ")}\n\n` + output.slice(match.index + match[0].length);
+    }
+
+    return output.split(DIL_ROW_OPEN).join("").split(DIL_ROW_CLOSE).join("");
   }
 
   function mapOutsideCodeFences(text, transform) {
@@ -525,8 +846,9 @@
           return "]";
         case "WritingBlock":
           return "\n```\n";
-        case "box":
         case "row":
+          return DIL_ROW_CLOSE;
+        case "box":
         case "grid":
         case "grid-item":
         case "pressable":
@@ -550,7 +872,15 @@
         return text("value");
       case "AsyncImage":
         return text("query") ? `*[Image search: ${escapeMarkdownLinkLabel(text("query"))}]*` : "";
-      case "Cite":
+      case "Cite": {
+        const refs = typeof attributes.ref === "string"
+          ? [attributes.ref]
+          : (parseDilLiteral(attributes.refs?.expression ?? attributes.refs) || []);
+        const valid = (Array.isArray(refs) ? refs : []).filter((ref) => typeof ref === "string" && CHATGPT_CITATION_REF_RE.test(ref));
+        return valid.length
+          ? `${CHATGPT_TOKEN_START}cite${valid.map((ref) => `${CHATGPT_TOKEN_SEPARATOR}${ref}`).join("")}${CHATGPT_TOKEN_END}`
+          : "";
+      }
       case "MemoryCite":
       case "spacer":
         return "";
@@ -567,7 +897,9 @@
       case "radio":
         return tag.selfClosing ? "" : "\n- ";
       case "WritingBlock":
-        return tag.selfClosing ? "" : "\n```markdown\n";
+        return tag.selfClosing ? "" : "\n```writing\n";
+      case "row":
+        return tag.selfClosing ? "" : DIL_ROW_OPEN;
       default:
         return tag.selfClosing ? "" : "\n";
     }

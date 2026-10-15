@@ -261,13 +261,15 @@
       const content = msg.content;
       if (isDil && !isThinking && !isInternalTool) {
         const fallbackMarkdown = getDilFallbackMarkdown(msg);
-        const dilMarkdown = fallbackMarkdown || renderDilSourceAsMarkdown(getApiStringParts(content).join("\n\n"));
+        const dil = chooseDilMarkdown(getApiStringParts(content).join("\n\n"), fallbackMarkdown);
         if (markupStats) {
           markupStats.dilMessages += 1;
           if (!fallbackMarkdown) markupStats.dilWithoutFallback += 1;
+          if (dil.origin === "source" && fallbackMarkdown) markupStats.dilRenderedFromSource += 1;
+          markupStats.dilUnexpandedLoops += dil.unexpandedLoops;
         }
-        if (dilMarkdown.trim()) {
-          textParts.push(renderApiResponseMarkup(dilMarkdown, markupContext));
+        if (dil.markdown.trim()) {
+          textParts.push(renderApiResponseMarkup(dil.markdown, markupContext));
         }
       }
 
@@ -391,6 +393,8 @@
     return {
       dilMessages: 0,
       dilWithoutFallback: 0,
+      dilRenderedFromSource: 0,
+      dilUnexpandedLoops: 0,
       tokens: {},
       unknownTokens: {},
       citationFootnotes: 0,

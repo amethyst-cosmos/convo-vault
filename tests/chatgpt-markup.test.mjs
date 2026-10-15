@@ -241,11 +241,62 @@ test("Fast builder drops document page images and lists each cited document once
   assert.equal((answer.match(/📄 \*\*Document\*\*: Outline\.pdf/g) || []).length, 1);
 });
 
+test("DIL messages with literal loops render from source instead of the loop-less fallback", async () => {
+  const markup = await loadMarkupModule();
+  const source = [
+    "## Plan",
+    "",
+    "<box gap={2}>",
+    "  {#each [{n:\"P0\",name:\"Check\",desc:\"No installs.\"},{n:\"P1\",name:\"Test\",desc:\"Run 12 cases.\"}] as item,i}",
+    "    <row gap={3}>",
+    "      <box><text weight=\"semibold\">{item.n}</text></box>",
+    "      <box flex=\"1\">**{item.name}**<text color=\"secondary\">{item.desc}</text></box>",
+    "      <icon name={item.icon} color=\"secondary\"/>",
+    "    </row>",
+    "    {#if i<1}<divider color=\"subtle\"/>{/if}",
+    "  {/each}",
+    "</box>",
+    "",
+    "<box>",
+    "  <text>Score</text>",
+    "  {#each [{name:\"Intent\",v:25},{name:\"Limits\",v:20}] as item}",
+    "    <row><text>{item.name}</text><box width={`${item.v/25*100}%`}/><text>{item.v}%</text></row>",
+    "  {/each}",
+    "  <caption>Pass at 85.<Cite refs={[\"turn1search0\",\"turn1search1\"]}/></caption>",
+    "</box>"
+  ].join("\n");
+
+  const result = markup.chooseDilMarkdown(source, "## Plan\n\nScore");
+
+  assert.equal(result.origin, "source");
+  assert.equal(result.unexpandedLoops, 0);
+  assert.match(result.markdown, /P0 · \*\*Check\*\* · No installs\.\n\n---\n\nP1 · \*\*Test\*\* · Run 12 cases\./);
+  assert.match(result.markdown, /Intent · 25%\n\nLimits · 20%/);
+  assert.match(result.markdown, /Pass at 85\.\uE200cite\uE202turn1search0\uE202turn1search1\uE201/);
+  assert.doesNotMatch(result.markdown, /\{#|\{\/|\{item|<icon|<row|<box/);
+});
+
+test("DIL loops over non-literal data keep ChatGPT's fallback Markdown", async () => {
+  const markup = await loadMarkupModule();
+  const source = "{@body const tasks = load()}\n{#each [{id:\"a\"}] as t}<text>{tasks[t.id].name}</text>{/each}\n{#each items() as x}<text>{x}</text>{/each}";
+
+  const result = markup.chooseDilMarkdown(source, "Static fallback");
+
+  assert.equal(result.origin, "fallback");
+  assert.equal(result.markdown, "Static fallback");
+  assert.equal(result.unexpandedLoops, 2);
+  assert.equal(markup.parseDilLiteral("items()"), null);
+  assert.equal(markup.parseDilLiteral("[1, `a${b}`]"), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(markup.parseDilLiteral("[{a:1,'b':\"x\"},true,null,-2.5]"))), [{ a: 1, b: "x" }, true, null, -2.5]);
+});
+
 async function loadMarkupModule() {
   const source = await readFile(path.join(repoRoot, "src", "content", "chatgpt-markup.js"), "utf8");
   const context = vm.createContext({ makeFence });
   vm.runInContext(`${source}\nglobalThis.__markupTest = {
     buildCitationSourceIndex,
+    chooseDilMarkdown,
+    parseDilLiteral,
     createChatGptMarkupContext,
     formatChatGptFootnotes,
     renderChatGptInlineTokens,
