@@ -132,7 +132,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(backendServer, /buildOutputObjectIndex/);
   assert.match(backendServer, /outputObjects/);
   assert.match(backendServer, /degradedObjectCount/);
-  assert.match(backendRender, /margin: 44px 34px/);
+  assert.match(backendRender, /@page {\n  size: A4;\n  margin: 56px 60px;\n}/);
   assert.match(backendRender, /<html lang="\$\{escapeAttr\(documentLanguage\)\}">/);
   assert.match(backendRender, /normalizeDocumentLanguage/);
   assert.match(backendRender, /language: payload\.language \|\| payload\.locale \|\| payload\.documentLanguage/);
