@@ -238,6 +238,39 @@ test("Fast API parser merges non-final assistant thinking into final answers", a
   });
 });
 
+test("Fast API parser keeps tool results on the commentary channel out of thinking", async () => {
+  const fast = await loadFastCaptureModule();
+  const pageDump = "Page: turn5\nShowing 10 of 13 lines.\nCitation Marker:\n[L1] {\n[L2] \"content\": \"{\\\"id\\\":1212463741}\"";
+  const data = {
+    current_node: "answer",
+    mapping: {
+      root: { id: "root", parent: "", message: null },
+      prompt: { id: "prompt", parent: "root", message: makeMessage("user", "Find a project.") },
+      note: {
+        id: "note",
+        parent: "prompt",
+        message: makeMessage("assistant", "I will open the repository page.", { end_turn: false, channel: "commentary" })
+      },
+      page: {
+        id: "page",
+        parent: "note",
+        message: makeMessage("tool", pageDump, { channel: "commentary" })
+      },
+      answer: {
+        id: "answer",
+        parent: "page",
+        message: makeMessage("assistant", "Use the existing project.", { end_turn: true, recipient: "all" })
+      }
+    }
+  };
+
+  const messages = fast.buildMessagesFromConversationApi(data);
+
+  assert.equal(messages.length, 2);
+  assert.match(messages[1].thinkingMarkdown, /I will open the repository page\./);
+  assert.doesNotMatch(messages[1].thinkingMarkdown, /Showing 10 of 13 lines|Citation Marker|1212463741/);
+});
+
 test("Fast API parser enriches citations as footnotes and replaces citation tokens", async () => {
   const fast = await loadFastCaptureModule();
   const data = {

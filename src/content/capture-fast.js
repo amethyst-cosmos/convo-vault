@@ -950,9 +950,11 @@
           }
         }
 
-        // 5. Commentary / Analysis / General Thinking Nodes
+        // 5. Commentary / Analysis / General Thinking Nodes. Tool results also
+        // arrive on the commentary channel (opened pages, API responses); only
+        // the model's own notes belong in the thinking timeline.
         const isCommentary = channel === "commentary" || msg.metadata?.is_thinking_preamble_message === true;
-        if (isCommentary || channel === "analysis" || channel === "reasoning" || contentType === "thoughts" || isApiThinkingNode(msg)) {
+        if (role !== "tool" && (isCommentary || channel === "analysis" || channel === "reasoning" || contentType === "thoughts" || isApiThinkingNode(msg))) {
           const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
           const text = parts.filter((p) => typeof p === "string" && p.trim()).join("\n");
           if (text && !looksLikeInternalApiToolCall(text) && !looksLikeApiJsonPayload(text)) {
