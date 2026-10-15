@@ -377,6 +377,7 @@ async function loadFastModule() {
   const source = (await Promise.all([
     "chatgpt-markup.js",
     "conversation-manifest.js",
+    "agent-trace.js",
     "capture-fast.js"
   ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({

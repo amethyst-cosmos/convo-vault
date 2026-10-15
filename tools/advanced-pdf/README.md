@@ -48,6 +48,9 @@ them in an export session, then calls `/prepare-render-bundle`.
 - `bundle-content.js` - payload normalization, conversation Markdown, and data
   sidecars (`*.data.json`, `*.messages.jsonl`, `*.qa-pairs.json`,
   `*.topics.json`, `*.entities.json`, `*.agent-trace.*`, `*.summary.md`).
+- `agent-trace-files.js` - `*.agent-trace.json` (every recorded thinking and
+  tool event per answer, full content, plus a conversation source index) and
+  the readable `*.agent-trace.md`.
 - `assets.js` - asset manifest, SHA-256 asset store under `.convo-vault/assets`,
   and output-object accounting (rendered, referenced, or degraded).
 - `render.js` - HTML layout and PDF printing through local Chrome.

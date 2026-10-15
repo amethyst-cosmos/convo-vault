@@ -5,6 +5,7 @@ const INCLUDE_FILES = {
   "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",
   "selector-panel": "selector-panel.js",
+  "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",
   "capture-full": "capture-full.js",
   "message-discovery": "message-discovery.js",

@@ -271,6 +271,56 @@ test("Fast API parser keeps tool results on the commentary channel out of thinki
   assert.doesNotMatch(messages[1].thinkingMarkdown, /Showing 10 of 13 lines|Citation Marker|1212463741/);
 });
 
+test("Agent trace pairs parallel tool calls with their results in call order", async () => {
+  const fast = await loadFastCaptureModule();
+  const chain = [];
+  const add = (id, message) => chain.push({ id, message: { id, create_time: 1000 + chain.length, ...message } });
+  const call = (id, path, query) => add(id, {
+    author: { role: "assistant" },
+    recipient: "api_tool.call_tool",
+    content: { content_type: "code", text: JSON.stringify({ path: `/GitHub/link/${path}`, args: { query } }) },
+    metadata: { reasoning_title: "评估项目" }
+  });
+  const marker = (id) => add(id, { author: { role: "tool", name: "api_tool.call_tool" }, channel: "commentary", content: { content_type: "code", text: "" }, metadata: {} });
+  const page = (id, text) => add(id, { author: { role: "tool", name: "api_tool.call_tool" }, channel: "commentary", content: { content_type: "multimodal_text", parts: [text] }, metadata: {} });
+
+  add("u", { author: { role: "user" }, content: { content_type: "text", parts: ["Find projects"] }, metadata: {} });
+  call("c1", "fetch", "a");
+  call("c2", "fetch", "b");
+  marker("m1");
+  page("p1", "page A");
+  marker("m2");
+  page("p2", "page B part 1");
+  page("p3", "page B part 2");
+  add("w1", { author: { role: "assistant" }, recipient: "web.run", content: { content_type: "text", parts: [""] }, metadata: { reasoning_title: "正在搜索网页" } });
+  add("wr1", {
+    author: { role: "tool", name: "web.run" },
+    content: { content_type: "text", parts: [""] },
+    metadata: { reasoning_title: "正在搜索 2 个网站", search_result_groups: [{ domain: "example.com", entries: [{ url: "https://example.com/a", title: "A", ref_id: { turn_index: 1, ref_type: "search", ref_index: 0 } }] }] }
+  });
+  add("a", { author: { role: "assistant" }, channel: "final", end_turn: true, recipient: "all", content: { content_type: "text", parts: ["Use A.\uE200cite\uE202turn1search0\uE201"] }, metadata: {} });
+
+  const mapping = { root: { id: "root", parent: "", message: null } };
+  chain.forEach((node, index) => { mapping[node.id] = { id: node.id, parent: index ? chain[index - 1].id : "root", message: node.message }; });
+  const messages = fast.buildMessagesFromConversationApi({ current_node: "a", mapping });
+  const events = messages[1].agentTrace.events;
+  const byNode = Object.fromEntries(events.map((event) => [event.nodeId, event]));
+
+  assert.equal(byNode.m1.callSeq, byNode.c1.seq);
+  assert.equal(byNode.p1.callSeq, byNode.c1.seq);
+  assert.equal(byNode.m2.callSeq, byNode.c2.seq);
+  assert.equal(byNode.p3.callSeq, byNode.c2.seq);
+  assert.equal(byNode.wr1.callSeq, byNode.w1.seq);
+  assert.equal(byNode.w1.inputHidden, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(byNode.c2.arguments)), { path: "/GitHub/link/fetch", args: { query: "b" } });
+  assert.equal(byNode.p3.output, "page B part 2");
+  assert.equal(byNode.p1.offsetSeconds, 3);
+  assert.equal(messages[1].agentTrace.sources[0].cited, true);
+  assert.match(messages[1].thinkingMarkdown, /🔧 \*\*调用工具\*\*: 评估项目 · `fetch` · `\{"query":"a"\}`/);
+  assert.match(messages[1].thinkingMarkdown, /🔍 \*\*网页搜索\*\*: 正在搜索 2 个网站 · 查阅 \[A\]\(https:\/\/example\.com\/a\)/);
+  assert.doesNotMatch(messages[1].thinkingMarkdown, /page A|page B/);
+});
+
 test("Fast API parser enriches citations as footnotes and replaces citation tokens", async () => {
   const fast = await loadFastCaptureModule();
   const data = {
@@ -400,7 +450,7 @@ test("Fast API parser synthesizes multi-step assistant turn with DALL-E generate
   assert.match(messages[1].markdown, /!\[transparent_icon\.png\]\(sediment:\/\/file_00000000436882308a7266db7496bbd1\)/);
 });
 
-test("Fast API parser extracts agentTrace with document slices and keeps answer clean", async () => {
+test("Fast API parser keeps document slices in the agent trace and out of the answer", async () => {
   const fast = await loadFastCaptureModule();
   const data = {
     current_node: "answer",
@@ -440,10 +490,10 @@ test("Fast API parser extracts agentTrace with document slices and keeps answer 
   const messages = fast.buildMessagesFromConversationApi(data);
   assert.equal(messages.length, 2);
   assert.equal(messages[1].markdown, "Here is the clear summary.");
-  assert.ok(messages[1].agentTrace);
-  assert.equal(messages[1].agentTrace.fileIngestions.length, 1);
-  assert.match(messages[1].agentTrace.fileIngestions[0].rawText, /\[L1\] <PARSED TEXT FOR PAGE/);
-  assert.equal(messages[1].agentTrace.thinkingNodes.length, 1);
+  const events = messages[1].agentTrace.events;
+  assert.deepEqual(Array.from(events, (event) => event.kind), ["tool_result", "note", "answer"]);
+  assert.equal(events[0].output, "[L1] <PARSED TEXT FOR PAGE: 1 / 3>\n[L2] Scenario 11");
+  assert.equal(events[1].text, "Read doc and plan response.");
 });
 
 test("Fast API parser extracts multi-step thoughts with both summary and full content without dropping snippet", async () => {
@@ -504,25 +554,19 @@ test("Fast API parser extracts multi-step thoughts with both summary and full co
   assert.match(assistantMsg.thinkingMarkdown, /🧠 \*\*推理思考\*\*: \*\*Designed two interface concepts\*\*/);
   assert.match(assistantMsg.thinkingMarkdown, /Prepared two distinct high-fidelity UI wireframes\./);
 
-  // 2. Verify agentTrace contains discrete thinkingNodes with non-empty content
-  assert.ok(assistantMsg.agentTrace);
-  assert.equal(assistantMsg.agentTrace.thinkingNodes.length, 2);
-  assert.equal(assistantMsg.agentTrace.thinkingNodes[0].summary, "设计两套界面");
-  assert.match(assistantMsg.agentTrace.thinkingNodes[0].content, /我会基于现有截图保留信息结构/);
-  assert.equal(assistantMsg.agentTrace.thinkingNodes[0].durationSeconds, 81);
-  assert.equal(assistantMsg.agentTrace.thinkingNodes[1].summary, "Designed two interface concepts");
-  assert.equal(assistantMsg.agentTrace.thinkingNodes[1].content, "Prepared two distinct high-fidelity UI wireframes.");
-
-  // 3. Verify activities have non-empty snippet
-  const reasoningActs = assistantMsg.agentTrace.activities.filter((a) => a.type === "reasoning");
-  assert.equal(reasoningActs.length, 2);
-  assert.equal(reasoningActs[0].summary, "设计两套界面");
-  assert.match(reasoningActs[0].snippet, /我会基于现有截图保留信息结构/);
-  assert.equal(reasoningActs[1].summary, "Designed two interface concepts");
-  assert.match(reasoningActs[1].snippet, /Prepared two distinct high-fidelity UI wireframes\./);
+  // 2. The agent trace keeps each thought with its full content, in order.
+  const trace = assistantMsg.agentTrace;
+  const thoughts = trace.events.filter((event) => event.kind === "thought");
+  assert.equal(trace.durationSeconds, 81);
+  assert.equal(thoughts.length, 2);
+  assert.equal(thoughts[0].summary, "设计两套界面");
+  assert.match(thoughts[0].content, /我会基于现有截图保留信息结构/);
+  assert.equal(thoughts[1].summary, "Designed two interface concepts");
+  assert.equal(thoughts[1].content, "Prepared two distinct high-fidelity UI wireframes.");
+  assert.equal(trace.stats.thoughts, 2);
 });
 
-test("Fast API parser extracts reasoning search operations and reasoning recap into timeline and agentTrace", async () => {
+test("Fast API parser records search calls, their results, and the recap in timeline and agent trace", async () => {
   const fast = await loadFastCaptureModule();
   const data = {
     current_node: "answer",
@@ -612,11 +656,16 @@ test("Fast API parser extracts reasoning search operations and reasoning recap i
   assert.match(assistantMsg.thinkingMarkdown, /\[Quaternius • Free Game Assets\]\(https:\/\/quaternius\.com\/packs\/platformergamekit\.html\)/);
   assert.match(assistantMsg.thinkingMarkdown, /⏱️ \*\*思考总结\*\*: 思考了 35 秒并完成了素材检索/);
 
-  // Verify agentTrace captures search
-  assert.ok(assistantMsg.agentTrace);
-  assert.equal(assistantMsg.agentTrace.searches.length, 1);
-  assert.equal(assistantMsg.agentTrace.searches[0].queries[0], "quaternius.com floating island low poly pack");
-  assert.equal(assistantMsg.agentTrace.searches[0].results[0].title, "Quaternius • Free Game Assets");
+  // The trace links the result to its call and indexes the source.
+  const events = assistantMsg.agentTrace.events;
+  assert.deepEqual(Array.from(events, (event) => event.kind), ["tool_call", "tool_result", "recap", "answer"]);
+  assert.equal(events[0].title, "查找岛屿素材库");
+  assert.equal(events[0].input, "site:quaternius.com floating island");
+  assert.deepEqual(Array.from(events[0].queries), ["quaternius.com floating island low poly pack"]);
+  assert.equal(events[1].callSeq, 1);
+  assert.equal(events[1].sources[0].title, "Quaternius • Free Game Assets");
+  assert.equal(events[2].durationSeconds, 35);
+  assert.equal(assistantMsg.agentTrace.sources[0].url, "https://quaternius.com/packs/platformergamekit.html");
 });
 
 test("Fast API parser triggers fidelity warnings on empty thought bodies when debugLog is active", async () => {
@@ -788,6 +837,7 @@ async function loadFastCaptureModule(overrides = {}) {
   const source = (await Promise.all([
     "chatgpt-markup.js",
     "conversation-manifest.js",
+    "agent-trace.js",
     "capture-fast.js"
   ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({

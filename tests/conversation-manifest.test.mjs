@@ -168,6 +168,7 @@ test("manifest completeness matches DOM messages by any ChatGPT message id of th
 async function loadManifestModule() {
   const source = (await Promise.all([
     "conversation-manifest.js",
+    "agent-trace.js",
     "capture-fast.js"
   ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({

@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.9.4";
+  const EXPORTER_VERSION = "0.9.5";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -7252,6 +7252,379 @@
     return `${pairCount} same-role adjacency pair(s): ChatGPT has no reply for ${gaps.length} prompt(s) (${reasons.join(", ")}).`;
   }
 
+  // Agent trace: every node ChatGPT stores between a prompt and its answer, in
+  // tree order, as typed events with full content. The PDF thinking timeline
+  // and the bundle's agent-trace files are both built from it.
+  //
+  // Event kinds: thought (summarized reasoning step), note (the model's own
+  // commentary), tool_call, tool_result, recap, answer, other. ChatGPT stores
+  // web.run and functions.* calls with empty text; those calls carry
+  // inputHidden: true instead of invented content.
+  const AGENT_TRACE_VERSION = 2;
+
+  function buildTurnAgentTrace(nodes, options = {}) {
+    const messages = (Array.isArray(nodes) ? nodes : []).map((node) => node?.message).filter(Boolean);
+    const events = [];
+    const sources = new Map();
+    const calls = createTraceCallQueue();
+    let model = null;
+    let durationSeconds = 0;
+    let firstTime = null;
+    let lastTime = null;
+
+    const push = (msg, time, kind, fields) => {
+      const event = {
+        seq: events.length + 1,
+        nodeId: msg.id || "",
+        at: formatTraceTime(time),
+        offsetSeconds: time != null && firstTime != null ? Math.round((time - firstTime) * 10) / 10 : null,
+        kind,
+        ...fields
+      };
+      events.push(event);
+      return event;
+    };
+
+    for (const msg of messages) {
+      const role = String(msg.author?.role || "").toLowerCase();
+      const recipient = String(msg.recipient || "").toLowerCase();
+      const channel = String(msg.channel || msg.metadata?.channel || "").toLowerCase();
+      const contentType = String(msg.content?.content_type || "").toLowerCase();
+      const metadata = msg.metadata || {};
+      const time = Number(msg.create_time) || null;
+
+      if (time != null) {
+        firstTime ??= time;
+        lastTime = time;
+      }
+      if (!model && role === "assistant" && (metadata.model_slug || metadata.resolved_model_slug)) {
+        model = {
+          slug: metadata.model_slug || "",
+          resolvedSlug: metadata.resolved_model_slug || "",
+          thinkingEffort: metadata.thinking_effort || "",
+          cotVersion: metadata.cot_version || ""
+        };
+      }
+      durationSeconds = Math.max(durationSeconds, Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0));
+
+      if (contentType === "reasoning_recap") {
+        push(msg, time, "recap", {
+          text: typeof msg.content?.content === "string" ? msg.content.content.trim() : "",
+          durationSeconds: Number(metadata.finished_duration_sec || 0) || null
+        });
+        continue;
+      }
+
+      if (Array.isArray(msg.content?.thoughts)) {
+        for (const thought of msg.content.thoughts) {
+          const summary = String(thought?.summary || "").trim();
+          const content = String(thought?.content || "").trim();
+          if (summary || content) {
+            push(msg, time, "thought", { summary, content, finished: thought?.finished !== false });
+          }
+        }
+        continue;
+      }
+
+      const text = getTraceText(msg.content);
+
+      // Older conversations keep a reasoning string in the message metadata,
+      // sometimes on the final answer itself.
+      if (role === "assistant") {
+        for (const legacy of [metadata.reasoning, metadata.reasoning_content, metadata.thinking, metadata.thoughts]) {
+          if (typeof legacy === "string" && legacy.trim()) push(msg, time, "thought", { summary: "", content: legacy.trim(), finished: true });
+        }
+      }
+
+      if (role === "assistant" && isApiFinalAnswerMessage(msg)) {
+        push(msg, time, "answer", { messageId: msg.id || "", chars: text.length });
+        continue;
+      }
+
+      if (role === "assistant" && isTraceToolCall(msg, recipient)) {
+        const tool = recipient && recipient !== "all" ? recipient : "web.run";
+        const parsed = parseTraceJson(text);
+        const event = push(msg, time, "tool_call", {
+          tool,
+          title: getTraceTitle(metadata),
+          input: text,
+          ...(parsed !== undefined ? { arguments: parsed } : {}),
+          ...(Array.isArray(metadata.search_queries) && metadata.search_queries.length ? { queries: uniqueStrings(metadata.search_queries) } : {}),
+          ...(msg.content?.language && msg.content.language !== "unknown" ? { language: msg.content.language } : {}),
+          inputHidden: !text
+        });
+        calls.add(event);
+        continue;
+      }
+
+      if (role === "tool") {
+        const call = calls.match(String(msg.author?.name || "").toLowerCase(), contentType === "code" && !text);
+        const tool = String(msg.author?.name || "").toLowerCase() || call?.tool || "";
+        const found = collectTraceSources(metadata, sources, events.length + 1);
+        const images = (Array.isArray(msg.content?.parts) ? msg.content.parts : [])
+          .map((part) => part?.asset_pointer)
+          .filter(Boolean);
+        push(msg, time, "tool_result", {
+          tool,
+          ...(call ? { callSeq: call.seq } : {}),
+          title: getTraceTitle(metadata),
+          contentType,
+          output: text,
+          ...(found.length ? { sources: found } : {}),
+          ...(found.some((source) => source.query) ? { queries: uniqueStrings(found.map((source) => source.query)) } : {}),
+          ...(images.length ? { images } : {}),
+          ...(metadata.aggregate_result?.status ? { status: metadata.aggregate_result.status } : {}),
+          ...(metadata.invoked_resource?.resource_uri ? { resource: metadata.invoked_resource.resource_uri } : {})
+        });
+        continue;
+      }
+
+      if (role === "assistant") {
+        if (text) {
+          push(msg, time, "note", { channel: channel || "", text });
+        } else {
+          for (const title of Array.isArray(metadata.reasoning_titles) ? metadata.reasoning_titles : []) {
+            if (String(title || "").trim()) push(msg, time, "thought", { summary: String(title).trim(), content: "", finished: true });
+          }
+        }
+        continue;
+      }
+
+      if (text) {
+        push(msg, time, "other", { role, recipient, channel, contentType, text });
+      }
+    }
+
+    markCitedTraceSources(sources, messages, options.citations || []);
+    const sourceList = [...sources.values()];
+    const count = (kind) => events.filter((event) => event.kind === kind).length;
+
+    return {
+      version: AGENT_TRACE_VERSION,
+      model,
+      startedAt: formatTraceTime(firstTime),
+      finishedAt: formatTraceTime(lastTime),
+      durationSeconds: durationSeconds || null,
+      stats: {
+        events: events.length,
+        thoughts: count("thought"),
+        notes: count("note"),
+        toolCalls: count("tool_call"),
+        toolResults: count("tool_result"),
+        hiddenInputs: events.filter((event) => event.inputHidden).length,
+        sources: sourceList.length,
+        citedSources: sourceList.filter((source) => source.cited).length
+      },
+      events,
+      sources: sourceList,
+      citations: options.citations || [],
+      memories: options.memories || []
+    };
+  }
+
+  // Pairs results with calls. Parallel calls are answered in call order, and
+  // nodes carry no call id. Tools that open each answer with an empty `code`
+  // node (api_tool.*) start a new answer only at that marker; other tools
+  // answer each call with one result node.
+  function createTraceCallQueue() {
+    const pending = [];
+    const current = new Map();
+    const markerTools = new Set();
+    const take = (tool) => {
+      const index = pending.findIndex((call) => !tool || call.tool === tool);
+      return index >= 0 ? pending.splice(index, 1)[0] : null;
+    };
+    return {
+      add(call) {
+        pending.push(call);
+      },
+      match(tool, isMarker) {
+        if (isMarker) markerTools.add(tool);
+        const startsAnswer = isMarker || !markerTools.has(tool) || !current.has(tool);
+        const call = (startsAnswer && take(tool)) || current.get(tool) || null;
+        if (call) current.set(tool || call.tool, call);
+        return call;
+      }
+    };
+  }
+
+  function isTraceToolCall(msg, recipient) {
+    if (recipient && recipient !== "all") {
+      return true;
+    }
+    const metadata = msg.metadata || {};
+    return metadata.reasoning_status === "is_reasoning" && String(msg.content?.content_type || "") === "code";
+  }
+
+  function getTraceText(content) {
+    if (!content || typeof content !== "object") return "";
+    if (typeof content.text === "string") return content.text.trim();
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    return parts.filter((part) => typeof part === "string").join("\n").trim();
+  }
+
+  function getTraceTitle(metadata) {
+    return String(metadata.reasoning_title || (Array.isArray(metadata.reasoning_titles) ? metadata.reasoning_titles[0] : "") || "").trim();
+  }
+
+  function parseTraceJson(text) {
+    if (!/^[[{]/.test(text)) return undefined;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      // Tool input that only looks like JSON stays as plain text in `input`.
+      return undefined;
+    }
+  }
+
+  function formatTraceTime(seconds) {
+    return seconds ? new Date(seconds * 1000).toISOString() : "";
+  }
+
+  function collectTraceSources(metadata, sources, seq) {
+    const found = [];
+    for (const group of Array.isArray(metadata.search_result_groups) ? metadata.search_result_groups : []) {
+      for (const entry of Array.isArray(group?.entries) ? group.entries : []) {
+        if (!entry?.url) continue;
+        const refId = entry.ref_id ? formatCitationRefId(entry.ref_id) : "";
+        const source = {
+          url: entry.url,
+          title: entry.title || "",
+          domain: group.domain || entry.attribution || "",
+          snippet: entry.snippet || "",
+          ...(entry.pub_date ? { pubDate: entry.pub_date } : {}),
+          ...(refId ? { refId } : {}),
+          ...(group.search_query ? { query: group.search_query } : {})
+        };
+        found.push(source);
+        const known = sources.get(entry.url);
+        if (known) {
+          known.seenAt.push(seq);
+          if (refId && !known.refIds.includes(refId)) known.refIds.push(refId);
+        } else {
+          sources.set(entry.url, { url: source.url, title: source.title, domain: source.domain, snippet: source.snippet, refIds: refId ? [refId] : [], seenAt: [seq], cited: false });
+        }
+      }
+    }
+    return found;
+  }
+
+  function markCitedTraceSources(sources, messages, citations) {
+    const citedUrls = new Set(citations.map((citation) => citation?.metadata?.url || citation?.url).filter(Boolean));
+    const answerText = messages.filter((msg) => isApiFinalAnswerMessage(msg)).map((msg) => getTraceText(msg.content)).join("\n");
+    const citedRefs = new Set(answerText.match(/turn\d+[a-z_]+\d+/gi) || []);
+    for (const source of sources.values()) {
+      source.cited = citedUrls.has(source.url) || source.refIds.some((refId) => citedRefs.has(refId));
+    }
+  }
+
+  function recordAgentTraceDiagnostics(trace, debugLog, turnNumber) {
+    if (!debugLog) return;
+    const thoughts = trace.events.filter((event) => event.kind === "thought");
+    for (const thought of thoughts) {
+      if (thought.summary && !thought.content) {
+        debugLog.fidelityWarning?.({
+          turnNumber,
+          severity: "info",
+          code: "EMPTY_THOUGHT_CONTENT",
+          message: `Thought step "${thought.summary}" has no descriptive body in API payload`,
+          details: { summary: thought.summary, nodeId: thought.nodeId }
+        });
+      }
+    }
+    debugLog.recordThinkingDiagnostic?.({
+      turnNumber,
+      totalSteps: thoughts.length,
+      stepsWithFullContent: thoughts.filter((thought) => thought.summary && thought.content).length,
+      stepsWithSummaryOnly: thoughts.filter((thought) => thought.summary && !thought.content).length,
+      durationSec: trace.durationSeconds || 0,
+      searchQueriesCount: trace.events.reduce((sum, event) => sum + (event.kind === "tool_call" ? (event.queries?.length || 0) : 0), 0),
+      toolCallsCount: trace.stats.toolCalls,
+      hasRecap: trace.events.some((event) => event.kind === "recap")
+    });
+  }
+
+  // The PDF thinking timeline, in the order ChatGPT's thinking panel shows it.
+  // Search steps list every source not already listed in this turn; tool
+  // outputs stay in the agent-trace files.
+  function renderAgentTraceThinkingMarkdown(trace) {
+    const lines = [];
+    const shownUrls = new Set();
+    const seen = new Set();
+    const add = (icon, label, content) => {
+      const clean = String(content || "").trim();
+      if (!clean || seen.has(`${label}:${clean}`)) return;
+      seen.add(`${label}:${clean}`);
+      const [first, ...rest] = clean.split("\n").map((line) => line.trim()).filter(Boolean);
+      lines.push(`- ${icon} **${label}**: ${first}`, ...rest.map((line) => `  ${line}`));
+    };
+    const calls = new Map(trace.events.filter((event) => event.kind === "tool_call").map((event) => [event.seq, event]));
+    const answeredCalls = new Set(trace.events.map((event) => event.callSeq).filter(Boolean));
+
+    for (const event of trace.events) {
+      if (event.kind === "thought") {
+        add("🧠", "推理思考", event.summary && event.content && event.summary !== event.content ? `**${event.summary}**\n${event.content}` : event.summary || event.content);
+      } else if (event.kind === "note") {
+        add("💬", "分析计划", event.text);
+      } else if (event.kind === "recap") {
+        add("⏱️", "思考总结", event.text);
+      } else if (event.kind === "tool_result" && event.sources?.length) {
+        const call = calls.get(event.callSeq);
+        const queries = uniqueStrings([...(call?.queries || []), ...(event.queries || [])]);
+        const links = event.sources.filter((source) => !shownUrls.has(source.url));
+        links.forEach((source) => shownUrls.add(source.url));
+        add("🔍", "网页搜索", [
+          event.title || call?.title || "联网检索",
+          queries.length ? `检索 \`${queries.slice(0, 3).join("`, `")}\`` : "",
+          links.length ? `查阅 ${links.map((source) => `[${escapeMarkdownLinkLabel(source.title || source.domain || source.url)}](${source.url})`).join(" · ")}` : ""
+        ].filter(Boolean).join(" · "));
+      } else if (event.kind === "tool_call" && !isTraceSearchTool(event.tool) && (event.title || !event.inputHidden)) {
+        add(...describeTraceToolCall(event));
+      } else if (event.kind === "tool_call" && !answeredCalls.has(event.seq) && (event.title || event.queries?.length)) {
+        add("🔍", "网页搜索", [event.title || "联网检索", event.queries?.length ? `检索 \`${event.queries.slice(0, 3).join("`, `")}\`` : ""].filter(Boolean).join(" · "));
+      }
+    }
+
+    const cited = trace.citations
+      .map((citation, index) => {
+        const title = citation?.metadata?.title || citation?.title || citation?.metadata?.name || `来源 [${index + 1}]`;
+        const url = citation?.metadata?.url || citation?.url || citation?.metadata?.extra?.url || citation?.metadata?.cloud_doc_url || "";
+        return url ? `[${escapeMarkdownLinkLabel(title)}](${url})` : `📄 ${title}`;
+      });
+    if (cited.length) {
+      add("🌐", "引用来源", uniqueStrings(cited).join(" · "));
+    }
+
+    const duration = trace.durationSeconds || 0;
+    if (!lines.length && !duration) {
+      return "";
+    }
+    const header = duration
+      ? `> 💭 **Thinking Process (Worked for ${duration >= 60 ? `${Math.floor(duration / 60)}m ${duration % 60}s` : `${duration}s`})**`
+      : "> 💭 **Thinking Process**";
+    return lines.length ? `${header}\n>\n${lines.map((line) => `> ${line}`).join("\n")}` : header;
+  }
+
+  function isTraceSearchTool(tool) {
+    return tool === "web.run" || tool === "browser" || tool === "search" || tool.startsWith("web.");
+  }
+
+  function describeTraceToolCall(event) {
+    const tool = event.tool;
+    if (tool === "container.exec" || tool === "python") {
+      const firstLine = String(event.input || "").split("\n").find((line) => line.trim()) || "";
+      return ["⚙️", "执行代码", [event.title, firstLine ? `\`${truncatePreview(firstLine.replace(/`/g, "'"), 120)}\`` : ""].filter(Boolean).join(" · ")];
+    }
+    if (tool.includes("image") || tool.startsWith("dalle")) {
+      return ["🖼️", "生成图像", event.title || "生成图像"];
+    }
+    if (tool.includes("myfiles") || tool.includes("file_search")) {
+      return ["📄", "读取文件", event.title || "读取上传的文件"];
+    }
+    const action = String(event.arguments?.path || "").split("/").filter(Boolean).pop() || tool;
+    const args = event.arguments?.args ? truncatePreview(JSON.stringify(event.arguments.args), 160) : "";
+    return ["🔧", "调用工具", [event.title, `\`${action}\``, args ? `\`${args.replace(/`/g, "'")}\`` : ""].filter(Boolean).join(" · ")];
+  }
   const FAST_CONVERSATION_API_PAGE_SIZE = 100;
   const FAST_CONVERSATION_API_MAX_PAGES = 200;
 
@@ -7479,10 +7852,10 @@
       }
     }
 
-    // 1. Cognitive reasoning extraction (single source of truth for timeline and agentTrace)
-    const parsedReasoning = FastThinkingEngine.parseTurnReasoning(nodes, citations, debugLog, turnNumber);
-    const thinkingMarkdown = cleanApiMarkdown(FastThinkingEngine.buildTurnThinkingTimeline(parsedReasoning, citations));
-    const agentTrace = FastThinkingEngine.extractTurnAgentTrace(parsedReasoning, citations, memories);
+    // 1. The ordered agent trace is the single source of the thinking timeline.
+    const agentTrace = buildTurnAgentTrace(nodes, { citations, memories });
+    recordAgentTraceDiagnostics(agentTrace, debugLog, turnNumber);
+    const thinkingMarkdown = cleanApiMarkdown(renderAgentTraceThinkingMarkdown(agentTrace));
 
     // 2. Aggregate prose text, image pointers, generated files and attachments
     const markupContext = createChatGptMarkupContext({
@@ -8028,576 +8401,6 @@
       .slice(0, 160)
       .replace(/[[\]\\]/g, "\\$&")
       || "Image";
-  }
-
-  // ============================================================================
-  // FAST THINKING & COGNITIVE REASONING ENGINE
-  // ============================================================================
-
-  const FastThinkingEngine = {
-    parseTurnReasoning(nodes, citations = [], debugLog = null, turnNumber = null) {
-      const thinkingSteps = [];
-      const searchSteps = [];
-      const toolInvocations = [];
-      const fileIngestions = [];
-      const internalToolCalls = [];
-      let maxDurationSec = 0;
-      let recapText = "";
-      const seenStepKeys = new Set();
-
-      const safeNodes = Array.isArray(nodes) ? nodes : (nodes ? [nodes] : []);
-      const consumedNodeIndices = new Set();
-
-      for (let i = 0; i < safeNodes.length; i++) {
-        if (consumedNodeIndices.has(i)) continue;
-        const node = safeNodes[i];
-        const msg = node?.message;
-        if (!msg) continue;
-
-        const role = String(msg.author?.role || "").toLowerCase();
-        const recipient = String(msg.recipient || msg.metadata?.recipient || "").toLowerCase();
-        const channel = String(msg.channel || msg.metadata?.channel || "").toLowerCase();
-        const contentType = String(msg.content?.content_type || "").toLowerCase();
-        const metadata = msg.metadata || {};
-
-        const duration = Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0);
-        if (duration > maxDurationSec) {
-          maxDurationSec = duration;
-        }
-
-        // 1. Content Type: reasoning_recap
-        if (contentType === "reasoning_recap") {
-          const recapContent = typeof msg.content?.content === "string" ? msg.content.content.trim() : "";
-          if (recapContent) {
-            recapText = recapContent;
-          }
-          continue;
-        }
-
-        // 2. Multi-step Thoughts (msg.content.thoughts array)
-        if (Array.isArray(msg.content?.thoughts) && msg.content.thoughts.length) {
-          for (const t of msg.content.thoughts) {
-            const summary = String(t?.summary || "").trim();
-            const content = String(t?.content || "").trim();
-            if (!summary && !content) continue;
-
-            const key = `thought:${summary}:${content}`;
-            if (seenStepKeys.has(key)) continue;
-            seenStepKeys.add(key);
-
-            thinkingSteps.push({
-              type: "thinking",
-              nodeId: node.id,
-              channel: channel || "reasoning",
-              summary,
-              content,
-              duration
-            });
-
-            if (summary && !content) {
-              debugLog?.fidelityWarning?.({
-                turnNumber,
-                severity: "info",
-                code: "EMPTY_THOUGHT_CONTENT",
-                message: `Thought step "${summary}" has no descriptive body in API payload`,
-                details: { summary, nodeId: node.id }
-              });
-            }
-          }
-          continue;
-        }
-
-        // 3. Web Search during Reasoning (is_reasoning or reasoning_title)
-        if (
-          metadata.reasoning_status === "is_reasoning"
-          || (role === "assistant" && contentType === "code" && metadata.reasoning_title)
-        ) {
-          const title = String(metadata.reasoning_title || "").trim();
-          let queries = Array.isArray(metadata.search_queries) ? [...metadata.search_queries] : [];
-          const results = [];
-
-          // Scan forward for tool message with search_result_groups
-          for (let k = i + 1; k < safeNodes.length; k++) {
-            const nextMsg = safeNodes[k]?.message;
-            if (!nextMsg) continue;
-            if (nextMsg.author?.role !== "tool") break;
-            const nextMeta = nextMsg.metadata || {};
-            if (Array.isArray(nextMeta.search_result_groups)) {
-              consumedNodeIndices.add(k);
-              for (const grp of nextMeta.search_result_groups) {
-                if (grp?.search_query) queries.push(grp.search_query);
-                if (Array.isArray(grp?.entries)) {
-                  for (const entry of grp.entries) {
-                    if (entry?.url || entry?.title) {
-                      results.push({
-                        title: entry.title || grp.domain || entry.url || "",
-                        url: entry.url || "",
-                        snippet: entry.snippet || ""
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          queries = uniqueStrings(queries);
-          if (title || queries.length || results.length) {
-            searchSteps.push({
-              type: "searching",
-              nodeId: node.id,
-              title: title || "联网检索",
-              queries,
-              results
-            });
-          }
-          continue;
-        }
-
-        // 4. Standard Web Searches (recipient === "web.run" / "browser" or metadata search results)
-        if (recipient === "web.run" || recipient === "browser" || metadata.search_result_groups || metadata.search_results) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          let queries = [];
-          for (const p of parts) {
-            if (typeof p === "string") {
-              const match = p.match(/"q(?:uery)?"\s*:\s*"([^"]+)"/g);
-              if (match) {
-                queries.push(...match.map((m) => m.replace(/.*"([^"]+)"$/, "$1")));
-              }
-            }
-          }
-          if (Array.isArray(metadata.search_result_groups)) {
-            for (const grp of metadata.search_result_groups) {
-              if (grp?.search_query) queries.push(grp.search_query);
-            }
-          }
-          queries = uniqueStrings(queries);
-
-          const results = [];
-          if (Array.isArray(metadata.search_results)) {
-            for (const r of metadata.search_results) {
-              if (r?.url || r?.title) {
-                results.push({ title: r.title || "", url: r.url || "", snippet: r.snippet || "" });
-              }
-            }
-          }
-          if (Array.isArray(metadata.search_result_groups)) {
-            for (const grp of metadata.search_result_groups) {
-              if (Array.isArray(grp?.entries)) {
-                for (const entry of grp.entries) {
-                  if (entry?.url || entry?.title) {
-                    results.push({ title: entry.title || grp.domain || entry.url || "", url: entry.url || "", snippet: entry.snippet || "" });
-                  }
-                }
-              }
-            }
-          }
-
-          if (queries.length || results.length) {
-            searchSteps.push({
-              type: "searching",
-              nodeId: node.id,
-              title: "联网检索",
-              queries,
-              results
-            });
-          }
-        }
-
-        // 5. Commentary / Analysis / General Thinking Nodes. Tool results also
-        // arrive on the commentary channel (opened pages, API responses); only
-        // the model's own notes belong in the thinking timeline.
-        const isCommentary = channel === "commentary" || msg.metadata?.is_thinking_preamble_message === true;
-        if (role !== "tool" && (isCommentary || channel === "analysis" || channel === "reasoning" || contentType === "thoughts" || isApiThinkingNode(msg))) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const text = parts.filter((p) => typeof p === "string" && p.trim()).join("\n");
-          if (text && !looksLikeInternalApiToolCall(text) && !looksLikeApiJsonPayload(text)) {
-            const key = `text:${channel}:${text}`;
-            if (!seenStepKeys.has(key)) {
-              seenStepKeys.add(key);
-              thinkingSteps.push({
-                type: isCommentary ? "commentary" : "thinking",
-                nodeId: node.id,
-                channel: channel || (isCommentary ? "commentary" : "reasoning"),
-                summary: "",
-                content: text,
-                duration
-              });
-            }
-          }
-        }
-
-        // 6. Reasoning Titles metadata fallback
-        if (Array.isArray(metadata.reasoning_titles)) {
-          for (const title of metadata.reasoning_titles) {
-            const cleanTitle = String(title || "").trim();
-            if (cleanTitle && !seenStepKeys.has(`title:${cleanTitle}`)) {
-              seenStepKeys.add(`title:${cleanTitle}`);
-              thinkingSteps.push({
-                type: "thinking",
-                nodeId: node.id,
-                channel: "reasoning",
-                summary: cleanTitle,
-                content: "",
-                duration
-              });
-            }
-          }
-        }
-
-        // 7. Fallback simple string thoughts (metadata.reasoning, metadata.thinking, etc.)
-        const simpleThoughts = [metadata.reasoning, metadata.reasoning_content, metadata.thinking, metadata.thoughts]
-          .filter((v) => typeof v === "string" && v.trim());
-        for (const thought of simpleThoughts) {
-          if (!looksLikeInternalApiToolCall(thought) && !looksLikeApiJsonPayload(thought)) {
-            const key = `simple:${thought}`;
-            if (!seenStepKeys.has(key)) {
-              seenStepKeys.add(key);
-              thinkingSteps.push({
-                type: "thinking",
-                nodeId: node.id,
-                channel: "reasoning",
-                summary: "",
-                content: thought,
-                duration
-              });
-            }
-          }
-        }
-
-        // 8. Tool Invocations & Skill Integrations
-        if (recipient.includes("google_drive") || recipient.includes("api_tool")) {
-          const docCitation = citations.find((c) => c?.metadata?.title || c?.title);
-          const docTitle = docCitation?.metadata?.title || docCitation?.title || "";
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: "调用工具",
-            icon: "🔌",
-            description: `**Google Drive** · ${docTitle ? `读取文档《${docTitle}》` : "查询相关文档"}`
-          });
-        } else if (recipient === "container.exec" || recipient === "python") {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const codeText = parts.filter((p) => typeof p === "string").join(" ");
-          const isSlide = /slides|pptx/i.test(codeText);
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: isSlide ? "调用技能" : "执行代码",
-            icon: isSlide ? "🎨" : "⚙️",
-            description: isSlide ? "**Slide Generator** · 生成 PPTX 幻灯片演示文稿" : "**Python Sandbox** · 执行数据与资产处理",
-            preview: codeText.slice(0, 500)
-          });
-        } else if (recipient === "dalle.text2im" || recipient.includes("image")) {
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: "生成图像",
-            icon: "🖼️",
-            description: "**DALL-E** · 渲染多模态视觉设计与图标",
-            preview: "image generation"
-          });
-        }
-
-        // 9. File Ingestion Slices & Internal Tool Execution
-        if (role === "tool" || isApiInternalToolCallNode(msg)) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const rawText = parts.filter((p) => typeof p === "string").join("\n");
-          const isFileIngest = isApiInternalFileIngestionText(rawText);
-
-          if (isFileIngest) {
-            fileIngestions.push({
-              nodeId: node.id,
-              recipient,
-              sizeBytes: rawText.length,
-              rawText
-            });
-          } else if (rawText) {
-            internalToolCalls.push({
-              nodeId: node.id,
-              role,
-              recipient,
-              rawContent: rawText,
-              preview: rawText.slice(0, 500)
-            });
-          }
-        }
-      }
-
-      // Record Turn Diagnostic to debugLog if available
-      if (debugLog?.recordThinkingDiagnostic) {
-        const stepsWithFullContent = thinkingSteps.filter((s) => s.content && s.summary).length;
-        const stepsWithSummaryOnly = thinkingSteps.filter((s) => !s.content && s.summary).length;
-        const searchQueriesCount = searchSteps.reduce((sum, s) => sum + s.queries.length, 0);
-
-        debugLog.recordThinkingDiagnostic({
-          turnNumber,
-          totalSteps: thinkingSteps.length,
-          stepsWithFullContent,
-          stepsWithSummaryOnly,
-          durationSec: maxDurationSec,
-          searchQueriesCount,
-          toolCallsCount: toolInvocations.length + internalToolCalls.length,
-          hasRecap: Boolean(recapText)
-        });
-      }
-
-      return {
-        thinkingSteps,
-        searchSteps,
-        toolInvocations,
-        fileIngestions,
-        internalToolCalls,
-        maxDurationSec,
-        recapText
-      };
-    },
-
-    buildTurnThinkingTimeline(parsedReasoning, citations = []) {
-      const steps = [];
-      const seenStepText = new Set();
-
-      function addStep(icon, label, content) {
-        const cleanContent = String(content || "").trim();
-        if (!cleanContent) return;
-        const key = `${label}:${cleanContent}`;
-        if (seenStepText.has(key)) return;
-        seenStepText.add(key);
-
-        const lines = cleanContent.split("\n").map((l) => l.trim()).filter(Boolean);
-        if (lines.length > 1) {
-          steps.push(`- ${icon} **${label}**: ${lines[0]}`);
-          for (let i = 1; i < lines.length; i++) {
-            steps.push(`  ${lines[i]}`);
-          }
-        } else {
-          steps.push(`- ${icon} **${label}**: ${cleanContent}`);
-        }
-      }
-
-      // 1. Thinking Steps (Formatting both summary title and detailed prose)
-      for (const step of parsedReasoning.thinkingSteps || []) {
-        const summary = step.summary;
-        const content = step.content;
-        const icon = step.type === "commentary" ? "💬" : "🧠";
-        const label = step.type === "commentary" ? "分析计划" : "推理思考";
-
-        if (summary && content && summary !== content) {
-          addStep(icon, label, `**${summary}**\n${content}`);
-        } else if (summary || content) {
-          addStep(icon, label, summary || content);
-        }
-      }
-
-      // 2. Searches during and outside reasoning
-      for (const search of parsedReasoning.searchSteps || []) {
-        const title = search.title || "联网检索";
-        const queriesText = search.queries?.length ? ` · 检索 \`${search.queries.slice(0, 3).join("`, `")}\`` : "";
-        const foundLinks = (search.results || [])
-          .filter((r) => r.url)
-          .slice(0, 4)
-          .map((r) => `[${r.title || r.url}](${r.url})`);
-        const linksText = foundLinks.length ? ` · 查阅 ${foundLinks.join(" · ")}` : "";
-        addStep("🔍", "网页搜索", `${title}${queriesText}${linksText}`);
-      }
-
-      // 3. Tool Invocations
-      for (const tool of parsedReasoning.toolInvocations || []) {
-        addStep(tool.icon || "🔧", tool.label || "执行工具", tool.description);
-      }
-
-      // 4. Recap
-      if (parsedReasoning.recapText) {
-        addStep("⏱️", "思考总结", parsedReasoning.recapText);
-      }
-
-      // 5. Source Citations
-      const activeCitations = (citations || [])
-        .map((c, i) => {
-          const title = c?.metadata?.title || c?.title || c?.metadata?.name || `来源 [${i + 1}]`;
-          const url = c?.metadata?.url || c?.url || c?.metadata?.extra?.url || c?.metadata?.cloud_doc_url || "";
-          return url ? `[${title}](${url})` : `📄 ${title}`;
-        })
-        .filter(Boolean);
-      if (activeCitations.length) {
-        addStep("🌐", "引用来源", activeCitations.slice(0, 6).join(" · "));
-      }
-
-      if (!steps.length && (!parsedReasoning.maxDurationSec || parsedReasoning.maxDurationSec === 0)) {
-        return "";
-      }
-
-      const durationPrefix = parsedReasoning.maxDurationSec > 0
-        ? `Worked for ${parsedReasoning.maxDurationSec >= 60 ? `${Math.floor(parsedReasoning.maxDurationSec / 60)}m ${parsedReasoning.maxDurationSec % 60}s` : `${parsedReasoning.maxDurationSec}s`}`
-        : "";
-
-      const header = durationPrefix ? `> 💭 **Thinking Process (${durationPrefix})**` : "> 💭 **Thinking Process**";
-
-      if (!steps.length) {
-        return header;
-      }
-
-      return `${header}\n>\n` + steps.map((s) => `> ${s}`).join("\n");
-    },
-
-    extractTurnAgentTrace(parsedReasoning, citations = [], memories = []) {
-      const activities = [];
-      const thinkingNodes = [];
-      const searches = [];
-
-      for (const step of parsedReasoning.thinkingSteps || []) {
-        const summary = step.summary;
-        const content = step.content;
-        const fullSnippet = content || summary;
-        thinkingNodes.push({
-          nodeId: step.nodeId,
-          channel: step.channel,
-          contentType: "thoughts",
-          durationSeconds: step.duration || parsedReasoning.maxDurationSec,
-          summary,
-          content: content || summary
-        });
-        activities.push({
-          type: "reasoning",
-          channel: step.channel,
-          durationSeconds: step.duration || parsedReasoning.maxDurationSec,
-          summary,
-          snippet: fullSnippet.slice(0, 600)
-        });
-      }
-
-      for (const search of parsedReasoning.searchSteps || []) {
-        searches.push({
-          nodeId: search.nodeId,
-          recipient: "web.run",
-          queries: search.queries,
-          results: search.results
-        });
-        activities.push({
-          type: "web_search",
-          queries: search.queries,
-          title: search.title,
-          resultCount: search.results?.length || 0
-        });
-      }
-
-      for (const file of parsedReasoning.fileIngestions || []) {
-        activities.push({
-          type: "file_ingestion",
-          recipient: file.recipient,
-          sizeBytes: file.sizeBytes,
-          preview: file.rawText.slice(0, 300)
-        });
-      }
-
-      for (const tool of parsedReasoning.internalToolCalls || []) {
-        activities.push({
-          type: "tool_execution",
-          role: tool.role,
-          recipient: tool.recipient,
-          preview: (tool.preview || "").slice(0, 300)
-        });
-      }
-
-      for (const tool of parsedReasoning.toolInvocations || []) {
-        activities.push({
-          type: "tool_execution",
-          role: tool.role,
-          recipient: tool.recipient,
-          preview: (tool.preview || tool.description || "").slice(0, 300)
-        });
-      }
-
-      return {
-        activityCount: activities.length,
-        activities,
-        thinkingNodes,
-        searches,
-        internalToolCalls: parsedReasoning.internalToolCalls || [],
-        fileIngestions: parsedReasoning.fileIngestions || [],
-        citations: citations || [],
-        memories: memories || []
-      };
-    },
-
-    extractApiThinkingMarkdown(message) {
-      const metadata = message?.metadata || {};
-      const durationSec = Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0);
-      const durationPrefix = durationSec > 0
-        ? `Worked for ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s` : `${durationSec}s`}`
-        : "";
-
-      const thoughtItems = [];
-
-      // Multi-step thoughts: extract BOTH summary and content
-      if (Array.isArray(message?.content?.thoughts)) {
-        for (const t of message.content.thoughts) {
-          const summary = String(t?.summary || "").trim();
-          const content = String(t?.content || "").trim();
-          if (summary && content && summary !== content) {
-            thoughtItems.push(`**${summary}**\n\n${content}`);
-          } else if (content || summary) {
-            thoughtItems.push(content || summary);
-          }
-        }
-      }
-
-      // String thoughts fallback
-      const candidates = [
-        metadata.reasoning,
-        metadata.reasoning_content,
-        metadata.thinking,
-        metadata.thinking_text,
-        metadata.thoughts
-      ];
-      for (const c of candidates) {
-        if (typeof c === "string" && c.trim() && !thoughtItems.includes(c.trim())) {
-          thoughtItems.push(c.trim());
-        }
-      }
-
-      if (Array.isArray(metadata.reasoning_titles)) {
-        for (const title of metadata.reasoning_titles) {
-          if (title && !thoughtItems.some((item) => item.includes(title))) {
-            thoughtItems.push(title);
-          }
-        }
-      }
-
-      let thinkingText = thoughtItems.join("\n\n").trim();
-      if (durationPrefix && thinkingText) {
-        thinkingText = `> 💭 **Thinking Process (${durationPrefix})**\n>\n` + thinkingText.split("\n").map((line) => `> ${line}`).join("\n");
-      } else if (durationPrefix && !thinkingText) {
-        thinkingText = `> 💭 **Thinking Process (${durationPrefix})**`;
-      }
-
-      return thinkingText;
-    }
-  };
-
-  function buildTurnThinkingTimeline(nodesOrParsed, citations = []) {
-    if (nodesOrParsed && Array.isArray(nodesOrParsed.thinkingSteps)) {
-      return FastThinkingEngine.buildTurnThinkingTimeline(nodesOrParsed, citations);
-    }
-    const nodes = Array.isArray(nodesOrParsed) ? nodesOrParsed : (nodesOrParsed ? [nodesOrParsed] : []);
-    const parsed = FastThinkingEngine.parseTurnReasoning(nodes, citations);
-    return FastThinkingEngine.buildTurnThinkingTimeline(parsed, citations);
-  }
-
-  function extractTurnAgentTrace(nodesOrParsed, citations = [], memories = []) {
-    if (nodesOrParsed && Array.isArray(nodesOrParsed.thinkingSteps)) {
-      return FastThinkingEngine.extractTurnAgentTrace(nodesOrParsed, citations, memories);
-    }
-    const nodes = Array.isArray(nodesOrParsed) ? nodesOrParsed : (nodesOrParsed ? [nodesOrParsed] : []);
-    const parsed = FastThinkingEngine.parseTurnReasoning(nodes, citations);
-    return FastThinkingEngine.extractTurnAgentTrace(parsed, citations, memories);
-  }
-
-  function extractApiThinkingMarkdown(message) {
-    return FastThinkingEngine.extractApiThinkingMarkdown(message);
   }
 
   function extractApiGeneratedFilesMarkdown(message) {

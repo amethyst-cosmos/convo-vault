@@ -1,6 +1,6 @@
 {
   "name": "convo-vault",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "private": true,
   "description": "Deterministic, private, and auditable ChatGPT export vault with complete local state control.",
   "scripts": {
