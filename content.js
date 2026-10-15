@@ -220,7 +220,6 @@
   const ASSISTANT_SIGNAL_RE = /\b(assistant|bot-message|bot|model-response|model|response|answer|completion|markdown|prose)\b/i;
   const FILE_NAME_RE = /[^\\/:*?"<>|\n\r]{1,140}\.(?:pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav)/i;
   const FILE_ATTACHMENT_RE = /\b(file|attachment|download|uploaded|pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav|document)\b|\u6587\u4ef6|\u9644\u4ef6|\u4e0b\u8f7d|\u6587\u6863/i;
-  const IMAGE_DATA_URI_CACHE = new Map();
   let lastTurnNodeCache = null;
   let lastTurnNodeCacheAt = 0;
   const LANGUAGE_ALIASES = new Map([
@@ -1351,7 +1350,7 @@
     const sources = uniqueStrings(messages.flatMap((message) => [
       ...extractMarkdownImageUrls(message?.markdown),
       ...extractMarkdownImageUrls(message?.thinkingMarkdown)
-    ]).filter((source) => getChatGptFileImageId(source)));
+    ]).filter((source) => getChatGptFileImageId(source) || isChatGptSessionImageUrl(source)));
     const images = {};
     const failures = {};
 
@@ -1371,7 +1370,10 @@
         cursor += 1;
 
         try {
-          const blob = await fetchChatGptFileImage(getChatGptFileImageId(source), { accessToken, conversationId });
+          const fileId = getChatGptFileImageId(source);
+          const blob = fileId
+            ? await fetchChatGptFileImage(fileId, { accessToken, conversationId })
+            : await fetchChatGptSessionImage(source);
           images[source] = await blobToDataUri(blob);
         } catch (error) {
           failures[source] = error?.message || String(error);
@@ -1391,6 +1393,36 @@
       failureSamples: [...new Set(Object.values(failures))].slice(0, 5)
     });
     return { images, failures };
+  }
+
+  // Images the ChatGPT page shows from its own origin (estuary content and
+  // file downloads captured by Full mode) are signed for the page session.
+  function isChatGptSessionImageUrl(source) {
+    try {
+      const url = new URL(source);
+      return url.origin === location.origin && url.pathname.startsWith("/backend-api/");
+    } catch (error) {
+      // Relative or malformed references are not ChatGPT session URLs.
+      return false;
+    }
+  }
+
+  async function fetchChatGptSessionImage(source) {
+    const response = await fetchWithTimeout(source, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include"
+    });
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      throw new Error(`image download HTTP ${response.status}`);
+    }
+
+    if (!/^image\//i.test(contentType)) {
+      throw new Error(`image download returned ${contentType || "no content type"}`);
+    }
+
+    return response.blob();
   }
 
   function getChatGptFileImageId(source) {
@@ -10906,14 +10938,6 @@
       return imageMarkdown ? `\n\n${imageMarkdown}\n\n` : "";
     }
 
-    if (false && hasUsefulBackgroundImage(element)) {
-      const imageMarkdown = await backgroundImageElementToMarkdown(element, state);
-
-      if (imageMarkdown) {
-        return `\n\n${imageMarkdown}\n\n${await serializeNodeChildren(element, state)}`;
-      }
-    }
-
     if (tag === "code" && element.closest("pre") === null && isStandaloneCodeBlock(element)) {
       state.codeBlockCount += 1;
       return `\n\n${formatCodeBlockFromElement(element)}\n\n`;
@@ -11336,69 +11360,6 @@
     return `![${escapeMarkdownLinkLabel(alt)}](${src})\n\n<!-- Image base64 embedding is deferred until export to avoid page side effects. -->`;
   }
 
-  async function backgroundImageElementToMarkdown(element, state) {
-    const src = getBackgroundImageUrl(element);
-
-    if (!src) {
-      return "";
-    }
-
-    const alt = sanitizeAltText(element.getAttribute("aria-label") || element.getAttribute("title") || "background-image");
-    state.imageCount += 1;
-
-    try {
-      const dataUri = await imageToDataUriFromSrc(src);
-      state.imagesEmbedded += 1;
-      state.imageEvents?.push({
-        type: "background-image",
-        src,
-        ok: true
-      });
-      return `![${escapeMarkdownLinkLabel(alt)}](${dataUri})`;
-    } catch (error) {
-      state.imagesFailed += 1;
-      state.imageEvents?.push({
-        type: "background-image",
-        src,
-        ok: false,
-        error: error.message || String(error)
-      });
-      return `![${escapeMarkdownLinkLabel(alt)}](${src})\n\n<!-- Background image could not be converted to base64: ${escapeHtmlComment(error.message || String(error))} -->`;
-    }
-  }
-
-  function hasUsefulBackgroundImage(element) {
-    if (element.closest("button:not(.group__menu-item):not(.hoverable), [role='button']:not(.group__menu-item):not(.hoverable), nav, aside, header, footer")) {
-      return false;
-    }
-
-    const src = getBackgroundImageUrl(element);
-
-    if (!src) {
-      return false;
-    }
-
-    const width = element.clientWidth || Number(element.getAttribute("width")) || 0;
-    const height = element.clientHeight || Number(element.getAttribute("height")) || 0;
-
-    return width >= 40 && height >= 40;
-  }
-
-  function getBackgroundImageUrl(element) {
-    const backgroundImage = window.getComputedStyle(element).backgroundImage || "";
-    const match = backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-
-    if (!match?.[1] || match[1].startsWith("data:image/svg")) {
-      return "";
-    }
-
-    try {
-      return new URL(match[1], location.href).href;
-    } catch {
-      return match[1];
-    }
-  }
-
   function canvasElementToMarkdown(canvas, state) {
     const width = canvas.width || canvas.clientWidth;
     const height = canvas.height || canvas.clientHeight;
@@ -11467,64 +11428,6 @@
 
   function getMediaHeight(element) {
     return Number(element.getAttribute?.("height")) || element.naturalHeight || element.height || element.clientHeight || 0;
-  }
-
-  async function imageToDataUriFromSrc(src) {
-    if (src.startsWith("data:")) {
-      return src;
-    }
-
-    if (IMAGE_DATA_URI_CACHE.has(src)) {
-      const cached = IMAGE_DATA_URI_CACHE.get(src);
-
-      if (cached.ok) {
-        return cached.dataUri;
-      }
-
-      throw new Error(cached.error);
-    }
-
-    try {
-      const dataUri = await requestImageFromBackground(src);
-      IMAGE_DATA_URI_CACHE.set(src, {
-        ok: true,
-        dataUri
-      });
-      return dataUri;
-    } catch (error) {
-      IMAGE_DATA_URI_CACHE.set(src, {
-        ok: false,
-        error: error.message || String(error)
-      });
-      throw error;
-    }
-  }
-
-  function requestImageFromBackground(src) {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        {
-          type: "FETCH_IMAGE_AS_DATA_URI",
-          src,
-          pageUrl: location.href
-        },
-        (response) => {
-          const runtimeError = chrome.runtime.lastError;
-
-          if (runtimeError) {
-            reject(new Error(runtimeError.message));
-            return;
-          }
-
-          if (!response?.ok) {
-            reject(new Error(response?.error || "Background image fetch failed."));
-            return;
-          }
-
-          resolve(response.dataUri);
-        }
-      );
-    });
   }
 
   function formatCodeBlock(pre) {

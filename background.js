@@ -1,24 +1,10 @@
 const IMAGE_FETCH_TIMEOUT_MS = 6000;
-const ACCESS_TOKEN_TIMEOUT_MS = 3500;
 const SETTINGS_STORAGE_KEY = "convoVaultSettings";
 const DEFAULT_RENDERER_PORT = 38474;
 const LOCAL_RENDERER_BUNDLE_PORT = "CONVO_VAULT_LOCAL_RENDERER_BUNDLE";
 const MAX_LOCAL_RENDERER_REQUEST_BYTES = 256 * 1024 * 1024;
 const LOCAL_RENDERER_KEEPALIVE_MS = 15000;
 const LOCAL_RENDERER_ASSET_CONCURRENCY = 4;
-const accessTokenCache = new Map();
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "FETCH_IMAGE_AS_DATA_URI") {
-    return false;
-  }
-
-  fetchImageAsDataUri(message.src, message.pageUrl)
-    .then((dataUri) => sendResponse({ ok: true, dataUri }))
-    .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
-
-  return true;
-});
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port?.name !== LOCAL_RENDERER_BUNDLE_PORT) {
@@ -320,7 +306,7 @@ async function resolveStageableImageBlob(source, options) {
     throw new Error(`page download failed: ${pageFailure}`);
   }
 
-  return fetchImageAsBlob(source, options.pageUrl);
+  return fetchImageAsBlob(source);
 }
 
 function readPageImageMap(value) {
@@ -511,22 +497,11 @@ function isTrustedExporterSender(sender) {
   }
 }
 
-async function fetchImageAsDataUri(src, pageUrl) {
-  if (!src) {
-    throw new Error("Missing image URL.");
-  }
-
-  if (src.startsWith("data:")) {
-    return src;
-  }
-
-  const blob = await fetchImageAsBlob(src, pageUrl);
-  const mimeType = blob.type || "application/octet-stream";
-  const base64 = await blobToBase64(blob);
-  return `data:${mimeType};base64,${base64}`;
-}
-
-async function fetchImageAsBlob(src, pageUrl) {
+// ChatGPT-hosted images (file-service://, sediment://, and chatgpt.com
+// /backend-api/ URLs) need the page session, so the content script downloads
+// them and sends the bytes. The service worker only resolves data URIs and
+// fetches public third-party images, without cookies.
+async function fetchImageAsBlob(src) {
   if (!src) {
     throw new Error("Missing image URL.");
   }
@@ -535,52 +510,13 @@ async function fetchImageAsBlob(src, pageUrl) {
     return dataUriToBlob(src);
   }
 
-  const candidates = buildImageFetchCandidates(src, pageUrl);
-  const errors = [];
-  const seen = new Set();
-
-  for (const candidate of candidates) {
-    try {
-      return await fetchImageCandidateAsBlob(candidate, pageUrl, seen);
-    } catch (error) {
-      errors.push(`${candidate.label}: ${error.message || error}`);
-    }
+  if (!/^https?:\/\//i.test(src)) {
+    throw new Error("ChatGPT file reference was not downloaded by the page.");
   }
 
-  throw new Error(`Image fetch failed. ${errors.slice(0, 4).join("; ")}`);
-}
-
-async function fetchImageCandidateAsBlob(candidate, pageUrl, seen = new Set()) {
-  if (!candidate?.url || seen.has(candidate.url)) {
-    throw new Error("duplicate or missing candidate URL");
-  }
-
-  if (/^data:image\//i.test(candidate.url)) {
-    return dataUriToBlob(candidate.url);
-  }
-
-  seen.add(candidate.url);
-
-  const headers = {
-    accept: candidate.kind === "metadata"
-      ? "application/json,*/*;q=0.8"
-      : "image/avif,image/webp,image/apng,image/svg+xml,image/*,application/json,*/*;q=0.8"
-  };
-  const origin = getUrlOrigin(candidate.url);
-
-  if (origin && isTrustedChatGptOrigin(origin)) {
-    const accessToken = await getChatGptAccessToken(origin);
-
-    if (accessToken) {
-      headers.authorization = `Bearer ${accessToken}`;
-    }
-  }
-
-  const response = await fetchWithTimeout(candidate.url, {
+  const response = await fetchWithTimeout(src, {
     timeoutMs: IMAGE_FETCH_TIMEOUT_MS,
-    credentials: "include",
-    referrer: pageUrl || undefined,
-    headers
+    credentials: "omit"
   });
 
   if (!response.ok) {
@@ -589,31 +525,12 @@ async function fetchImageCandidateAsBlob(candidate, pageUrl, seen = new Set()) {
 
   const contentType = response.headers.get("content-type") || "";
 
-  if (/json/i.test(contentType)) {
-    const metadata = await response.json();
-    const nestedCandidates = extractImageUrlsFromMetadata(metadata)
-      .flatMap((url) => buildImageFetchCandidates(url, pageUrl))
-      .filter((next) => next.url && !seen.has(next.url));
-    const nestedErrors = [];
-
-    for (const nextCandidate of nestedCandidates) {
-      try {
-        return await fetchImageCandidateAsBlob(nextCandidate, pageUrl, seen);
-      } catch (error) {
-        nestedErrors.push(`${nextCandidate.label}: ${error.message || error}`);
-      }
-    }
-
-    throw new Error(`metadata did not resolve to image${nestedErrors.length ? ` (${nestedErrors.slice(0, 3).join("; ")})` : ""}`);
-  }
-
   if (contentType && !/^image\//i.test(contentType) && !/octet-stream/i.test(contentType)) {
     throw new Error(`unexpected content-type ${contentType}`);
   }
 
   const blob = await response.blob();
-  const mimeType = blob.type || response.headers.get("content-type") || "application/octet-stream";
-  return blob.type === mimeType ? blob : new Blob([blob], { type: mimeType });
+  return blob.type ? blob : new Blob([blob], { type: contentType || "application/octet-stream" });
 }
 
 function dataUriToBlob(dataUri) {
@@ -628,158 +545,6 @@ function dataUriToBlob(dataUri) {
     bytes[index] = binary.charCodeAt(index);
   }
   return new Blob([bytes], { type: match[1] || "application/octet-stream" });
-}
-
-function buildImageFetchCandidates(src, pageUrl) {
-  const value = String(src || "").trim();
-
-  if (/^data:image\//i.test(value)) {
-    return [{ label: "direct:data", url: value }];
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    return [{ label: "direct", url: value }];
-  }
-
-  const origin = getTrustedChatGptOrigin(pageUrl) || "https://chatgpt.com";
-
-  if (/^\//.test(value)) {
-    return [{ label: "relative", url: new URL(value, origin).href }];
-  }
-
-  const pointer = getInternalAssetPointer(value);
-
-  if (!pointer.fileId) {
-    return [{ label: "direct", url: value }];
-  }
-
-  const encodedId = encodeURIComponent(pointer.fileId);
-  const labelPrefix = pointer.scheme || "asset";
-  const paths = [
-    `/backend-api/files/${encodedId}/content`,
-    `/backend-api/files/${encodedId}/download`,
-    `/backend-api/files/${encodedId}/image`,
-    `/backend-api/files/${encodedId}/thumbnail`,
-    `/backend-api/files/${encodedId}`,
-    `/backend-api/files/${encodedId}?download=1`,
-    `/backend-api/estuary/content?id=${encodedId}&p=fs`,
-    `/backend-api/estuary/content?id=${encodedId}&p=fs&v=0`,
-    `/backend-api/sediment/files/${encodedId}/content`,
-    `/backend-api/sediment/files/${encodedId}/download`,
-    `/backend-api/sediment/files/${encodedId}`
-  ];
-
-  return paths.map((path, index) => ({
-    label: `${labelPrefix}:${index + 1}`,
-    url: new URL(path, origin).href,
-    kind: isMetadataAssetPath(path, encodedId) ? "metadata" : "image"
-  }));
-}
-
-function isMetadataAssetPath(path, encodedId) {
-  return path.endsWith(`/${encodedId}`) && !/(?:content|download|image|thumbnail|\?)/i.test(path);
-}
-
-function getInternalAssetPointer(value) {
-  const text = String(value || "").trim();
-  const schemeMatch = text.match(/^(file-service|sediment):\/\//i);
-  const scheme = schemeMatch ? schemeMatch[1] : "asset";
-
-  // Look for standard file IDs (e.g. file_00000000968881fa85680179ee957d99 or file-...)
-  const fileMatch = text.match(/(file_[a-f0-9]{32}|file-[a-zA-Z0-9_-]+)/i);
-  const fallbackMatch = text.match(/^(?:file-service|sediment):\/\/([^/?#]+)/i);
-  const fileId = fileMatch ? fileMatch[1] : (fallbackMatch?.[1] || "");
-
-  return {
-    scheme,
-    fileId
-  };
-}
-
-function extractImageUrlsFromMetadata(metadata) {
-  const urls = [];
-  const seen = new Set();
-  const preferredKey = /(?:url|href|uri|download|content|image|thumbnail|preview|signed|asset)/i;
-
-  function visit(value, key = "", depth = 0) {
-    if (depth > 5 || value == null) {
-      return;
-    }
-
-    if (typeof value === "string") {
-      const text = value.trim();
-      if (
-        text
-        && preferredKey.test(key)
-        && /^(?:https?:\/\/|\/|file-service:\/\/|sediment:\/\/|data:image\/)/i.test(text)
-        && !seen.has(text)
-      ) {
-        seen.add(text);
-        urls.push(text);
-      }
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach((item) => visit(item, key, depth + 1));
-      return;
-    }
-
-    if (typeof value === "object") {
-      Object.entries(value).forEach(([childKey, childValue]) => {
-        visit(childValue, childKey, depth + 1);
-      });
-    }
-  }
-
-  visit(metadata);
-  return urls;
-}
-
-async function getChatGptAccessToken(origin) {
-  if (!origin || !isTrustedChatGptOrigin(origin)) {
-    return "";
-  }
-
-  if (accessTokenCache.has(origin)) {
-    return accessTokenCache.get(origin);
-  }
-
-  try {
-    const response = await fetchWithTimeout(new URL("/api/auth/session", origin).href, {
-      timeoutMs: ACCESS_TOKEN_TIMEOUT_MS,
-      credentials: "include",
-      cache: "no-store",
-      headers: {
-        accept: "application/json"
-      }
-    });
-
-    if (!response.ok) {
-      accessTokenCache.set(origin, "");
-      return "";
-    }
-
-    const session = await response.json();
-    const token = extractAccessTokenFromSession(session);
-    accessTokenCache.set(origin, token);
-    return token;
-  } catch (_) {
-    accessTokenCache.set(origin, "");
-    return "";
-  }
-}
-
-function extractAccessTokenFromSession(session) {
-  const candidates = [
-    session?.accessToken,
-    session?.access_token,
-    session?.token,
-    session?.user?.accessToken,
-    session?.user?.access_token
-  ];
-
-  return String(candidates.find((value) => typeof value === "string" && value.length > 20) || "");
 }
 
 async function fetchWithTimeout(url, options = {}) {
@@ -800,43 +565,4 @@ async function fetchWithTimeout(url, options = {}) {
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function getTrustedChatGptOrigin(pageUrl) {
-  try {
-    const parsed = new URL(pageUrl || "");
-    return isTrustedChatGptOrigin(parsed.origin) ? parsed.origin : "";
-  } catch (_) {
-    return "";
-  }
-}
-
-function getUrlOrigin(url) {
-  try {
-    return new URL(url).origin;
-  } catch (_) {
-    return "";
-  }
-}
-
-function isTrustedChatGptOrigin(origin) {
-  try {
-    const hostname = new URL(origin).hostname.toLowerCase();
-    return hostname === "chatgpt.com" || hostname === "chat.openai.com";
-  } catch (_) {
-    return false;
-  }
-}
-
-async function blobToBase64(blob) {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const chunkSize = 0x8000;
-  let binary = "";
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
 }

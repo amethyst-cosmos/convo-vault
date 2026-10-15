@@ -108,10 +108,11 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(fastModule, /fastCapture\.thinkingMerged/);
   assert.match(fastModule, /removeApiPrivateUseArtifacts/);
   assert.match(fullModule, /async function hydrateVirtualizedTurns/);
-  assert.match(background, /file-service/);
-  assert.match(background, /sediment/);
-  assert.match(background, /\/backend-api\/files\/\$\{encodedId\}\/content/);
-  assert.match(background, /extractImageUrlsFromMetadata/);
+  // ChatGPT-hosted images are downloaded by the page; the worker only fetches public images.
+  assert.match(generated, /\/backend-api\/files\/download\//);
+  assert.match(background, /credentials: "omit"/);
+  assert.doesNotMatch(background, /\/api\/auth\/session/);
+  assert.doesNotMatch(background, /FETCH_IMAGE_AS_DATA_URI/);
   assert.match(background, /CONVO_VAULT_LOCAL_RENDERER_BUNDLE/);
   assert.match(background, /\/prepare-render-bundle/);
   assert.match(background, /chrome\.downloads\.download/);
