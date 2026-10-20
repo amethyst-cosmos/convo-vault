@@ -378,3 +378,32 @@
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : index + 1;
   }
+
+  function getRoleSequenceDiagnostics(messages) {
+    const sameRolePairs = [];
+
+    for (let index = 1; index < messages.length; index += 1) {
+      if (messages[index]?.role === messages[index - 1]?.role) {
+        sameRolePairs.push({
+          previousOrder: messages[index - 1].order,
+          order: messages[index].order,
+          role: messages[index].role,
+          previousPreview: messages[index - 1].preview || makeMessagePreview(messages[index - 1]),
+          preview: messages[index].preview || makeMessagePreview(messages[index])
+        });
+      }
+    }
+
+    const userCount = messages.filter((message) => message.role === "user").length;
+    const assistantCount = messages.filter((message) => message.role === "assistant").length;
+
+    return {
+      totalMessages: messages.length,
+      userMessages: userCount,
+      assistantMessages: assistantCount,
+      startsWithUser: messages[0]?.role === "user",
+      endsWithAssistant: messages[messages.length - 1]?.role === "assistant",
+      balancedPairs: userCount === assistantCount && messages[0]?.role === "user" && messages[messages.length - 1]?.role === "assistant",
+      sameRolePairs
+    };
+  }

@@ -267,7 +267,7 @@
         const capturedTurnOrderSet = new Set(capturedTurnOrders);
         const roleSequenceDiagnostics = getRoleSequenceDiagnostics(messages);
         const effectiveTurnCount = messages.length;
-        const availableTurnOrders = getAvailableConversationTurnOrders();
+        const availableTurnOrders = [];
         const allDiscoveredOrders = [...new Set([
           ...capturedTurnOrders,
           ...availableTurnOrders

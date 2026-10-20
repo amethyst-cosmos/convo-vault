@@ -34,7 +34,7 @@
 node <位置>/cli/convo-vault.mjs export "<链接>"
 ```
 
-默认 Fast 模式，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选模式或点面板。详细规则见已安装的 `convo-vault` skill。
+导出整段对话，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选任何东西或点弹窗。详细规则见已安装的 `convo-vault` skill。
 
 ## 更新与排错
 

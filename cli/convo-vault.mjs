@@ -35,6 +35,7 @@ Usage:
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open]
   convo-vault verify [--browser NAME]
   convo-vault update
+  convo-vault reload [--browser NAME]
   convo-vault doctor
   convo-vault skill install [--agents auto|claude|codex|all]
   convo-vault mcp install [--client claude-desktop]   (or: mcp config)
@@ -61,6 +62,7 @@ try {
     case "setup": await setup(flags); break;
     case "verify": await verify(flags); break;
     case "update": await update(flags); break;
+    case "reload": await reloadExtension(flags); break;
     case "doctor": await doctor(); break;
     case "skill":
       if (positional[0] !== "install") throw new Error("Usage: convo-vault skill install");
@@ -313,6 +315,28 @@ async function verify(flags) {
   ].join("\n"));
 }
 
+// Makes the loaded extension reload itself, so a rebuilt dist/ takes effect without a click.
+// Needs a version that already knows the reload job; older ones must be reloaded by hand once.
+async function reloadExtension(flags) {
+  const config = await readConfig();
+  const candidates = await browserCandidates(flags.browser || config.browser);
+  await ensureBackend(log);
+
+  for (const browser of candidates) {
+    const jobId = await createJob({ reload: true, closeTab: true });
+    log(`Asking the extension in ${browser?.name || "the default browser"} to reload...`);
+    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+
+    if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
+      await sleep(1500);
+      console.log("The extension reloaded itself.");
+      return;
+    }
+  }
+
+  throw new Error("The extension did not answer. If this is the first time after an update, reload it by hand once on the extensions page; after that this command works.");
+}
+
 // Pulls the latest code (git checkouts only), then repeats setup so the skill and extension match.
 async function update(flags) {
   if (!(await fs.stat(path.join(repoRoot, ".git")).then(() => true, () => false))) {
@@ -325,7 +349,13 @@ async function update(flags) {
 
   await stopBackend();
   await setup({ ...flags, open: false });
-  console.log("\nUpdated. If the extension was already loaded, reload it on the browser's Extensions page.");
+  try {
+    await reloadExtension(flags);
+  } catch (error) {
+    console.log(`\nUpdated. ${error.message}`);
+    return;
+  }
+  console.log("\nUpdated.");
 }
 
 async function printSkillInstall(target) {

@@ -13,6 +13,9 @@
 - **只导出数据**：`--no-pdf`（MCP 参数 `pdf: false`）跳过 PDF，不依赖无头 Chrome
 - **修复**：`--no-extract` 和 `setup --no-open` 之前不生效
 - **修复（首次在 Chrome 真实导出时发现）**：Markdown 里出现了 ChatGPT 生成式界面的 fallback 遗留的布局标签（`<box ...>`、`<row ...>`、`<checkbox .../>`），现已去掉，复选框改为 `- [ ]` / `- [x]`；PDF 本来就是对的
+- **只用 Fast 抓取**：删除 Full、Hybrid 模式、页面滚动扫描和消息选择面板。对话直接读 ChatGPT 接口，不滚动、不点击，导出整段对话；弹窗只有一个 **Export this conversation** 按钮；CLI 和 MCP 去掉 `--mode`。约 4,600 行死代码被清理
+- **扩展自重载**：`convo-vault reload`（以及 `update`）能让重建后的扩展自己重新加载。构建改为原地更新 `dist/convo-vault-extension`，因为删除整个文件夹会让 Chrome 把扩展禁用
+- **Lint**：`npm run lint`（CI 里也跑）检查“用到但已不存在的名字”，这是共享作用域的内容脚本在重构时容易犯的错
 - **代码整理**：`extension/`（浏览器加载的全部源码）、`renderer/`（本地服务，原 `tools/advanced-pdf`）、`cli/`（命令行和 MCP 服务）、`scripts/`（仓库工具）。4,600 行的 `render.js`、1,300 行的 `server.js` 和 2,400 行的内容脚本 `index.js` 都按职责拆成模块，样式表移到 `renderer/static/render.css`；生成的内容脚本和所有测试样本渲染出的 HTML 与拆分前逐字节相同。`content.js` 不再提交。删除了无人引用的 `templates/`、`schemas/`、`configs/` 和 PowerShell 脚本
 - **项目规范**：英文成为 README、CHANGELOG、INSTALL 的默认语言（中文版为 `*.zh-CN.md`）；新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板、更完整的 `package.json` 元数据、PDF 效果样张，以及 `npm run package` 生成的发布包
 

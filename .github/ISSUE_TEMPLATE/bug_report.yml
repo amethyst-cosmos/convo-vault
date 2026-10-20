@@ -20,18 +20,9 @@ body:
       options:
         - Agent (skill or MCP)
         - CLI
-        - Extension panel
+        - Extension popup
     validations:
       required: true
-  - type: dropdown
-    id: mode
-    attributes:
-      label: Capture mode
-      options:
-        - Fast
-        - Hybrid
-        - Full
-        - Not sure
   - type: input
     id: platform
     attributes:

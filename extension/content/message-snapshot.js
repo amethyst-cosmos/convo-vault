@@ -378,3 +378,31 @@
     return parts.join(" > ");
   }
 
+  function makeMessagePreview(message) {
+    const text = [
+      message.markdown,
+      message.thinkingMarkdown ? `Thinking: ${message.thinkingMarkdown}` : ""
+    ].filter(Boolean).join(" ");
+    const preview = text
+      .replace(/```[\s\S]*?```/g, "[code block]")
+      .replace(/!\[[^\]]*]\([^)]+\)/g, "[image]")
+      .replace(/[#*_>`~\[\]()|]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (preview) {
+      return truncatePreview(preview, 30);
+    }
+
+    const extras = [];
+
+    if (message.codeBlockCount) {
+      extras.push(`${message.codeBlockCount} code block(s)`);
+    }
+
+    if (message.imageCount) {
+      extras.push(`${message.imageCount} image(s)`);
+    }
+
+    return extras.join(", ") || "No text preview available.";
+  }

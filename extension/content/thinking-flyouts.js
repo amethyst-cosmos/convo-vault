@@ -463,7 +463,7 @@
     }
 
     target.thinkingMarkdown = snapshot.markdown;
-    target.preview = messageExtractor.preview(target);
+    target.preview = makeMessagePreview(target);
     return true;
   }
 

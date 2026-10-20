@@ -49,6 +49,13 @@
       return;
     }
 
+    if (claim.options?.reload) {
+      await sendAutoExportMessage({ action: "status", jobId, state: "working", message: "Reloading the extension." });
+      await sendAutoExportMessage({ action: "close-tab", jobId });
+      await sendAutoExportMessage({ action: "reload-extension", jobId });
+      return;
+    }
+
     if (claim.options?.ping) {
       await sendAutoExportMessage({ action: "status", jobId, state: "working", message: "Extension is installed and responding." });
       await sendAutoExportMessage({ action: "close-tab", jobId });

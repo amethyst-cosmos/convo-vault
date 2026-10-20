@@ -101,3 +101,15 @@ test("a data-only job skips the PDF when exporting", async () => {
 
   assert.equal(exportOptions.skipPdf, true);
 });
+
+test("a reload job closes its tab and asks the extension to reload without exporting", async () => {
+  let exported = false;
+  const harness = load({
+    claim: { ok: true, options: { reload: true, closeTab: true } },
+    exportConversation: async () => { exported = true; }
+  });
+  await settle();
+
+  assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab", "reload-extension"]);
+  assert.equal(exported, false);
+});
