@@ -4,6 +4,10 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.5
+
+- **The skill is now called `convo-vault-skill`.** With the project's own name, agents could not tell whether "convo-vault" meant the project or the skill. The folder is `skills/convo-vault-skill`, and `skill install` removes the old `convo-vault` folder when it is this skill's.
+
 ## 0.11.4
 
 - **Self-contained skill.** `skills/convo-vault` now holds `SKILL.md`, `scripts/run.mjs` and `agents/openai.yaml`. The launcher finds the Convo Vault project (`CONVO_VAULT_DIR`, the path `setup` records, or the usual folders) and clones it from GitHub the first time, so the folder works wherever it is saved. `skill install --dir <folder>` copies it to any folder.

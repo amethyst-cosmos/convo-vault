@@ -1,5 +1,5 @@
 ---
-name: convo-vault
+name: convo-vault-skill
 description: Export a ChatGPT conversation into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, agent trace) with no manual clicking. Use when the user asks to download, save, archive, back up, export or import a ChatGPT conversation or chat history, gives a chatgpt.com/c/... link or conversation id, or shares a screenshot of a ChatGPT conversation and wants its full content. 触发词：下载/导出/保存/归档 ChatGPT 对话、把这段对话存下来、这个对话的链接或截图。
 ---
 

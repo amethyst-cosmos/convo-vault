@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readZip } from "../cli/lib/zip-reader.mjs";
 import http from "node:http";
 import { createServer } from "node:net";
@@ -171,18 +171,18 @@ test("the skill folder installs anywhere, with its own path in SKILL.md and a la
   const target = await mkdtemp(path.join(os.tmpdir(), "convo-vault-skill-"));
   t.after(() => rm(target, { recursive: true, force: true }));
 
-  const template = await readFile(path.join(repoRoot, "skills", "convo-vault", "SKILL.md"), "utf8");
-  assert.match(template, /^---\nname: convo-vault\ndescription: .+\n---\n/);
+  const template = await readFile(path.join(repoRoot, "skills", "convo-vault-skill", "SKILL.md"), "utf8");
+  assert.match(template, /^---\nname: convo-vault-skill\ndescription: .+\n---\n/);
   assert.ok(template.includes('node "{{SKILL_DIR}}/scripts/run.mjs" export'));
 
   const installed = await run(["skill", "install", "--dir", target]);
   assert.equal(installed.status, 0, installed.stderr);
 
-  const skillDir = path.join(target, "convo-vault");
+  const skillDir = path.join(target, "convo-vault-skill");
   const skill = await readFile(path.join(skillDir, "SKILL.md"), "utf8");
   assert.ok(skill.includes(`node "${skillDir}/scripts/run.mjs" export`), "SKILL.md carries the folder path");
   assert.ok(!skill.includes("{{SKILL_DIR}}"));
-  assert.match(await readFile(path.join(skillDir, "agents", "openai.yaml"), "utf8"), /display_name: "Convo Vault"/);
+  assert.match(await readFile(path.join(skillDir, "agents", "openai.yaml"), "utf8"), /display_name: "Convo Vault Skill"/);
 
   // The copied launcher runs the project's CLI (found through CONVO_VAULT_DIR).
   const help = spawnSync(process.execPath, [path.join(skillDir, "scripts", "run.mjs"), "help"], {
@@ -191,6 +191,19 @@ test("the skill folder installs anywhere, with its own path in SKILL.md and a la
   });
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /convo-vault export/);
+});
+
+test("installing the skill removes the old convo-vault folder, and only when it is this skill", async (t) => {
+  const target = await mkdtemp(path.join(os.tmpdir(), "convo-vault-skill-legacy-"));
+  t.after(() => rm(target, { recursive: true, force: true }));
+  await mkdir(path.join(target, "convo-vault"), { recursive: true });
+  await writeFile(path.join(target, "convo-vault", "SKILL.md"), "---\nname: convo-vault\ndescription: old\n---\n");
+  await mkdir(path.join(target, "other"), { recursive: true });
+
+  assert.equal((await run(["skill", "install", "--dir", target])).status, 0);
+  assert.equal(await stat(path.join(target, "convo-vault")).then(() => true, () => false), false, "old folder removed");
+  assert.equal(await stat(path.join(target, "convo-vault-skill", "SKILL.md")).then(() => true, () => false), true);
+  assert.equal(await stat(path.join(target, "other")).then(() => true, () => false), true, "other folders untouched");
 });
 
 function run(args) {

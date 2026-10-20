@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { repoRoot } from "./backend.mjs";
 
-const SKILL_NAME = "convo-vault";
+const SKILL_NAME = "convo-vault-skill";
+// Before 0.11.5 the skill had the project's name, which agents confused with the project itself.
+const LEGACY_SKILL_NAME = "convo-vault";
 const SKILL_SOURCE = path.join(repoRoot, "skills", SKILL_NAME);
 
 // Agents that read SKILL.md folders, with the folder they scan.
@@ -43,11 +45,22 @@ export async function installSkill(target = "auto", options = {}) {
 
   for (const destination of destinations) {
     const skillDir = path.join(destination.parent, SKILL_NAME);
+    await removeLegacySkill(destination.parent);
     await copySkillFolder(SKILL_SOURCE, skillDir, skillDir);
     installed.push({ id: destination.id, label: destination.label, path: path.join(skillDir, "SKILL.md") });
   }
 
   return installed;
+}
+
+// Deletes the old "convo-vault" folder, but only when it is this skill's SKILL.md.
+async function removeLegacySkill(parent) {
+  const legacyDir = path.join(parent, LEGACY_SKILL_NAME);
+  const legacyFile = await fs.readFile(path.join(legacyDir, "SKILL.md"), "utf8").catch(() => "");
+
+  if (/^name:\s*convo-vault\s*$/m.test(legacyFile)) {
+    await fs.rm(legacyDir, { recursive: true, force: true });
+  }
 }
 
 async function copySkillFolder(source, destination, skillDir) {

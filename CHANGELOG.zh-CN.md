@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 0.11.5
+
+- **skill 改名为 `convo-vault-skill`**：和项目同名时，Agent 分不清“convo-vault”指项目还是 skill。文件夹是 `skills/convo-vault-skill`，`skill install` 会清掉旧的 `convo-vault` 文件夹（仅当它是这个 skill 的）
+
 ## 0.11.4
 
 - **自成一体的 skill**：`skills/convo-vault` 现在包含 `SKILL.md`、`scripts/run.mjs` 和 `agents/openai.yaml`。启动脚本会自己找到 Convo Vault 项目（环境变量 `CONVO_VAULT_DIR`、`setup` 记下的路径或常用位置），第一次用时自动从 GitHub 克隆，所以放在哪里都能用。`skill install --dir <文件夹>` 可以把它装到任意文件夹
