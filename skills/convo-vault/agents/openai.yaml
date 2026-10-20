@@ -1,0 +1,4 @@
+interface:
+  display_name: "Convo Vault"
+  short_description: "Export a ChatGPT conversation to Markdown, PDF and structured data"
+  default_prompt: "Use $convo-vault to export this ChatGPT conversation: <link or screenshot>."

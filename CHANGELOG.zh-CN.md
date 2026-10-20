@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 0.11.4
+
+- **自成一体的 skill**：`skills/convo-vault` 现在包含 `SKILL.md`、`scripts/run.mjs` 和 `agents/openai.yaml`。启动脚本会自己找到 Convo Vault 项目（环境变量 `CONVO_VAULT_DIR`、`setup` 记下的路径或常用位置），第一次用时自动从 GitHub 克隆，所以放在哪里都能用。`skill install --dir <文件夹>` 可以把它装到任意文件夹
+
 ## 0.11.3
 
 - **修复：Markdown 里的布局标签**：ChatGPT 生成式界面的源码里有些属性不带引号（`align=start`、`gap=1`），解析器遇到就放弃，导致 `<row>`、`<box>`、`<checkbox>` 漏进 Markdown。现在能读不带引号的值，复选框变成 `- [ ]` / `- [x]`，ChatGPT 自带 fallback 文本也做同样清理；PDF 一直是对的。第一次真实导出发现，第二次确认

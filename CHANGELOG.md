@@ -4,6 +4,10 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.4
+
+- **Self-contained skill.** `skills/convo-vault` now holds `SKILL.md`, `scripts/run.mjs` and `agents/openai.yaml`. The launcher finds the Convo Vault project (`CONVO_VAULT_DIR`, the path `setup` records, or the usual folders) and clones it from GitHub the first time, so the folder works wherever it is saved. `skill install --dir <folder>` copies it to any folder.
+
 ## 0.11.3
 
 - **Fix: layout tags in Markdown.** ChatGPT's generative-UI source writes some attributes without quotes (`align=start`, `gap=1`), and the parser gave up on those tags, so `<row>`, `<box>` and `<checkbox>` showed up in the Markdown. Bare values are now read, checkboxes become `- [ ]` / `- [x]`, and the same clean-up applies to ChatGPT's own fallback text. The PDF was never affected. Found on the first real export and confirmed on the second.

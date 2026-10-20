@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { readZip } from "../cli/lib/zip-reader.mjs";
 import http from "node:http";
@@ -167,10 +167,30 @@ test("CLI rejects links that are not ChatGPT conversations", async () => {
   }
 });
 
-test("skill template points at the CLI placeholder and has valid frontmatter", async () => {
-  const skill = await readFile(path.join(repoRoot, "skills", "convo-vault", "SKILL.md"), "utf8");
-  assert.match(skill, /^---\nname: convo-vault\ndescription: .+\n---\n/);
-  assert.ok(skill.includes('node "{{CLI}}" export'));
+test("the skill folder installs anywhere, with its own path in SKILL.md and a launcher that finds the project", async (t) => {
+  const target = await mkdtemp(path.join(os.tmpdir(), "convo-vault-skill-"));
+  t.after(() => rm(target, { recursive: true, force: true }));
+
+  const template = await readFile(path.join(repoRoot, "skills", "convo-vault", "SKILL.md"), "utf8");
+  assert.match(template, /^---\nname: convo-vault\ndescription: .+\n---\n/);
+  assert.ok(template.includes('node "{{SKILL_DIR}}/scripts/run.mjs" export'));
+
+  const installed = await run(["skill", "install", "--dir", target]);
+  assert.equal(installed.status, 0, installed.stderr);
+
+  const skillDir = path.join(target, "convo-vault");
+  const skill = await readFile(path.join(skillDir, "SKILL.md"), "utf8");
+  assert.ok(skill.includes(`node "${skillDir}/scripts/run.mjs" export`), "SKILL.md carries the folder path");
+  assert.ok(!skill.includes("{{SKILL_DIR}}"));
+  assert.match(await readFile(path.join(skillDir, "agents", "openai.yaml"), "utf8"), /display_name: "Convo Vault"/);
+
+  // The copied launcher runs the project's CLI (found through CONVO_VAULT_DIR).
+  const help = spawnSync(process.execPath, [path.join(skillDir, "scripts", "run.mjs"), "help"], {
+    encoding: "utf8",
+    env: { ...process.env, CONVO_VAULT_DIR: repoRoot }
+  });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /convo-vault export/);
 });
 
 function run(args) {
