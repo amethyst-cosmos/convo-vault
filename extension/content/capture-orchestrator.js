@@ -26,7 +26,7 @@
    */
   async function exportCurrentConversation(options = {}) {
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
-    const capture = await collectConversationMessages({ onProgress, domThinking: options.domThinking === true });
+    const capture = await collectConversationMessages({ onProgress });
     const messages = capture.messages || [];
 
     if (!messages.length) {
@@ -50,8 +50,7 @@
 
     try {
       const { messages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
-        finishDebug: true,
-        domThinking: options.domThinking === true
+        finishDebug: true
       });
       return createValidatedCaptureResult({
         messages,
@@ -74,18 +73,6 @@
     if (!messages.length) {
       debugLog.event("fastCapture.empty", {});
       throw new Error("ChatGPT returned no messages for this conversation.");
-    }
-
-    if (options.domThinking) {
-      // Experimental: also read thinking panels that are open on the page.
-      onProgress("Checking visible thinking details...");
-      await enrichVisibleThinkingFlyouts(messages, debugLog, {
-        autoOpenLimit: FAST_THINKING_FLYOUT_AUTO_OPEN_LIMIT,
-        allowGlobalFallback: false,
-        requireMountedRoot: true,
-        settleTimeoutMs: FAST_THINKING_FLYOUT_SETTLE_TIMEOUT_MS
-      });
-      debugLog.mark("enrichedFastThinkingFlyouts");
     }
 
     if (options.finishDebug !== false) {

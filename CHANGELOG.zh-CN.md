@@ -2,6 +2,28 @@
 
 [English](CHANGELOG.md)
 
+## 0.11.3
+
+- **修复：Markdown 里的布局标签**：ChatGPT 生成式界面的源码里有些属性不带引号（`align=start`、`gap=1`），解析器遇到就放弃，导致 `<row>`、`<box>`、`<checkbox>` 漏进 Markdown。现在能读不带引号的值，复选框变成 `- [ ]` / `- [x]`，ChatGPT 自带 fallback 文本也做同样清理；PDF 一直是对的。第一次真实导出发现，第二次确认
+
+## 0.11.2
+
+只靠 API 就能得到完整的思考记录：
+
+- **不再读页面**：打开并读取页面思考面板的代码，以及页面扫描诊断，都已删除。在 4 个真实对话上（共 28 条消息，单个回答最多 42 个来源），带和不带页面面板导出，思考、工具调用、来源和回答都完全相同，所以 API 记录就是完整来源。内容脚本缩小到原来的三分之一左右
+- **完整性检查只用 ChatGPT 的消息清单**：拿不到清单时导出会停下并说明原因，不再退回页面计数
+- 不再下载调试日志，保真警告只保留在内存里
+
+## 0.11.1
+
+更简单的抓取，扩展能自己重新加载：
+
+- **只用 Fast 抓取**：删除 Full、Hybrid 模式、页面滚动扫描和消息选择面板。对话直接读 ChatGPT 接口，不滚动、不点击，导出整段对话；弹窗只有一个 **Export this conversation** 按钮；CLI 和 MCP 去掉 `--mode`。约 4,600 行死代码被清理
+- **扩展自重载**：`convo-vault reload`（以及 `update`）能让重建后的扩展自己重新加载
+- **Lint**：`npm run lint`（CI 里也跑）检查“用到但已不存在的名字”，这是共享作用域的内容脚本在重构时容易犯的错
+- **构建修复**：构建改为原地更新 `dist/convo-vault-extension`，不再先删文件夹；文件夹被删会让 Chrome 把扩展禁用
+- **修复**：清理死代码时漏掉仍被引用的两个辅助函数，已补回（第一次真实导出时发现）
+
 ## 0.11.0
 
 由 Agent 来跑导出。从这个版本起不用再点面板：对 Claude 或 Codex 说“把这个对话导出来”，或者发一张截图，剩下的它来做。
@@ -12,10 +34,6 @@
 - **渲染服务自动退出**：最后一次使用两分钟后自己退出（处理请求时不会退出）；扩展弹窗的 Copy Start 启动的服务保持常驻
 - **只导出数据**：`--no-pdf`（MCP 参数 `pdf: false`）跳过 PDF，不依赖无头 Chrome
 - **修复**：`--no-extract` 和 `setup --no-open` 之前不生效
-- **修复（首次在 Chrome 真实导出时发现）**：Markdown 里出现了 ChatGPT 生成式界面的 fallback 遗留的布局标签（`<box ...>`、`<row ...>`、`<checkbox .../>`），现已去掉，复选框改为 `- [ ]` / `- [x]`；PDF 本来就是对的
-- **只用 Fast 抓取**：删除 Full、Hybrid 模式、页面滚动扫描和消息选择面板。对话直接读 ChatGPT 接口，不滚动、不点击，导出整段对话；弹窗只有一个 **Export this conversation** 按钮；CLI 和 MCP 去掉 `--mode`。约 4,600 行死代码被清理
-- **扩展自重载**：`convo-vault reload`（以及 `update`）能让重建后的扩展自己重新加载。构建改为原地更新 `dist/convo-vault-extension`，因为删除整个文件夹会让 Chrome 把扩展禁用
-- **Lint**：`npm run lint`（CI 里也跑）检查“用到但已不存在的名字”，这是共享作用域的内容脚本在重构时容易犯的错
 - **代码整理**：`extension/`（浏览器加载的全部源码）、`renderer/`（本地服务，原 `tools/advanced-pdf`）、`cli/`（命令行和 MCP 服务）、`scripts/`（仓库工具）。4,600 行的 `render.js`、1,300 行的 `server.js` 和 2,400 行的内容脚本 `index.js` 都按职责拆成模块，样式表移到 `renderer/static/render.css`；生成的内容脚本和所有测试样本渲染出的 HTML 与拆分前逐字节相同。`content.js` 不再提交。删除了无人引用的 `templates/`、`schemas/`、`configs/` 和 PowerShell 脚本
 - **项目规范**：英文成为 README、CHANGELOG、INSTALL 的默认语言（中文版为 `*.zh-CN.md`）；新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板、更完整的 `package.json` 元数据、PDF 效果样张，以及 `npm run package` 生成的发布包
 

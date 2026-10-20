@@ -112,9 +112,7 @@ function createExportJob(body) {
       // Makes the extension reload itself, so a rebuilt extension takes effect without clicking.
       reload: body?.reload === true,
       // false skips the PDF: a data-only bundle needs no headless Chrome.
-      pdf: body?.pdf !== false,
-      // Experimental: also read thinking panels from the page (for comparison).
-      domThinking: body?.domThinking === true
+      pdf: body?.pdf !== false
     },
     result: null
   };

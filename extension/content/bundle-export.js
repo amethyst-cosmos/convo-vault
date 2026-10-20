@@ -13,25 +13,11 @@
     const metadata = markdownBuilder.metadata(messages, exportedAt);
     const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
       captureMode: options.captureMode,
-      debugLog: options.debugLog,
       jobId: options.jobId,
       skipPdf: options.skipPdf,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
-
-    if (options.debugLog) {
-      options.debugLog.event?.("bundle.generated", {
-        filename,
-        rendererUrl: bundleResult.rendererUrl,
-        exporterVersion: EXPORTER_VERSION,
-        captureMode: normalizeCaptureMode(options.captureMode),
-        assetCount: bundleResult.assetCount || 0,
-        assetStats: bundleResult.assetStats,
-        rendererTimings: bundleResult.rendererTimings || null
-      });
-      downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
-    }
 
     return {
       ok: true,

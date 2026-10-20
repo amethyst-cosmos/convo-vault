@@ -3,10 +3,6 @@
     return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
   }
 
-  function getRawElementText(element) {
-    return String(element?.textContent || "").replace(/\s+/g, " ").trim();
-  }
-
   function cleanMarkdown(markdown) {
     return normalizeMarkdownOutsideCodeFences(String(markdown || ""), (text) => String(text || "")
       .replace(/[ \t]+\n/g, "\n")
@@ -89,55 +85,12 @@
     return "`".repeat(Math.max(3, longestRun + 1));
   }
 
-  function uniqueElements(elements) {
-    return [...new Set(elements.filter(Boolean))];
-  }
-
   function uniqueStrings(values) {
     return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
   }
 
-  function uniqueTopLevelElements(elements) {
-    const sorted = uniqueElements(elements).sort(compareDocumentOrder);
-    const result = [];
-
-    for (const element of sorted) {
-      if (result.some((existing) => existing.contains(element))) {
-        continue;
-      }
-
-      for (let index = result.length - 1; index >= 0; index -= 1) {
-        if (element.contains(result[index])) {
-          result.splice(index, 1);
-        }
-      }
-
-      result.push(element);
-    }
-
-    return result;
-  }
-
-  function compactUrlLabel(url) {
-    if (!url) {
-      return "";
-    }
-
-    try {
-      const parsed = new URL(url, location.href);
-      const leaf = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "");
-      return leaf || parsed.hostname || url;
-    } catch {
-      return url;
-    }
-  }
-
   function escapeMarkdownLinkLabel(text) {
     return String(text || "").replace(/[[\]\\]/g, "\\$&");
-  }
-
-  function cssString(text) {
-    return String(text || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
 
   function sanitizeFilename(name) {
@@ -149,17 +102,3 @@
       || "chatgpt-conversation";
   }
 
-  function hashString(text) {
-    let hash = 2166136261;
-
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-
-    return (hash >>> 0).toString(36);
-  }
-
-  function sleep(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
-  }

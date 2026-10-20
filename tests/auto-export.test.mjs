@@ -50,7 +50,6 @@ test("auto export claims the job, strips the hash, exports, then closes the tab"
   assert.equal(exportOptions.jobId, JOB_ID);
   assert.equal(exportOptions.allowIncomplete, false);
   assert.equal(exportOptions.skipPdf, false);
-  assert.equal(exportOptions.domThinking, false);
 });
 
 test("auto export reports the integrity gate error and keeps the tab open", async () => {

@@ -140,8 +140,7 @@ async function exportConversation(input, flags) {
     jobId = await createJob({
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
-      pdf: flags.pdf !== false,
-      domThinking: flags.domThinking === true
+      pdf: flags.pdf !== false
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser);

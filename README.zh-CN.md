@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.3-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.0`
+当前版本：`0.11.3`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -201,5 +201,11 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.11.3` 修复 Markdown 里漏出布局标签。
+
+`0.11.2` 不再读取页面，思考记录完全来自 API。
+
+`0.11.1` 只用 Fast 抓取（删除 Full、Hybrid 和选择面板），扩展能自己重新加载。
 
 `0.11.0` 由 Agent 来跑导出：skill、MCP 服务、命令行 `export`、自动导出任务和一句话安装。

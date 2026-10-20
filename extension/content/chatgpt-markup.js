@@ -29,6 +29,7 @@
     "box",
     "button",
     "caption",
+    "checkbox",
     "divider",
     "grid",
     "grid-item",
@@ -681,7 +682,9 @@
 
     while ((match = output.match(innermost))) {
       const parts = match[1].split("\n").map((line) => line.trim()).filter(Boolean);
-      output = output.slice(0, match.index) + `\n\n${parts.join(" · ")}\n\n` + output.slice(match.index + match[0].length);
+      // A task item keeps its marker next to the text: "- [ ] item · (High)".
+      const joined = parts.join(" · ").replace(/^(- \[[ x]]) · /, "$1 ");
+      output = output.slice(0, match.index) + `\n\n${joined}\n\n` + output.slice(match.index + match[0].length);
     }
 
     return output.split(DIL_ROW_OPEN).join("").split(DIL_ROW_CLOSE).join("");
@@ -880,7 +883,15 @@
         attributes[attributeName] = { expression: text.slice(index + 1, close) };
         index = close + 1;
       } else {
-        return null;
+        // Bare values such as align=start or gap=1.
+        const bare = text.slice(index).match(/^[^\s"'{}<>/=]+/);
+
+        if (!bare) {
+          return null;
+        }
+
+        attributes[attributeName] = bare[0];
+        index += bare[0].length;
       }
     }
 
@@ -951,6 +962,10 @@
         return tag.selfClosing ? "" : "[";
       case "radio":
         return tag.selfClosing ? "" : "\n- ";
+      case "checkbox": {
+        const checked = attributes.defaultChecked?.expression === "true" || attributes.checked?.expression === "true";
+        return `\n- [${checked ? "x" : " "}] `;
+      }
       case "WritingBlock":
         return tag.selfClosing ? "" : "\n```writing\n";
       case "row":

@@ -444,3 +444,23 @@ test("DIL fallback Markdown drops layout tags the fallback leaves behind and kee
   assert.match(rendered, /^- \[x\] Done item$/m);
   assert.match(rendered, /```html\n<box>keep me<\/box>\n```/);
 });
+
+test("DIL source renders bare attribute values and checkboxes without leaking tags", async () => {
+  const markup = await loadMarkupModule();
+  const rendered = markup.renderDilSourceAsMarkdown([
+    "## Backlog",
+    "<row align=start gap={3}>",
+    "  <text>Intro</text>",
+    "</row>",
+    "<box background=\"surface-secondary\" border={{size:1,color:\"rgba(0,0,0,0.1)\"}} padding={3} radius=\"lg\" align=\"center\" gap=1>",
+    "  <title>Product Backlog</title>",
+    "  <row><checkbox defaultChecked={false} lineThrough={false}/><text>Add a chart</text><badge>High</badge></row>",
+    "  <row><checkbox defaultChecked={true}/><text>Done item</text></row>",
+    "</box>"
+  ].join("\n"));
+
+  assert.doesNotMatch(rendered, /<\/?(?:row|box|checkbox|text|title|badge)\b/);
+  assert.match(rendered, /\*\*Product Backlog\*\*/);
+  assert.match(rendered, /^- \[ \] Add a chart · \(High\)$/m);
+  assert.match(rendered, /^- \[x\] Done item$/m);
+});

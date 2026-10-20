@@ -4,6 +4,28 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.3
+
+- **Fix: layout tags in Markdown.** ChatGPT's generative-UI source writes some attributes without quotes (`align=start`, `gap=1`), and the parser gave up on those tags, so `<row>`, `<box>` and `<checkbox>` showed up in the Markdown. Bare values are now read, checkboxes become `- [ ]` / `- [x]`, and the same clean-up applies to ChatGPT's own fallback text. The PDF was never affected. Found on the first real export and confirmed on the second.
+
+## 0.11.2
+
+The thinking record is complete from the API alone:
+
+- **No more page reading.** The code that opened and read thinking panels on the page, and the page-scan diagnostics, are removed. On four real conversations (28 messages, up to 42 sources in one answer) exporting with and without the page panels gave identical thinking, tool calls, sources and answers, so the API trace is the complete source. The content script is now about a third of its former size.
+- **Integrity check uses ChatGPT's message list only.** If ChatGPT does not return it, the export stops with a clear message instead of falling back to a page census.
+- Debug logs are no longer downloaded; fidelity warnings stay in memory.
+
+## 0.11.1
+
+Simpler capture, and the extension reloads itself:
+
+- **Fast capture only.** Full and Hybrid modes, page scanning and the message selector are gone: the conversation is read from ChatGPT's API, nothing is scrolled or clicked, and the whole conversation is exported. The popup has a single **Export this conversation** button. `--mode` is removed from the CLI and MCP tool. About 4,600 lines of dead code were removed.
+- **Extension self-reload.** `convo-vault reload` (and `update`) make a rebuilt extension reload itself.
+- **Lint.** `npm run lint` (run in CI) flags names that are used but no longer defined, a mistake a refactor can easily make in the shared-scope content script.
+- **Build fix.** The build updates `dist/convo-vault-extension` in place instead of deleting it first. A deleted folder made Chrome disable the extension.
+- **Fix:** two helper functions that the dead-code removal left referenced were restored (found by the first real export).
+
 ## 0.11.0
 
 Agents run the export. From this version you do not click the panel: tell Claude or Codex to export a conversation, or send it a screenshot, and it does the rest.
@@ -14,10 +36,6 @@ Agents run the export. From this version you do not click the panel: tell Claude
 - **The renderer exits by itself** two minutes after its last request (never while a request is running). The one started with **Copy Start** in the popup stays up.
 - **Data-only export.** `--no-pdf` (MCP argument `pdf: false`) skips the PDF, so no headless Chrome is needed.
 - **Fix:** `--no-extract` and `setup --no-open` had no effect.
-- **Fix, found by the first real export in Chrome:** the Markdown showed layout tags that ChatGPT's generative-UI fallback leaves behind (`<box ...>`, `<row ...>`, `<checkbox .../>`). They are removed and checkboxes become `- [ ]` / `- [x]`. The PDF was already correct.
-- **Fast capture only.** Full and Hybrid modes, page scanning and the message selector are gone: the conversation is read from ChatGPT's API, nothing is scrolled or clicked, and the whole conversation is exported. The popup has a single **Export this conversation** button. `--mode` is removed from the CLI and MCP tool. About 4,600 lines of dead code were removed.
-- **Extension self-reload.** `convo-vault reload` (and `update`) make a rebuilt extension reload itself. The build now updates `dist/convo-vault-extension` in place, because deleting the folder made Chrome disable the extension.
-- **Lint.** `npm run lint` (run in CI) flags names that are used but no longer defined, a mistake a refactor can easily make in the shared-scope content script.
 - **Code layout.** `extension/` (everything the browser loads), `renderer/` (the local service, formerly `tools/advanced-pdf`), `cli/` (CLI and MCP server) and `scripts/` (repository tooling). The 4,600-line `render.js` and the 1,300-line `server.js` are split into modules, the 2,400-line content `index.js` into fragments, and the stylesheet moved to `renderer/static/render.css`. The generated content script and the rendered HTML of every test fixture are byte-identical to before. `content.js` is no longer committed. Unused `templates/`, `schemas/`, `configs/` and PowerShell scripts were removed.
 - **Project basics.** English is the default for README, CHANGELOG and INSTALL (Chinese versions are `*.zh-CN.md`); MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates, fuller `package.json` metadata, a PDF output sample, and a release package built by `npm run package`.
 
