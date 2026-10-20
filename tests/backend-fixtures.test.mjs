@@ -16,7 +16,7 @@ const cases = JSON.parse(
   await readFile(path.join(fixturesDir, "export-regression-cases.json"), "utf8")
 );
 const { buildDataBundle, buildMarkdownDocument, normalizePayload } = createRequire(import.meta.url)(
-  path.join(repoRoot, "renderer", "bundle-content.js")
+  path.join(repoRoot, "renderer", "lib", "bundle-content.js")
 );
 
 test("bundle Markdown and data builders preserve export fixture text", async () => {

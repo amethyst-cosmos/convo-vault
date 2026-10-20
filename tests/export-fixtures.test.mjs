@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const require = createRequire(import.meta.url);
-const { buildOutputObjectIndex } = require("../renderer/assets.js");
+const { buildOutputObjectIndex } = require("../renderer/lib/assets.js");
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const fixturesDir = path.join(repoRoot, "tests", "fixtures");

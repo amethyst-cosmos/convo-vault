@@ -13,12 +13,12 @@ const {
   buildAssetManifest,
   dedupeEmbeddedImageAssets,
   externalizeEmbeddedImageAssets
-} = require("./assets");
+} = require("./lib/assets");
 const {
   buildMarkdownDocument,
   normalizePayload,
   writeDataSidecars
-} = require("./bundle-content");
+} = require("./lib/bundle-content");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.CGCE_ADVANCED_PDF_PORT || 38474);

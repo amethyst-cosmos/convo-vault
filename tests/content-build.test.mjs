@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,9 +15,14 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   const background = await readFile(path.join(repoRoot, "background.js"), "utf8");
   const backendServer = [
     await readFile(path.join(repoRoot, "renderer", "server.js"), "utf8"),
-    await readFile(path.join(repoRoot, "renderer", "bundle-content.js"), "utf8")
+    await readFile(path.join(repoRoot, "renderer", "lib", "bundle-content.js"), "utf8")
   ].join("\n");
-  const backendRender = await readFile(path.join(repoRoot, "renderer", "render.js"), "utf8");
+  const rendererLib = path.join(repoRoot, "renderer", "lib");
+  const backendRender = [
+    await readFile(path.join(repoRoot, "renderer", "render.js"), "utf8"),
+    ...await Promise.all((await readdir(rendererLib)).filter((name) => name.endsWith(".js")).map((name) => readFile(path.join(rendererLib, name), "utf8"))),
+    await readFile(path.join(repoRoot, "renderer", "static", "render.css"), "utf8")
+  ].join("\n");
   const manifest = JSON.parse(await readFile(path.join(repoRoot, "manifest.json"), "utf8"));
   const popupHtml = await readFile(path.join(repoRoot, "popup.html"), "utf8");
   const popupJs = await readFile(path.join(repoRoot, "popup.js"), "utf8");
