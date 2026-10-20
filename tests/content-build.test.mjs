@@ -13,11 +13,11 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   const fastModule = await readFile(path.join(repoRoot, "src", "content", "capture-fast.js"), "utf8");
   const fullModule = await readFile(path.join(repoRoot, "src", "content", "capture-full.js"), "utf8");
   const background = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const rendererLib = path.join(repoRoot, "renderer", "lib");
   const backendServer = [
     await readFile(path.join(repoRoot, "renderer", "server.js"), "utf8"),
-    await readFile(path.join(repoRoot, "renderer", "lib", "bundle-content.js"), "utf8")
+    ...await Promise.all((await readdir(rendererLib)).filter((name) => name.endsWith(".js")).map((name) => readFile(path.join(rendererLib, name), "utf8")))
   ].join("\n");
-  const rendererLib = path.join(repoRoot, "renderer", "lib");
   const backendRender = [
     await readFile(path.join(repoRoot, "renderer", "render.js"), "utf8"),
     ...await Promise.all((await readdir(rendererLib)).filter((name) => name.endsWith(".js")).map((name) => readFile(path.join(rendererLib, name), "utf8"))),
