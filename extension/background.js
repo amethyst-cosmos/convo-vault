@@ -62,6 +62,12 @@ async function handleJobMessage(message, sender) {
     return { ok: true };
   }
 
+  if (message.action === "reload-extension") {
+    // Reply first: the service worker restarts right after.
+    setTimeout(() => chrome.runtime.reload(), 300);
+    return { ok: true };
+  }
+
   if (message.action === "close-tab" && sender?.tab?.id) {
     chrome.tabs.remove(sender.tab.id);
     return { ok: true };

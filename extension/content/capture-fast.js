@@ -32,28 +32,6 @@
     return { messages, manifest };
   }
 
-  /**
-   * Loads only the expected conversation structure. Full capture uses it to
-   * order DOM messages and to check completeness; a failure is reported to the
-   * caller, which falls back to DOM-only checks.
-   */
-  async function fetchConversationManifest(debugLog = null, options = {}) {
-    const conversationId = getCurrentConversationId();
-
-    if (!conversationId) {
-      throw new Error("No conversation id was found in the current URL.");
-    }
-
-    const data = await fetchConversationData(conversationId, {
-      timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
-      debugLog,
-      signal: options.signal || null
-    });
-    const manifest = buildConversationManifest(data);
-    logConversationManifest(manifest, debugLog);
-    return manifest;
-  }
-
   function logConversationManifest(manifest, debugLog) {
     debugLog?.event("conversationManifest.built", {
       ...manifest.counts,
@@ -899,54 +877,6 @@
     return enriched;
   }
 
-  async function enrichMessageTimestamps(messages, debugLog = null, options = {}) {
-    const signal = options.signal || null;
-    throwIfCaptureCancelled(signal);
-    const messagesNeedingApiTime = messages.filter((message) => message?.sourceMessageId);
-
-    if (!messagesNeedingApiTime.length) {
-      debugLog?.event("timestamps.skipped", { reason: "no source message ids" });
-      return;
-    }
-
-    const conversationId = getCurrentConversationId();
-
-    if (!conversationId) {
-      debugLog?.event("timestamps.skipped", { reason: "no conversation id in url" });
-      return;
-    }
-
-    try {
-      const data = await fetchConversationData(conversationId, { signal });
-      throwIfCaptureCancelled(signal);
-      const timestampMap = buildConversationTimestampMap(data);
-      let applied = 0;
-
-      for (const message of messagesNeedingApiTime) {
-        const timestamp = timestampMap.get(message.sourceMessageId);
-
-        if (timestamp) {
-          message.timestamp = timestamp;
-          applied += 1;
-        }
-      }
-
-      debugLog?.event("timestamps.enriched", {
-        conversationId,
-        available: timestampMap.size,
-        applied
-      });
-    } catch (error) {
-      if (isCaptureCancelledError(error)) {
-        throw error;
-      }
-      debugLog?.event("timestamps.failed", {
-        conversationId,
-        error: error?.message || String(error)
-      });
-    }
-  }
-
   function getCurrentConversationId() {
     const pathParts = location.pathname.split("/").map(decodePathPart).filter(Boolean);
     const conversationSegmentIndex = pathParts.findIndex((part) => part === "c");
@@ -1451,38 +1381,3 @@
     }
   }
 
-  function buildConversationTimestampMap(data) {
-    const map = new Map();
-    const mapping = getConversationApiMapping(data);
-
-    for (const node of Object.values(mapping)) {
-      const message = node?.message || {};
-      const messageId = message.id || node?.id || "";
-      const timestamp = formatConversationTimestamp(
-        message.create_time ??
-        message.update_time ??
-        message.metadata?.create_time ??
-        message.metadata?.timestamp
-      );
-
-      if (messageId && timestamp) {
-        map.set(messageId, timestamp);
-      }
-    }
-
-    for (const message of getConversationApiLinearMessages(data)) {
-      const messageId = String(message?.id || message?.message_id || "").trim();
-      const timestamp = formatConversationTimestamp(
-        message?.create_time ??
-        message?.update_time ??
-        message?.metadata?.create_time ??
-        message?.metadata?.timestamp
-      );
-
-      if (messageId && timestamp) {
-        map.set(messageId, timestamp);
-      }
-    }
-
-    return map;
-  }

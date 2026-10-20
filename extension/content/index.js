@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.11.0";
+  const EXPORTER_VERSION = "0.11.3";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -27,9 +27,7 @@
 
   // @convo-vault-include capture-orchestrator
 
-  // @convo-vault-include capture-hybrid
 
-  // @convo-vault-include capture-budget
 
   // @convo-vault-include capture-validation
 
@@ -42,11 +40,8 @@
   // @convo-vault-include debug-log
   // @convo-vault-include message-snapshot
 
-  // @convo-vault-include capture-jobs
 
-  // @convo-vault-include selector-panel
 
-  // @convo-vault-include capture-full
   // @convo-vault-include message-discovery
 
   // @convo-vault-include chatgpt-markup
@@ -57,7 +52,6 @@
   // @convo-vault-include capture-fast
   // @convo-vault-include date-format
 
-  // @convo-vault-include thinking-flyouts
 
   // @convo-vault-include dom-utils
 

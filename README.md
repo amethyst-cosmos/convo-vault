@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.0-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.3-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.11.0`
+Current version: `0.11.3`
 
 **Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -155,7 +155,6 @@ flowchart LR
 ```bash
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
 node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
-node cli/convo-vault.mjs export <link> --mode hybrid              # fast (default) | hybrid | full
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 ```
@@ -165,33 +164,23 @@ node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 | `setup` | Install dependencies, build the extension, install the skill |
 | `verify` | Confirm the extension in your browser answers |
 | `doctor` | Check dependencies, extension build, browsers and skills |
-| `update` | Pull the latest version and reinstall (git checkouts) |
+| `update` | Pull the latest version, reinstall and reload the extension (git checkouts) |
+| `reload` | Make the extension reload itself after a rebuild |
 | `skill install` | Reinstall the Claude and Codex skills |
 | `mcp install` / `mcp config` | Add the MCP server to Claude desktop; print config for other clients |
 | `backend start` / `stop` / `status` | The local renderer; it starts on demand and exits when idle |
 
 Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab open, `--allow-incomplete` exports a capture that failed the integrity check (refused by default). The first export tries each installed Chrome, Edge and Brave and remembers the one with the extension.
 
-## Capture modes
+## Without an agent
 
-**Fast** (default) reads ChatGPT's conversation API and finishes in seconds, even for very long conversations. **Hybrid** adds details that only exist on the page. **Full** scrolls the page and takes minutes; use it only when the API is unavailable. Every mode checks the result against the API's message list and blocks the export if anything is missing.
+Open the ChatGPT conversation, click the Convo Vault icon and press **Export this conversation**. It exports the whole conversation, with no selection step. The local renderer must be running: `node cli/convo-vault.mjs backend start`, or **Copy Start** in the popup.
 
-## Using the panel by hand
+## How it reads the conversation
 
-To export only some messages you can skip the agent: open a ChatGPT conversation, click the Convo Vault icon, choose **Open Selector**, pick a mode, **Start Scan**, review the integrity report, then export. The panel needs the renderer running: `node cli/convo-vault.mjs backend start`, or **Copy Start** in the popup.
+Convo Vault reads ChatGPT's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against ChatGPT's message list by message id; if anything is missing the export is blocked and says what.
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/04-open-selector-modal.png" alt="Extension popup with Open Selector and renderer status" width="400"><br>
-      <sub>The popup: open the selector, check the renderer</sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/06-inspect-and-export.png" alt="Selecting messages, reading the integrity report and exporting" width="300"><br>
-      <sub>Pick messages, read the integrity report, export</sub>
-    </td>
-  </tr>
-</table>
+You get everything the conversation has: every message, the model's thinking steps and tool calls in order with their full output, every web page it looked at and cited, images, files and generative UI. Choosing what to keep is up to you afterwards.
 
 ## Privacy and security
 

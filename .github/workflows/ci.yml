@@ -33,6 +33,12 @@ jobs:
         working-directory: renderer
         run: pnpm install --frozen-lockfile
 
+      - name: Install dev dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint (undefined names)
+        run: npm run lint
+
       - name: Check syntax and JSON
         run: npm run check
 

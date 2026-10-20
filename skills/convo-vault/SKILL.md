@@ -22,7 +22,6 @@ Get one `chatgpt.com/c/<id>` link (or a bare conversation id), from the first of
 node "{{CLI}}" export "<url-or-id>"
 ```
 
-- Use the default mode (Fast). Only add `--mode hybrid` or `--mode full` if the user explicitly wants page-only details such as thinking panels the API does not return.
 - It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to ChatGPT. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
@@ -40,10 +39,10 @@ node "{{CLI}}" export "<url-or-id>"
 
 | Message | What to do |
 | --- | --- |
-| `did not pick up the job` / extension did not respond | The extension is not loaded or ChatGPT is not signed in in that browser. Tell the user to run `node "{{CLI}}" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
+| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off on the extensions page, or ChatGPT is not signed in in that browser. Tell the user to run `node "{{CLI}}" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
 | `Renderer dependencies are not installed` | Run `node "{{CLI}}" setup`. |
 | `cannot run export jobs` | An old renderer is running. Run `node "{{CLI}}" backend stop` and export again. |
-| `Capture is incomplete` | Report the listed issues. Offer `--mode hybrid` or ask whether a partial export is acceptable. |
+| `Capture is incomplete` | Report the listed issues and ask whether a partial export is acceptable. |
 | Anything else | Run `node "{{CLI}}" doctor` and show the user its output. |
 
 Never read or ask for the user's ChatGPT cookies, tokens or password. The extension uses the signed-in browser session; nothing leaves the machine.

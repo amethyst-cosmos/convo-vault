@@ -16,7 +16,7 @@ Node 20 or newer is required. PDF rendering needs a local Chrome or Chromium.
 
 ## Before you open a pull request
 
-- Run `npm run check` and `npm test`. CI runs both on Ubuntu, macOS and Windows.
+- Run `npm run lint` (needs `npm install` once), `npm run check` and `npm test`. CI runs both on Ubuntu, macOS and Windows.
 - The content script is generated from `extension/content/*.js` by `npm run build:extension` (output in `dist/`). Edit the modules, not the output. `npm run check` fails if it no longer builds.
 - Every change someone would install or test bumps the version. Keep it identical in `package.json`, `renderer/package.json`, `extension/manifest.json`, `extension/content/index.js` (`EXPORTER_VERSION`), `extension/popup/popup.html`, `README.md`, `README.zh-CN.md`, `CHANGELOG.md` and `CHANGELOG.zh-CN.md`. `tests/version.test.mjs` checks it.
 - Add a test with the change. Export bugs are best captured as a fixture in `tests/fixtures/` (see `tests/fixtures/README.md`).
@@ -24,7 +24,7 @@ Node 20 or newer is required. PDF rendering needs a local Chrome or Chromium.
 
 ## Reporting a bad export
 
-Open an issue with the template. The most useful things to include are the version, the capture mode, the integrity report from the panel (or the CLI error) and a small conversation that reproduces it. Please remove private content first: exports contain your whole conversation.
+Open an issue with the template. The most useful things to include are the version, the integrity report or the CLI error and a small conversation that reproduces it. Please remove private content first: exports contain your whole conversation.
 
 ## Security
 

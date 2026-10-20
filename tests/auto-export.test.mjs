@@ -8,7 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const source = await readFile(path.join(repoRoot, "extension", "content", "auto-export.js"), "utf8");
 const JOB_ID = "a".repeat(48);
 
-function load({ claim, collect, exportMessages, hash = `#convo-vault-job=${JOB_ID}` }) {
+function load({ claim, exportConversation, hash = `#convo-vault-job=${JOB_ID}` }) {
   const sent = [];
   const listeners = {};
   const location = { hash, pathname: "/c/abc12345", search: "?x=1" };
@@ -29,10 +29,7 @@ function load({ claim, collect, exportMessages, hash = `#convo-vault-job=${JOB_I
     console,
     Date,
     Promise,
-    normalizeCaptureMode: (mode) => (["fast", "hybrid", "full"].includes(mode) ? mode : "fast"),
-    formatCaptureMode: (mode) => mode,
-    messageExtractor: { collect },
-    exportSelectedMessages: exportMessages
+    exportCurrentConversation: exportConversation
   };
   vm.runInNewContext(source, sandbox);
   return { sent, location, listeners };
@@ -43,24 +40,22 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 test("auto export claims the job, strips the hash, exports, then closes the tab", async () => {
   let exportOptions = null;
   const harness = load({
-    claim: { ok: true, options: { captureMode: "fast", allowIncomplete: false, closeTab: true } },
-    collect: async () => ({ messages: [{ id: "m1" }], captureMode: "fast", completeness: { complete: true } }),
-    exportMessages: async (messages, options) => { exportOptions = options; return { ok: true }; }
+    claim: { ok: true, options: { allowIncomplete: false, closeTab: true } },
+    exportConversation: async (options) => { exportOptions = options; return { ok: true }; }
   });
   await settle();
 
   assert.equal(harness.location.hash, "");
-  assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "status", "close-tab"]);
+  assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab"]);
   assert.equal(exportOptions.jobId, JOB_ID);
   assert.equal(exportOptions.allowIncomplete, false);
-  assert.equal(exportOptions.completeness.complete, true);
+  assert.equal(exportOptions.skipPdf, false);
 });
 
 test("auto export reports the integrity gate error and keeps the tab open", async () => {
   const harness = load({
-    claim: { ok: true, options: { captureMode: "fast", closeTab: true } },
-    collect: async () => ({ messages: [{ id: "m1" }], captureMode: "fast", completeness: { complete: false } }),
-    exportMessages: async () => { throw new Error("Capture is incomplete and normal export is blocked."); }
+    claim: { ok: true, options: { closeTab: true } },
+    exportConversation: async () => { throw new Error("Capture is incomplete and normal export is blocked."); }
   });
   await settle();
 
@@ -72,38 +67,48 @@ test("auto export reports the integrity gate error and keeps the tab open", asyn
 });
 
 test("auto export does nothing without a job id or when the claim fails", async () => {
-  const noHash = load({ hash: "", claim: { ok: true }, collect: async () => { throw new Error("no"); }, exportMessages: async () => {} });
+  const noHash = load({ hash: "", claim: { ok: true }, exportConversation: async () => { throw new Error("no"); } });
   await settle();
   assert.equal(noHash.sent.length, 0);
 
-  let collected = false;
-  const refused = load({ claim: { ok: false, error: "claimed" }, collect: async () => { collected = true; }, exportMessages: async () => {} });
+  let exported = false;
+  const refused = load({ claim: { ok: false, error: "claimed" }, exportConversation: async () => { exported = true; } });
   await settle();
   assert.deepEqual(refused.sent.map((message) => message.action), ["claim"]);
-  assert.equal(collected, false);
+  assert.equal(exported, false);
 });
 
 test("a ping job only reports that the extension answers and closes the tab", async () => {
-  let collected = false;
+  let exported = false;
   const harness = load({
     claim: { ok: true, options: { ping: true, closeTab: true } },
-    collect: async () => { collected = true; },
-    exportMessages: async () => {}
+    exportConversation: async () => { exported = true; }
   });
   await settle();
 
   assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab"]);
-  assert.equal(collected, false);
+  assert.equal(exported, false);
 });
 
 test("a data-only job skips the PDF when exporting", async () => {
   let exportOptions = null;
   load({
-    claim: { ok: true, options: { captureMode: "fast", pdf: false, closeTab: true } },
-    collect: async () => ({ messages: [{ id: "m1" }], captureMode: "fast", completeness: { complete: true } }),
-    exportMessages: async (messages, options) => { exportOptions = options; return { ok: true }; }
+    claim: { ok: true, options: { pdf: false, closeTab: true } },
+    exportConversation: async (options) => { exportOptions = options; return { ok: true }; }
   });
   await settle();
 
   assert.equal(exportOptions.skipPdf, true);
+});
+
+test("a reload job closes its tab and asks the extension to reload without exporting", async () => {
+  let exported = false;
+  const harness = load({
+    claim: { ok: true, options: { reload: true, closeTab: true } },
+    exportConversation: async () => { exported = true; }
+  });
+  await settle();
+
+  assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab", "reload-extension"]);
+  assert.equal(exported, false);
 });

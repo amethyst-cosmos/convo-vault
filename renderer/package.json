@@ -1,6 +1,6 @@
 {
   "name": "@convo-vault/renderer",
-  "version": "0.11.0",
+  "version": "0.11.3",
   "private": true,
   "description": "Local high-quality renderer for Convo Vault structured exports.",
   "author": "amethyst-cosmos",

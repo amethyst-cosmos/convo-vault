@@ -34,7 +34,7 @@ When the user gives a conversation link or a screenshot (the address bar shows `
 node <location>/cli/convo-vault.mjs export "<link>"
 ```
 
-The default is Fast mode, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to choose a mode or click the panel. The installed `convo-vault` skill has the detailed rules.
+The whole conversation is exported, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to choose anything or click the popup. The installed `convo-vault` skill has the detailed rules.
 
 ## Update and troubleshoot
 

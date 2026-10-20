@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.3-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.0`
+当前版本：`0.11.3`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -144,7 +144,6 @@ flowchart LR
 ```bash
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
 node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
-node cli/convo-vault.mjs export <链接> --mode hybrid               # fast（默认）| hybrid | full
 node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 ```
 
@@ -153,39 +152,23 @@ node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 | `setup` | 安装依赖、构建扩展、安装 skill |
 | `verify` | 确认浏览器里的扩展有响应 |
 | `doctor` | 自检：依赖、扩展构建、浏览器、skill |
-| `update` | 拉取最新版本并重新安装（git 克隆） |
+| `update` | 拉取最新版本、重新安装并重新加载扩展（git 克隆） |
+| `reload` | 重建后让扩展自己重新加载 |
 | `skill install` | 重新安装 Claude 和 Codex 的 skill |
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
 | `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
 
 其他选项：`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
 
-## 抓取模式
+## 不用 Agent 时
 
-| 模式 | 数据来源 | 什么时候用 |
-| --- | --- | --- |
-| **Fast**（默认） | 直接读 ChatGPT 的 conversation API：消息、顺序、图片、思考过程、引用、生成文件，不受虚拟滚动影响，长对话几秒完成 | 日常归档 |
-| **Hybrid** | 先 Fast，再用 Full 补页面上才有的细节，按消息 id 合并 | 需要页面额外细节 |
-| **Full** | 逐屏滚动页面，要几分钟 | 接口不可用时 |
+打开 ChatGPT 对话，点浏览器工具栏的 Convo Vault 图标，按 **Export this conversation**。它会导出整段对话，没有选择消息这一步。需要先启动本地渲染服务：`node cli/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start**。
 
-三种模式都用接口生成“应有消息清单”，按消息 id 核对结果；对不上就判为不完整并阻止导出。
+## 它怎么读取对话
 
-## 手动使用扩展面板
+Convo Vault 读的是 ChatGPT 自己的对话接口，也就是页面画出来的那份数据。它不会滚动或点击页面，所以很长的对话几秒就读完，标签页放在后台也行。读完后会按消息 id 对照 ChatGPT 的消息清单，缺任何一条都会拦截并说明。
 
-只想导出其中几条消息时，可以不用 Agent：打开 ChatGPT 对话，点浏览器工具栏的 Convo Vault 图标，点 **Open Selector**，选好模式后 **Start Scan**，核对完整性报告再导出。面板方式要先启动渲染服务：运行 `node cli/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start** 并把命令粘贴到终端。
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/04-open-selector-modal.png" alt="扩展弹窗：Open Selector 和本地渲染服务状态" width="400"><br>
-      <sub>扩展弹窗：打开选择器，查看渲染服务状态</sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/06-inspect-and-export.png" alt="选择消息、查看完整性报告并导出" width="300"><br>
-      <sub>选择消息，核对完整性报告，导出</sub>
-    </td>
-  </tr>
-</table>
+导出的是对话里有的一切：每条消息、模型的思考步骤和工具调用（按顺序，含完整返回内容）、它看过和引用过的每个网页、图片、文件和生成式界面。留下哪些，由你导出后自己决定。
 
 ## 安全与隐私
 
@@ -218,5 +201,11 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.11.3` 修复 Markdown 里漏出布局标签。
+
+`0.11.2` 不再读取页面，思考记录完全来自 API。
+
+`0.11.1` 只用 Fast 抓取（删除 Full、Hybrid 和选择面板），扩展能自己重新加载。
 
 `0.11.0` 由 Agent 来跑导出：skill、MCP 服务、命令行 `export`、自动导出任务和一句话安装。

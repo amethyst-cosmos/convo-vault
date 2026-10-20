@@ -35,6 +35,7 @@ Usage:
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open]
   convo-vault verify [--browser NAME]
   convo-vault update
+  convo-vault reload [--browser NAME]
   convo-vault doctor
   convo-vault skill install [--agents auto|claude|codex|all]
   convo-vault mcp install [--client claude-desktop]   (or: mcp config)
@@ -42,7 +43,6 @@ Usage:
 
 Export options:
   --out DIR            Where to save (default: ~/Downloads/convo-vault)
-  --mode MODE          fast (default) | hybrid | full
   --browser NAME       Chrome, Edge, Brave... (default: the one that worked last time)
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
@@ -62,6 +62,7 @@ try {
     case "setup": await setup(flags); break;
     case "verify": await verify(flags); break;
     case "update": await update(flags); break;
+    case "reload": await reloadExtension(flags); break;
     case "doctor": await doctor(); break;
     case "skill":
       if (positional[0] !== "install") throw new Error("Usage: convo-vault skill install");
@@ -80,7 +81,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "mode", "browser", "timeout", "agents", "client"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -124,8 +125,6 @@ function parseConversation(input) {
 
 async function exportConversation(input, flags) {
   const conversationUrl = parseConversation(input);
-  const captureMode = flags.mode || "fast";
-  if (!["fast", "hybrid", "full"].includes(captureMode)) throw new Error("--mode must be fast, hybrid or full.");
 
   const config = await readConfig();
   const outDir = path.resolve(flags.out || config.outDir || path.join(os.homedir(), "Downloads", "convo-vault"));
@@ -139,7 +138,6 @@ async function exportConversation(input, flags) {
 
   for (const browser of candidates) {
     jobId = await createJob({
-      captureMode,
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
       pdf: flags.pdf !== false
@@ -311,9 +309,31 @@ async function verify(flags) {
   }
 
   throw new Error([
-    "No browser answered. Load the extension: open the browser's Extensions page, turn on Developer mode,",
-    `click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
+    "No browser answered. Open the browser's Extensions page. If Convo Vault is listed but switched off, turn it on and click its reload icon.",
+    `If it is not listed, turn on Developer mode, click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
   ].join("\n"));
+}
+
+// Makes the loaded extension reload itself, so a rebuilt dist/ takes effect without a click.
+// Needs a version that already knows the reload job; older ones must be reloaded by hand once.
+async function reloadExtension(flags) {
+  const config = await readConfig();
+  const candidates = await browserCandidates(flags.browser || config.browser);
+  await ensureBackend(log);
+
+  for (const browser of candidates) {
+    const jobId = await createJob({ reload: true, closeTab: true });
+    log(`Asking the extension in ${browser?.name || "the default browser"} to reload...`);
+    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+
+    if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
+      await sleep(1500);
+      console.log("The extension reloaded itself.");
+      return;
+    }
+  }
+
+  throw new Error("The extension did not answer. If this is the first time after an update, reload it by hand once on the extensions page; after that this command works.");
 }
 
 // Pulls the latest code (git checkouts only), then repeats setup so the skill and extension match.
@@ -328,7 +348,13 @@ async function update(flags) {
 
   await stopBackend();
   await setup({ ...flags, open: false });
-  console.log("\nUpdated. If the extension was already loaded, reload it on the browser's Extensions page.");
+  try {
+    await reloadExtension(flags);
+  } catch (error) {
+    console.log(`\nUpdated. ${error.message}`);
+    return;
+  }
+  console.log("\nUpdated.");
 }
 
 async function printSkillInstall(target) {
