@@ -77,6 +77,33 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   assert.ok(folder.some((name) => name.endsWith(".pdf")), folder.join(", "));
 });
 
+test("verify succeeds once the extension claims a ping job", async (t) => {
+  const port = await getAvailablePort();
+  const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-home-"));
+  t.after(async () => {
+    await rawRequest(port, "POST", "/shutdown").catch(() => {});
+    await rm(home, { recursive: true, force: true });
+  });
+
+  const cli = spawn(process.execPath, [cliPath, "verify", "--browser", "chrome"], {
+    cwd: repoRoot,
+    env: { ...process.env, HOME: home, USERPROFILE: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  cli.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
+  cli.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  const exited = new Promise((resolve) => cli.on("exit", resolve));
+
+  const jobId = await waitFor(() => stderr.match(/#convo-vault-job=([a-f0-9]{48})/)?.[1], () => stderr);
+  const claimed = await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" });
+  assert.equal(JSON.parse(claimed.body).options.ping, true);
+
+  assert.equal(await exited, 0, stderr);
+  assert.match(stdout, /the Convo Vault extension answered/);
+});
+
 test("CLI rejects links that are not ChatGPT conversations", async () => {
   for (const input of ["https://example.com/c/abcdefgh", "https://chatgpt.com/", "not a link"]) {
     const result = await run(["export", input]);

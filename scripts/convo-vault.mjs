@@ -20,6 +20,7 @@ import {
   repoRoot,
   stopBackend
 } from "./lib/cli-backend.mjs";
+import { installClaudeDesktopMcp, mcpSnippets } from "./lib/cli-mcp.mjs";
 import { installSkill, skillStatus } from "./lib/cli-skill.mjs";
 import { extractZip, readZip } from "./lib/zip-reader.mjs";
 
@@ -32,8 +33,11 @@ const HELP = `Convo Vault CLI
 Usage:
   convo-vault export <chatgpt-url|conversation-id> [options]
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open]
+  convo-vault verify [--browser NAME]
+  convo-vault update
   convo-vault doctor
   convo-vault skill install [--agents auto|claude|codex|all]
+  convo-vault mcp install [--client claude-desktop]   (or: mcp config)
   convo-vault backend start|stop|status
 
 Export options:
@@ -55,11 +59,14 @@ try {
   switch (command) {
     case "export": await exportConversation(positional[0], flags); break;
     case "setup": await setup(flags); break;
+    case "verify": await verify(flags); break;
+    case "update": await update(flags); break;
     case "doctor": await doctor(); break;
     case "skill":
       if (positional[0] !== "install") throw new Error("Usage: convo-vault skill install");
       await printSkillInstall(flags.agents || "auto");
       break;
+    case "mcp": await mcpCommand(positional[0], flags); break;
     case "backend": await backendCommand(positional[0]); break;
     case undefined: case "help": case "--help": console.log(HELP); break;
     default: throw new Error(`Unknown command "${command}".\n\n${HELP}`);
@@ -72,7 +79,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "mode", "browser", "timeout", "agents"]);
+  const valued = new Set(["out", "mode", "browser", "timeout", "agents", "client"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -253,6 +260,7 @@ async function setup(flags) {
   console.log("  1. Open the Extensions page and turn on Developer mode.");
   console.log("  2. Click Load unpacked and choose the Extension folder above.");
   console.log("  3. Sign in to ChatGPT in that browser.");
+  console.log("Then check it: node scripts/convo-vault.mjs verify");
   console.log("After that, ask your agent to export a conversation, or run: convo-vault export <link>");
 
   if (browser && flags.open !== false) {
@@ -275,6 +283,46 @@ async function ensureExtensionBuilt() {
   }
 
   return builtDir;
+}
+
+// Opens a ChatGPT page with a ping job: proves the extension is loaded in the browser.
+async function verify(flags) {
+  const config = await readConfig();
+  const candidates = await browserCandidates(flags.browser || config.browser);
+  await ensureBackend(log);
+
+  for (const browser of candidates) {
+    const jobId = await createJob({ ping: true, closeTab: true });
+    log(`Checking the extension in ${browser?.name || "the default browser"}...`);
+    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+
+    if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
+      if (browser) await writeConfig({ browser: browser.name });
+      console.log(`OK: the Convo Vault extension answered in ${browser?.name || "your browser"}.`);
+      console.log("Exports also need that browser to be signed in to ChatGPT.");
+      return;
+    }
+  }
+
+  throw new Error([
+    "No browser answered. Load the extension: open the browser's Extensions page, turn on Developer mode,",
+    `click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
+  ].join("\n"));
+}
+
+// Pulls the latest code (git checkouts only), then repeats setup so the skill and extension match.
+async function update(flags) {
+  if (!(await fs.stat(path.join(repoRoot, ".git")).then(() => true, () => false))) {
+    throw new Error("This copy is not a git checkout. Download the newest release zip from GitHub, or clone the repository.");
+  }
+
+  log("Pulling the latest version...");
+  const pull = spawnSync("git", ["pull", "--ff-only"], { cwd: repoRoot, stdio: "inherit" });
+  if (pull.status !== 0) throw new Error("git pull failed. Resolve it in the repository folder and run update again.");
+
+  await stopBackend();
+  await setup({ ...flags, open: false });
+  console.log("\nUpdated. If the extension was already loaded, reload it on the browser's Extensions page.");
 }
 
 async function printSkillInstall(target) {
@@ -311,6 +359,19 @@ async function doctor() {
   console.log(`\nConfig: ${CONFIG_DIR}`);
   console.log("The extension itself cannot be checked from here: if exports time out, load dist/convo-vault-extension and sign in to ChatGPT.");
   if (rows.some((row) => row.startsWith("FAIL"))) process.exitCode = 1;
+}
+
+// Chat apps that run local MCP servers can export conversations without a terminal agent.
+async function mcpCommand(action, flags) {
+  if (action === "install" && (flags.client || "claude-desktop") === "claude-desktop") {
+    const file = await installClaudeDesktopMcp();
+    console.log(`Added the convo-vault MCP server to ${file} (previous file saved as .bak).`);
+    console.log("Fully quit and reopen Claude desktop, then say: export this ChatGPT conversation <link or screenshot>.");
+  } else if (action === "config" || action === "install") {
+    console.log(mcpSnippets());
+  } else {
+    throw new Error("Usage: convo-vault mcp install [--client claude-desktop] | convo-vault mcp config");
+  }
 }
 
 async function backendCommand(action) {

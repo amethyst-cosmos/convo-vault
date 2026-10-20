@@ -8,6 +8,8 @@
 - **命令行 `convo-vault`**：`export <链接|对话 id>` 一条命令完成导出，默认 Fast，结果解压到 `~/Downloads/convo-vault/`。另有 `setup`（装依赖、构建扩展、安装 skill）、`doctor`（自检）、`skill install`、`backend start|stop|status`
 - **自动导出任务**：命令行在本地渲染服务里创建任务，用 `#convo-vault-job=<id>` 打开对话页；扩展认领任务后自动扫描、过完整性闸门、渲染并交回 zip，然后关闭标签页。任务只能由本机程序创建、只能由扩展认领，网页脚本调不了。完整性闸门照常生效：抓取不完整时任务失败并说明原因，不会静默导出残缺内容
 - **一键发布包**：`npm run package` 生成 `dist/convo-vault-<版本>.zip`（扩展、命令行、渲染服务、skill 一起），推送 `v*` 标签时 GitHub Actions 自动发布到 Releases
+- **一句话安装**：新增 `INSTALL.md`（写给 Agent 的安装步骤）。把仓库链接发给 Claude Code 或 Codex，说“帮我安装”，它会克隆、装依赖、构建扩展、装 skill 并验证；`verify` 用一个 ping 任务确认浏览器里的扩展有响应，`update` 拉取新版本并重新安装
+- **MCP 服务**：新增 `scripts/mcp-server.mjs`（无依赖，stdio），提供 `export_conversation`、`export_status`、`check_setup`；`mcp install` 写入 Claude 桌面版配置，`mcp config` 打印 Claude Code、Codex 等客户端的配置。Claude 桌面版的普通聊天因此也能用链接或截图导出
 - **文档**：README 重写；历史更新说明移到本文件
 
 ## 0.9.5

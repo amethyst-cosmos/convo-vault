@@ -242,7 +242,9 @@ function createExportJob(body) {
     options: {
       captureMode,
       allowIncomplete: body?.allowIncomplete === true,
-      closeTab: body?.closeTab !== false
+      closeTab: body?.closeTab !== false,
+      // A ping job only proves the extension is installed and answering.
+      ping: body?.ping === true
     },
     result: null
   };

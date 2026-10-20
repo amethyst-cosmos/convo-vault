@@ -29,6 +29,24 @@
 
 ## 快速开始
 
+### 最省事：让 Agent 替你装
+
+在 Claude Code、Claude 桌面版的 Code 标签或 Codex 里发这一句：
+
+> 请帮我安装 https://github.com/amethyst-cosmos/convo-vault ，按仓库里的 INSTALL.md 操作，装到 ~/convo-vault。
+
+Agent 会克隆项目、装依赖、构建扩展、安装 skill，并运行 `verify` 检查。**唯一需要你动手的是在浏览器里加载一次扩展并登录 ChatGPT**，浏览器不允许程序自动安装未上架的扩展。装完在新会话里说“导出这个对话 <链接>”即可。
+
+### 哪些 Agent 能用
+
+| 环境 | 能不能用 | 方式 |
+| --- | --- | --- |
+| Claude Code、Claude 桌面版的 Code 标签、Codex | 能 | skill |
+| Claude 桌面版的普通聊天、Cursor 等支持本地 MCP 的客户端 | 能 | `mcp install`，聊天里发链接或截图 |
+| claude.ai 网页、ChatGPT 网页（含它的 Agent 模式） | 不能 | 它们跑在云端沙盒，碰不到你电脑上的浏览器和本地服务 |
+
+### 手动安装
+
 只需要做一次。
 
 **1. 下载并安装**
@@ -39,11 +57,11 @@
 node scripts/convo-vault.mjs setup
 ```
 
-也可以直接克隆仓库再运行同一条命令。`setup` 会：安装渲染服务依赖、构建扩展、把 skill 装进 Claude 和 Codex（找到哪个装哪个），并打开浏览器的扩展页面。
+也可以直接克隆仓库（`git clone https://github.com/amethyst-cosmos/convo-vault.git`）再运行同一条命令。`setup` 会：安装渲染服务依赖、构建扩展、把 skill 装进 Claude 和 Codex（找到哪个装哪个），并打开浏览器的扩展页面。
 
 **2. 在浏览器里加载扩展（一次）**
 
-打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”，点“加载已解压的扩展程序”，选择 `dist/convo-vault-extension`。然后在这个浏览器里登录 ChatGPT。
+打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”，点“加载已解压的扩展程序”，选择 `dist/convo-vault-extension`。然后在这个浏览器里登录 ChatGPT，运行 `node scripts/convo-vault.mjs verify` 确认扩展有响应。
 
 **3. 开始使用**
 
@@ -90,7 +108,7 @@ Skill 会自己决定模式（默认 Fast）、读出链接、运行命令、等
 node scripts/convo-vault.mjs skill install --agents all
 ```
 
-> 网页版 Claude / ChatGPT 不能在你的电脑上运行命令，所以 skill 需要 Claude Code、Claude 桌面版的 Code 标签或 Codex 这类能执行本地命令的环境。
+> 网页版 Claude / ChatGPT 不能在你的电脑上运行命令，所以 skill 需要 Claude Code、Claude 桌面版的 Code 标签或 Codex 这类能执行本地命令的环境。Claude 桌面版的普通聊天走 MCP：运行 `node scripts/convo-vault.mjs mcp install`，重启 Claude 后直接在聊天里发链接或截图，它会调用 `export_conversation` 工具；超过一分钟的导出会先返回“进行中”，再用 `export_status` 取结果。
 
 ## 命令行
 
@@ -105,6 +123,9 @@ node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 node scripts/convo-vault.mjs export <链接> --no-extract         # 只要 zip
 node scripts/convo-vault.mjs export <链接> --keep-tab           # 导出后不关标签页
 
+node scripts/convo-vault.mjs verify                             # 确认浏览器里的扩展有响应
+node scripts/convo-vault.mjs update                             # 拉取最新版本并重新安装（git 克隆）
+node scripts/convo-vault.mjs mcp install                        # 给 Claude 桌面版聊天装 MCP（mcp config 打印其他客户端的配置）
 node scripts/convo-vault.mjs doctor                             # 自检：依赖、扩展构建、浏览器、skill
 node scripts/convo-vault.mjs backend start|stop|status          # 本地渲染服务
 ```

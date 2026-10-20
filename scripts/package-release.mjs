@@ -19,6 +19,7 @@ const packageName = `convo-vault-${version}`;
 const include = [
   "README.md",
   "CHANGELOG.md",
+  "INSTALL.md",
   "package.json",
   "manifest.json",
   "background.js",

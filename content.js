@@ -11924,6 +11924,12 @@
       return;
     }
 
+    if (claim.options?.ping) {
+      await sendAutoExportMessage({ action: "status", jobId, state: "working", message: "Extension is installed and responding." });
+      await sendAutoExportMessage({ action: "close-tab", jobId });
+      return;
+    }
+
     const captureMode = normalizeCaptureMode(claim.options?.captureMode);
     let lastStatusAt = 0;
     const report = (message, state = "working", options = {}) => {

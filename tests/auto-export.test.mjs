@@ -82,3 +82,16 @@ test("auto export does nothing without a job id or when the claim fails", async 
   assert.deepEqual(refused.sent.map((message) => message.action), ["claim"]);
   assert.equal(collected, false);
 });
+
+test("a ping job only reports that the extension answers and closes the tab", async () => {
+  let collected = false;
+  const harness = load({
+    claim: { ok: true, options: { ping: true, closeTab: true } },
+    collect: async () => { collected = true; },
+    exportMessages: async () => {}
+  });
+  await settle();
+
+  assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab"]);
+  assert.equal(collected, false);
+});
