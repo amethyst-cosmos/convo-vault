@@ -18,8 +18,7 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-out-"));
   const env = {
     ...process.env,
-    HOME: home,
-    USERPROFILE: home,
+    CONVO_VAULT_HOME: home,
     CGCE_ADVANCED_PDF_PORT: String(port),
     CONVO_VAULT_NO_OPEN: "1"
   };
@@ -87,7 +86,7 @@ test("verify succeeds once the extension claims a ping job", async (t) => {
 
   const cli = spawn(process.execPath, [cliPath, "verify", "--browser", "chrome"], {
     cwd: repoRoot,
-    env: { ...process.env, HOME: home, USERPROFILE: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stdout = "";
