@@ -4,21 +4,17 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
-## 0.10.3
+## 0.11.0
 
-Docs and project basics:
+Agents run the export. From this version you do not click the panel: tell Claude or Codex to export a conversation, or send it a screenshot, and it does the rest.
 
-- **English is now the default language**: `README.md`, `CHANGELOG.md` and `INSTALL.md` are English; Chinese versions live in `README.zh-CN.md`, `CHANGELOG.zh-CN.md` and `INSTALL.zh-CN.md`.
-- A sample of the PDF output in the README.
-- **Repository basics**: MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates, and fuller `package.json` metadata (repository, keywords, license). `tests/version.test.mjs` now also checks the versions in the READMEs and changelogs.
-
-## 0.10.2
-
-Less fuss:
-
-- **The renderer exits by itself.** The local renderer started by the CLI, an agent or the MCP server exits two minutes after its last request (never while a request is running). The one started with **Copy Start** in the popup stays up.
-- **Data-only export.** `--no-pdf` (MCP tool argument `pdf: false`) skips the PDF, so the zip holds only Markdown, JSON, JSONL and assets and needs no headless Chrome.
-- **Fix:** `--no-extract` and `setup --no-open` had no effect. All `--no-xxx` options are now recognised.
+- **Agent skill, CLI and MCP server.** A `convo-vault` skill for Claude and Codex, `convo-vault export <link|id>`, and an MCP server (`export_conversation`, `export_status`, `check_setup`) for chat apps. `setup`, `verify`, `doctor`, `update`, `skill install`, `mcp install` and `backend` complete the CLI.
+- **Export jobs.** The CLI creates a job on the local renderer and opens the conversation with the job id in the URL. The extension claims the job, captures, passes the integrity gate, renders, hands the zip back and closes the tab. Only local programs can create jobs and only the extension can claim them. An incomplete capture fails the job with a reason.
+- **Install from a link.** `INSTALL.md` is written for agents: give one the repository link and ask it to install.
+- **The renderer exits by itself** two minutes after its last request (never while a request is running). The one started with **Copy Start** in the popup stays up.
+- **Data-only export.** `--no-pdf` (MCP argument `pdf: false`) skips the PDF, so no headless Chrome is needed.
+- **Fix:** `--no-extract` and `setup --no-open` had no effect.
+- **Project basics.** English is the default for README, CHANGELOG and INSTALL (Chinese versions are `*.zh-CN.md`); MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates, fuller `package.json` metadata, a PDF output sample, and a release package built by `npm run package`.
 
 ## 0.10.1
 

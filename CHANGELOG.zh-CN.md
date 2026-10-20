@@ -2,21 +2,17 @@
 
 [English](CHANGELOG.md)
 
-## 0.10.3
+## 0.11.0
 
-文档与项目规范：
+由 Agent 来跑导出。从这个版本起不用再点面板：对 Claude 或 Codex 说“把这个对话导出来”，或者发一张截图，剩下的它来做。
 
-- **英文成为默认语言**：`README.md`、`CHANGELOG.md`、`INSTALL.md` 改为英文，中文版为 `README.zh-CN.md`、`CHANGELOG.zh-CN.md`、`INSTALL.zh-CN.md`
-- README 增加 PDF 效果样张
-- **仓库规范**：新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板，`package.json` 补全仓库、关键词、许可证等元数据；`tests/version.test.mjs` 同步检查 README 和 CHANGELOG 的版本
-
-## 0.10.2
-
-少折腾：
-
-- **渲染服务自动退出**：命令行、Agent 和 MCP 启动的渲染服务，在最后一次使用两分钟后自己退出（有请求在处理时不会退出），不用再手动开关终端。扩展弹窗的 Copy Start 启动的服务保持常驻
-- **只导出数据**：新增 `--no-pdf`（MCP 工具参数 `pdf: false`），跳过 PDF，导出的 zip 只含 Markdown、JSON、JSONL 和素材，不依赖无头 Chrome
-- **修复**：`--no-extract` 和 `setup --no-open` 之前不生效，现在 `--no-xxx` 形式的选项都能识别
+- **Agent skill、命令行和 MCP 服务**：Claude 和 Codex 的 `convo-vault` skill，`convo-vault export <链接|id>`，以及给聊天类应用用的 MCP 服务（`export_conversation`、`export_status`、`check_setup`）。命令行另有 `setup`、`verify`、`doctor`、`update`、`skill install`、`mcp install`、`backend`
+- **自动导出任务**：命令行在本地渲染服务里创建任务，并用带任务 id 的网址打开对话；扩展认领任务后自动抓取、过完整性闸门、渲染、交回 zip 并关闭标签页。任务只能由本机程序创建、只能由扩展认领；抓取不完整时任务失败并说明原因
+- **一句话安装**：`INSTALL.md` 是写给 Agent 的安装步骤，把仓库链接发给 Agent 说“帮我安装”即可
+- **渲染服务自动退出**：最后一次使用两分钟后自己退出（处理请求时不会退出）；扩展弹窗的 Copy Start 启动的服务保持常驻
+- **只导出数据**：`--no-pdf`（MCP 参数 `pdf: false`）跳过 PDF，不依赖无头 Chrome
+- **修复**：`--no-extract` 和 `setup --no-open` 之前不生效
+- **项目规范**：英文成为 README、CHANGELOG、INSTALL 的默认语言（中文版为 `*.zh-CN.md`）；新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板、更完整的 `package.json` 元数据、PDF 效果样张，以及 `npm run package` 生成的发布包
 
 ## 0.10.1
 

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.10.3-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.0-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.10.3`
+当前版本：`0.11.0`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -217,12 +217,6 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 
 ## 更新日志
 
-完整历史见 [CHANGELOG.md](CHANGELOG.zh-CN.md)。
+完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
 
-`0.10.3` 英文 README 成为默认，中文版移到 `README.zh-CN.md`；新增 MIT 许可证、安全与贡献说明。
-
-`0.10.2` 渲染服务空闲后自动退出，不用再手动关；新增 `--no-pdf` 只导出数据（更快，不依赖 Chrome）。
-
-`0.10.1` 重写 README（横幅、演示图、更清晰的安装步骤），修复 Windows 上的 CI 测试。
-
-`0.10.0` 让 Agent 直接导出：新增 `convo-vault` skill（Claude、Codex）、MCP 服务、命令行 `export` / `setup` / `verify`、自动导出任务、一句话安装（`INSTALL.md`）和一键发布包。
+`0.11.0` 由 Agent 来跑导出：skill、MCP 服务、命令行 `export`、自动导出任务和一句话安装。
