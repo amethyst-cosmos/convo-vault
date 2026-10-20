@@ -36,25 +36,37 @@ changes it; save the same port in the popup settings).
 | `DELETE /export-sessions/:id` | Discards a session. |
 | `POST /prepare-render-bundle` | Renders the bundle for an `exportPayload` and returns a download path. |
 | `GET /download-bundle/:id` | Downloads a prepared bundle once. |
+| `POST /jobs`, `GET /jobs/:id` | Export jobs for the CLI and agents (local programs only). |
+| `POST /jobs/:id/claim`, `POST /jobs/:id/status` | Used by the extension to claim a job and report progress. |
 | `POST /shutdown` | Stops the service. |
 
 The extension's background service worker is the only client: the content
 script downloads ChatGPT images with the page session, the background stages
 them in an export session, then calls `/prepare-render-bundle`.
 
-## Modules
+## Layout
 
-- `server.js` - HTTP API, export sessions, bundle assembly, ZIP writing.
-- `bundle-content.js` - payload normalization, conversation Markdown, and data
-  sidecars (`*.data.json`, `*.messages.jsonl`, `*.qa-pairs.json`,
-  `*.topics.json`, `*.entities.json`, `*.agent-trace.*`, `*.summary.md`).
-- `agent-trace-files.js` - `*.agent-trace.json` (every recorded thinking and
-  tool event per answer, full content, plus a conversation source index) and
-  the readable `*.agent-trace.md`.
-- `assets.js` - asset manifest, SHA-256 asset store under `.convo-vault/assets`,
-  and output-object accounting (rendered, referenced, or degraded).
-- `render.js` - HTML layout and PDF printing through local Chrome.
-- `dil-runtime.js` - draws ChatGPT generative-UI answers (DIL) in the PDF page.
+```
+renderer/
+  server.js            HTTP entry: routing, idle exit
+  render.js            CLI: payload -> HTML -> PDF
+  lib/
+    config.js          ports, limits, paths, token
+    http-utils.js      JSON bodies, CORS, token and local-process checks
+    jobs.js            export jobs (create, claim, status, bundle)
+    export-sessions.js staging image bytes sent by the extension
+    bundle.js          assembles the bundle: Markdown, data files, PDF, zip
+    zip.js             streaming ZIP writer
+    bundle-content.js  payload normalization, Markdown, data sidecars
+    agent-trace-files.js  *.agent-trace.json and *.agent-trace.md
+    assets.js          asset manifest, SHA-256 store, output-object accounting
+    document.js        builds the PDF's HTML document
+    messages.js, markdown.js, math.js, charts.js, mermaid.js, images.js, text.js, util.js
+    pagination.js      in-page script that decides page breaks
+    pdf.js             prints through Chrome and adds PDF bookmarks
+    dil-runtime.js     draws ChatGPT generative-UI answers in the PDF page
+  static/              render.css, avatar images
+```
 
 ## Render a payload directly
 
@@ -79,8 +91,8 @@ each prompt with the start of its answer.
 ChatGPT stores a generative answer as compiled JavaScript
 (`metadata.model_dil_v2.code`) plus constants, resolved component results, and
 client-defined widgets. Fast capture exports these as the message's `dil`
-blocks. `render.js` writes each block as JSON beside an empty `.dil-root`, and
-`dil-runtime.js` runs the program with static stand-ins for ChatGPT's globals
+blocks. `lib/document.js` writes each block as JSON beside an empty `.dil-root`, and
+`lib/dil-runtime.js` runs the program with static stand-ins for ChatGPT's globals
 (`DIL`, `__dil`, `GenUI`, `Cite`, `Entity`, `Link`, `AsyncImage`), drawing
 boxes, rows, grids, badges, icons, lists, tables, buttons, radio groups,
 citation chips, and writing/code widgets as HTML. Hooks return their initial
