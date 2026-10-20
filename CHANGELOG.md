@@ -9,7 +9,7 @@ Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG
 Docs and project basics:
 
 - **English is now the default language**: `README.md`, `CHANGELOG.md` and `INSTALL.md` are English; Chinese versions live in `README.zh-CN.md`, `CHANGELOG.zh-CN.md` and `INSTALL.zh-CN.md`.
-- **Comparison with similar projects** and a sample of the PDF output in the README.
+- A sample of the PDF output in the README.
 - **Repository basics**: MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates, and fuller `package.json` metadata (repository, keywords, license). `tests/version.test.mjs` now also checks the versions in the READMEs and changelogs.
 
 ## 0.10.2

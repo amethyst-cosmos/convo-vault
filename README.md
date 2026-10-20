@@ -18,7 +18,6 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-you-get">What you get</a> ·
-  <a href="#how-it-compares">How it compares</a> ·
   <a href="#cli">CLI</a> ·
   <a href="#privacy-and-security">Privacy</a> ·
   <a href="CHANGELOG.md">Changelog</a>
@@ -134,23 +133,6 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the Chat
   </tr>
 </table>
 
-## How it compares
-
-Convo Vault is young. This is how it sits next to the established options, taken from each project's public README or site in October 2026. Corrections are welcome.
-
-| | **Convo Vault** | [pionxzh/chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) | [ChatGPT Exporter](https://www.chatgptexporter.com/) (Chrome extension) | OpenAI data export + converters such as [convoviz](https://github.com/mohamed-chs/convoviz) |
-| --- | --- | --- | --- | --- |
-| Runs | Local extension and local renderer | Tampermonkey userscript | Chrome extension; PDF is generated on the vendor's servers, per its site | OpenAI emails a zip; converters run locally |
-| Formats | Markdown, PDF, JSONL, QA pairs, topics, entities, asset manifest | Text, PNG, Markdown, HTML, JSON | PDF, Markdown, TXT, JSON, CSV, image | Raw JSON; Markdown, charts and word clouds from convoviz |
-| Thinking and tool trace | ✅ Ordered, with full tool output | Not listed in its README | Not listed on its site | Not listed in convoviz's README |
-| Completeness check | ✅ Against ChatGPT's message list; blocks on gaps | Not listed | Not listed | n/a |
-| Agent, CLI and MCP | ✅ Skill, CLI, MCP server | Not listed | Not listed | CLI only |
-| Export all conversations | ❌ Not yet | ✅ Export All | Not listed | ✅ Whole history |
-| Install | Releases or `git clone`; load unpacked once | Tampermonkey and a userscript | Chrome Web Store | No install, or `pip` / `uv` |
-| Maturity | New | 2.8k stars, active since December 2022 | "80,000+ users" (self-reported) | Established |
-
-If you need to archive your whole history today, use one of the others. If you want complete, agent-ready exports of the conversations that matter, with the thinking trace, and a way to ask an agent to do it, that is what Convo Vault is for.
-
 ## How it works
 
 ```mermaid
@@ -165,10 +147,8 @@ flowchart LR
     B -->|"unpack to a folder"| A
 ```
 
-- The CLI creates a job on the local renderer, then opens `chatgpt.com/c/<id>#convo-vault-job=<job id>`.
-- The extension claims the job, captures the conversation with the session already in your browser, passes the integrity check, hands the data to the renderer, and closes the tab.
-- If the capture is incomplete the job fails and says what is missing. Nothing partial is exported silently.
-- The renderer started for the CLI exits two minutes after its last request.
+- The CLI creates a job on the local renderer and opens the conversation with the job id in the URL. The extension claims the job, captures the conversation with the session already in your browser, passes the integrity check and hands the data to the renderer.
+- If the capture is incomplete the job fails and says what is missing. The renderer started for the CLI exits two minutes after its last request.
 
 ## CLI
 
@@ -194,13 +174,7 @@ Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab op
 
 ## Capture modes
 
-| Mode | Source | Use it for |
-| --- | --- | --- |
-| **Fast** (default) | ChatGPT's conversation API: messages, order, images, thinking, citations, generated files. Not affected by virtual scrolling; long conversations take seconds | Everyday archiving |
-| **Hybrid** | Fast first, then Full fills in details that only exist on the page, merged by message id | Page-only details |
-| **Full** | Scrolls the page and reads the DOM; takes minutes | When the API is unavailable |
-
-All three modes build the expected message list from the API and check the result against it by message id. A mismatch is reported as incomplete and blocks the export.
+**Fast** (default) reads ChatGPT's conversation API and finishes in seconds, even for very long conversations. **Hybrid** adds details that only exist on the page. **Full** scrolls the page and takes minutes; use it only when the API is unavailable. Every mode checks the result against the API's message list and blocks the export if anything is missing.
 
 ## Using the panel by hand
 
@@ -219,44 +193,18 @@ To export only some messages you can skip the agent: open a ChatGPT conversation
   </tr>
 </table>
 
-<details>
-<summary>More panel screenshots</summary>
-
-<br>
-
-<p align="center"><img src="docs/images/01-click-extension-icon.png" alt="Click the extension icon" width="560"></p>
-<p align="center"><img src="docs/images/02-configure-backend-path.png" alt="Set the backend folder" width="560"></p>
-<p align="center"><img src="docs/images/03-terminal-start-backend.png" alt="Start the renderer in a terminal" width="640"></p>
-<p align="center"><img src="docs/images/05-choose-capture-mode.png" alt="Choose a capture mode" width="320"></p>
-<p align="center"><img src="docs/images/07-stop-local-backend.png" alt="Stop the renderer" width="340"></p>
-
-</details>
-
 ## Privacy and security
 
-- The extension reads only the ChatGPT page you have open. No remote conversion service is used.
-- PDF, Markdown and zip files are generated on your machine. Runtime data lives in `.convo-vault/`, which is git-ignored.
-- The renderer listens on `127.0.0.1` only and requires a token. Without one, requests that carry a browser `Origin` are rejected.
-- Export jobs are identified by a 192-bit random id and can be claimed once, by the extension only. The renderer's token is handed to the extension at claim time and never passes through a web page.
-- Creating jobs and reading results accept only local requests without a browser `Origin`, and the `Host` header is checked, so web pages and DNS rebinding cannot drive them.
+- The extension reads only the ChatGPT page you have open. No remote conversion service is used, and files never leave your machine.
+- The renderer listens on `127.0.0.1` only and requires a token.
+- Export jobs use a 192-bit random id. Only local programs can create them and only the extension can claim them, once.
 - An agent never needs, and never gets, your ChatGPT session: the extension uses the one already in your browser.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Languages and output types
 
-Conversation text is kept as Unicode and never translated: Chinese, English, Spanish, Italian, Japanese, Korean, Arabic, Hebrew and mixed-direction text all export correctly. The interface and documentation are in English, with a [Chinese README](README.zh-CN.md).
-
-The PDF is the reading archive and the JSON files are the evidence archive. Formulas, Mermaid, simple charts, code, tables, images and ChatGPT's generative UI are drawn statically where possible. Video, audio and interactive cards degrade to a clear card, and the JSON records `kind`, `renderStatus`, `degraded` and the reason, so nothing disappears silently.
-
-## Roadmap
-
-Ideas under consideration, not promises:
-
-- Export all conversations, with incremental sync that fetches only what changed.
-- Build the bundle inside the extension so no local service is needed (PDF stays optional).
-- Chrome Web Store release.
-- Obsidian-friendly Markdown (frontmatter and tags).
+Conversation text is kept as Unicode and never translated, so Chinese, Japanese, Korean, Arabic, Hebrew, European languages and mixed text all export correctly. Content that cannot be drawn in the PDF (video, audio, interactive cards) becomes a clear card, and the JSON records why, so nothing disappears silently.
 
 ## Development
 

@@ -7,7 +7,7 @@
 文档与项目规范：
 
 - **英文成为默认语言**：`README.md`、`CHANGELOG.md`、`INSTALL.md` 改为英文，中文版为 `README.zh-CN.md`、`CHANGELOG.zh-CN.md`、`INSTALL.zh-CN.md`
-- **同类项目对比**和 PDF 效果样张
+- README 增加 PDF 效果样张
 - **仓库规范**：新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板，`package.json` 补全仓库、关键词、许可证等元数据；`tests/version.test.mjs` 同步检查 README 和 CHANGELOG 的版本
 
 ## 0.10.2

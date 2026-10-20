@@ -187,19 +187,6 @@ node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
   </tr>
 </table>
 
-<details>
-<summary>更多面板截图</summary>
-
-<br>
-
-<p align="center"><img src="docs/images/01-click-extension-icon.png" alt="点击扩展图标" width="560"></p>
-<p align="center"><img src="docs/images/02-configure-backend-path.png" alt="配置服务路径" width="560"></p>
-<p align="center"><img src="docs/images/03-terminal-start-backend.png" alt="终端启动服务" width="640"></p>
-<p align="center"><img src="docs/images/05-choose-capture-mode.png" alt="选择抓取模式" width="320"></p>
-<p align="center"><img src="docs/images/07-stop-local-backend.png" alt="停止本地服务" width="340"></p>
-
-</details>
-
 ## 安全与隐私
 
 - 扩展只读取当前打开的 ChatGPT 页面，不使用任何远程转换服务
@@ -214,23 +201,6 @@ node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 对话内容按 Unicode 原文保留：中文、英文、西语、意大利语、日语、韩语、阿拉伯语、希伯来语和混排都能导出，不翻译。
 
 PDF 是给人看的阅读档案，JSON 和资源清单是给机器和恢复用的证据档案。公式、Mermaid、简单图表、代码、表格、图片和 ChatGPT 的生成式界面尽量静态渲染；视频、音频、交互卡片用清晰的卡片降级，并在 JSON 里记录 `kind`、`renderStatus`、`degraded` 和原因，内容不会静默丢失。
-
-## 同类项目对比
-
-下面按各项目公开的 README 或官网整理（2026 年 10 月），有出入欢迎指正。
-
-| | **Convo Vault** | [pionxzh/chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) | [ChatGPT Exporter](https://www.chatgptexporter.com/)（Chrome 扩展） | OpenAI 官方导出 + [convoviz](https://github.com/mohamed-chs/convoviz) 等转换器 |
-| --- | --- | --- | --- | --- |
-| 运行位置 | 本地扩展 + 本地渲染服务 | Tampermonkey 用户脚本 | Chrome 扩展；官网称 PDF 在其服务器上生成 | 官方邮件发 zip，转换器在本地运行 |
-| 格式 | Markdown、PDF、JSONL、QA 对、话题、实体、素材清单 | Text、PNG、Markdown、HTML、JSON | PDF、Markdown、TXT、JSON、CSV、图片 | 原始 JSON；convoviz 生成 Markdown、图表、词云 |
-| 思考与工具过程 | ✅ 按顺序，含完整工具输出 | README 未列出 | 官网未列出 | convoviz README 未列出 |
-| 完整性检查 | ✅ 对照 ChatGPT 的消息清单，缺失即拦截 | 未列出 | 未列出 | 不适用 |
-| Agent / 命令行 / MCP | ✅ skill、命令行、MCP | 未列出 | 未列出 | 仅命令行 |
-| 导出全部对话 | ❌ 暂未支持 | ✅ Export All | 未列出 | ✅ 全部历史 |
-| 安装 | Releases 或 `git clone`，加载一次扩展 | Tampermonkey + 用户脚本 | Chrome 网上应用店 | 无需安装，或 `pip` / `uv` |
-| 成熟度 | 新项目 | 2.8k star，2022 年 12 月起持续更新 | 官网称“80,000+ 用户”（自报） | 成熟 |
-
-如果现在就要归档全部历史，请用其他几个。如果要的是重要对话的完整、可交给 Agent 的导出（含思考过程），并且希望直接让 Agent 去做，那就是 Convo Vault 的定位。
 
 ## 开发
 
@@ -249,7 +219,7 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 
 完整历史见 [CHANGELOG.md](CHANGELOG.zh-CN.md)。
 
-`0.10.3` 英文 README 成为默认，中文版移到 `README.zh-CN.md`；新增 MIT 许可证、安全与贡献说明、同类项目对比。
+`0.10.3` 英文 README 成为默认，中文版移到 `README.zh-CN.md`；新增 MIT 许可证、安全与贡献说明。
 
 `0.10.2` 渲染服务空闲后自动退出，不用再手动关；新增 `--no-pdf` 只导出数据（更快，不依赖 Chrome）。
 
