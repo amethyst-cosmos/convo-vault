@@ -2,6 +2,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const INCLUDE_FILES = {
+  "constants": "constants.js",
+  "selectors": "selectors.js",
+  "capture-orchestrator": "capture-orchestrator.js",
+  "capture-hybrid": "capture-hybrid.js",
+  "capture-budget": "capture-budget.js",
+  "capture-validation": "capture-validation.js",
+  "message-snapshot": "message-snapshot.js",
+  "capture-jobs": "capture-jobs.js",
+  "date-format": "date-format.js",
+  "dom-utils": "dom-utils.js",
+  "page-utils": "page-utils.js",
+  "text-utils": "text-utils.js",
   "auto-export": "auto-export.js",
   "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",
@@ -17,17 +29,13 @@ const INCLUDE_FILES = {
   "dom-serializer": "dom-serializer.js"
 };
 
-export async function buildContentScript(repoRoot, options = {}) {
-  const srcDir = path.join(repoRoot, "src", "content");
+/** Concatenates extension/content/index.js with its include fragments into one content script. */
+export async function buildContentScript(repoRoot) {
+  const srcDir = path.join(repoRoot, "extension", "content");
   const indexPath = path.join(srcDir, "index.js");
   const content = await fs.readFile(indexPath, "utf8");
-  const built = await replaceIncludes(content, srcDir);
 
-  if (options.write !== false) {
-    await fs.writeFile(path.join(repoRoot, "content.js"), built, "utf8");
-  }
-
-  return built;
+  return replaceIncludes(content, srcDir);
 }
 
 async function replaceIncludes(content, srcDir) {

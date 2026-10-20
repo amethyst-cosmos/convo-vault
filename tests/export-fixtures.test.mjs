@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const require = createRequire(import.meta.url);
-const { buildOutputObjectIndex } = require("../tools/advanced-pdf/assets.js");
+const { buildOutputObjectIndex } = require("../renderer/lib/assets.js");
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const fixturesDir = path.join(repoRoot, "tests", "fixtures");
@@ -132,7 +132,7 @@ for (const fixtureCase of cases) {
 
     await mkdir(outputDir, { recursive: true });
     await execFileAsync(process.execPath, [
-      path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+      path.join(repoRoot, "renderer", "render.js"),
       fixturePath,
       "--html",
       htmlPath,
@@ -206,7 +206,7 @@ test("advanced PDF renderer renders CJK bold, merged footnotes, and avatars in m
   await mkdir(outputDir, { recursive: true });
   await writeFile(payloadPath, JSON.stringify(payload), "utf8");
   await execFileAsync(process.execPath, [
-    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    path.join(repoRoot, "renderer", "render.js"),
     payloadPath,
     "--html",
     htmlPath,
@@ -241,7 +241,7 @@ test("advanced PDF renderer embeds DIL programs with the Markdown fallback besid
   await mkdir(outputDir, { recursive: true });
   await writeFile(payloadPath, JSON.stringify(payload), "utf8");
   await execFileAsync(process.execPath, [
-    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    path.join(repoRoot, "renderer", "render.js"),
     payloadPath,
     "--html",
     htmlPath,
@@ -299,7 +299,7 @@ test("advanced PDF renderer keeps attachments after prose, embedded images, and 
   await mkdir(outputDir, { recursive: true });
   await writeFile(payloadPath, JSON.stringify(payload), "utf8");
   await execFileAsync(process.execPath, [
-    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    path.join(repoRoot, "renderer", "render.js"),
     payloadPath,
     "--html",
     htmlPath,

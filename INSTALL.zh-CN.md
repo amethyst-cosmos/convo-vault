@@ -12,7 +12,7 @@
 4. **运行安装**：
 
    ```bash
-   cd <位置> && node scripts/convo-vault.mjs setup
+   cd <位置> && node cli/convo-vault.mjs setup
    ```
 
    它会装渲染依赖、构建扩展，把 skill 装进 Claude 和 Codex（找到哪个装哪个），并打开浏览器的扩展页面。用户常用的浏览器不是 Chrome 时加 `--browser edge`（或 brave）。
@@ -22,8 +22,8 @@
    3. 在这个浏览器里登录 ChatGPT。
 
    浏览器不允许程序自动安装未上架的扩展，所以这一步不要假装能替用户完成。
-6. **验证**：`node scripts/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK`。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
-7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node scripts/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node scripts/convo-vault.mjs mcp config` 打印的配置。
+6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK`。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
+7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node cli/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node cli/convo-vault.mjs mcp config` 打印的配置。
 8. **告诉用户**：新装的 skill 要在新开的会话里才会生效，请重开一个会话。
 
 ## 使用
@@ -31,15 +31,15 @@
 用户给出对话链接或截图（地址栏里有 `chatgpt.com/c/<id>`），运行：
 
 ```bash
-node <位置>/scripts/convo-vault.mjs export "<链接>"
+node <位置>/cli/convo-vault.mjs export "<链接>"
 ```
 
 默认 Fast 模式，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选模式或点面板。详细规则见已安装的 `convo-vault` skill。
 
 ## 更新与排错
 
-- 更新：`node <位置>/scripts/convo-vault.mjs update`（拉取最新代码并重新安装）；扩展已加载的话，提醒用户在扩展页面点一下重新加载。
-- 自检：`node <位置>/scripts/convo-vault.mjs doctor`。
+- 更新：`node <位置>/cli/convo-vault.mjs update`（拉取最新代码并重新安装）；扩展已加载的话，提醒用户在扩展页面点一下重新加载。
+- 自检：`node <位置>/cli/convo-vault.mjs doctor`。
 - 渲染服务由导出命令自动启动，日志在 `<位置>/.convo-vault/backend.log`。
 
 ## 不要做

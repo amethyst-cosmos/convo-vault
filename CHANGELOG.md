@@ -15,6 +15,7 @@ Agents run the export. From this version you do not click the panel: tell Claude
 - **Data-only export.** `--no-pdf` (MCP argument `pdf: false`) skips the PDF, so no headless Chrome is needed.
 - **Fix:** `--no-extract` and `setup --no-open` had no effect.
 - **Fix, found by the first real export in Chrome:** the Markdown showed layout tags that ChatGPT's generative-UI fallback leaves behind (`<box ...>`, `<row ...>`, `<checkbox .../>`). They are removed and checkboxes become `- [ ]` / `- [x]`. The PDF was already correct.
+- **Code layout.** `extension/` (everything the browser loads), `renderer/` (the local service, formerly `tools/advanced-pdf`), `cli/` (CLI and MCP server) and `scripts/` (repository tooling). The 4,600-line `render.js` and the 1,300-line `server.js` are split into modules, the 2,400-line content `index.js` into fragments, and the stylesheet moved to `renderer/static/render.css`. The generated content script and the rendered HTML of every test fixture are byte-identical to before. `content.js` is no longer committed. Unused `templates/`, `schemas/`, `configs/` and PowerShell scripts were removed.
 - **Project basics.** English is the default for README, CHANGELOG and INSTALL (Chinese versions are `*.zh-CN.md`); MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates, fuller `package.json` metadata, a PDF output sample, and a release package built by `npm run package`.
 
 ## 0.10.1

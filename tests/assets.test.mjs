@@ -12,7 +12,7 @@ const {
   buildOutputObjectIndex,
   dedupeEmbeddedImageAssets,
   externalizeEmbeddedImageAssets
-} = require("../tools/advanced-pdf/assets.js");
+} = require("../renderer/lib/assets.js");
 
 test("asset manifest deduplicates cached AI image bytes and references user files", async () => {
   const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "convo-vault-assets-"));

@@ -839,7 +839,7 @@ async function loadFastCaptureModule(overrides = {}) {
     "conversation-manifest.js",
     "agent-trace.js",
     "capture-fast.js"
-  ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
+  ].map((file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({
     AbortController,
     CONVERSATION_API_FETCH_TIMEOUT_MS: 15_000,

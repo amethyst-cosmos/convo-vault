@@ -3,11 +3,12 @@ import path from "node:path";
 import vm from "node:vm";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { buildContentScript } from "../scripts/lib/content-build.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 test("DOM image markdown deduplicates ChatGPT asset layers by stable file id", async () => {
-  const source = await readFile(path.join(repoRoot, "src", "content", "index.js"), "utf8");
+  const source = await buildContentScript(repoRoot);
   const functions = source.match(/  function dedupeMarkdownImageReferences[\s\S]+?(?=\n  function countEmbeddedMarkdownImages)/)?.[0];
   assert.ok(functions, "Expected image dedupe helpers in the content source");
 

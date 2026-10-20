@@ -23,10 +23,17 @@
 - **数据完整性门禁 (Integrity Gate)**：
   - 支持 `Full`、`Fast`、`Hybrid` 捕获模式。
   - 严格保持消息序列完整性，杜绝序号跳跃与角色异常。
-- **内容脚本模块**：`content.js` 由 `npm run build:extension` 从 `src/content/index.js` 生成，`// @convo-vault-include <name>` 按 `scripts/lib/content-build.mjs` 的 `INCLUDE_FILES` 原位展开，所有模块共享同一个作用域。`index.js` 负责常量、采集编排和通用工具；`selector-panel.js` 选择面板；`message-discovery.js` 消息节点、角色、正文与时间识别；`agent-trace.js` 回答过程的有序事件记录（PDF 思考时间线和 agent-trace 文件的唯一来源）；`thinking-flyouts.js` 页面上展开的思考面板（Full 模式）；`dom-serializer.js` DOM 转 Markdown；`bundle-export.js` 导出与图片下载；`auto-export.js` 自动导出任务（URL 哈希 `#convo-vault-job=<id>` 触发，认领、扫描、过完整性闸门、导出并回报，不经面板）；`capture-fast.js`/`capture-full.js` 两种采集；`chatgpt-markup.js`/`chatgpt-dom.js` ChatGPT 格式适配；`conversation-manifest.js` 完整性清单。
-- **命令行与 Skill**：`scripts/convo-vault.mjs`（`export`/`setup`/`doctor`/`skill install`/`backend`）经本地渲染服务的 `/jobs` 接口让扩展自动导出；`skills/convo-vault/SKILL.md` 是 Claude/Codex 的 skill 模板（`{{CLI}}` 在安装时替换成命令行绝对路径）；`npm run package` 生成发布包，推送 `v*` 标签由 `.github/workflows/release.yml` 发布。
-- **生成式界面 (DIL)**：Fast 把 `metadata.model_dil_v2` 打包为消息的 `dil` 字段，`tools/advanced-pdf/dil-runtime.js` 在 PDF 页面里执行并绘制；页面 CSP 禁止一切网络请求，失败时显示 Markdown fallback。
-- **每次交付都升版本号**：任何交给用户安装或测试的代码改动，都至少提升补丁版本（如 0.9.1 → 0.9.2），并同步 `package.json`、`manifest.json`、`tools/advanced-pdf/package.json`、`src/content/index.js` 的 `EXPORTER_VERSION`、`popup.html`、`tests/version.test.mjs`、`README.md` 与 `README.zh-CN.md` 的“当前版本”和更新说明（`README.md` 是英文默认版），以及 `CHANGELOG.md`、`CHANGELOG.zh-CN.md`，让用户能从面板和扩展页面看出装的是哪一版。
+- **仓库布局**：
+  - `extension/`：浏览器加载的全部源码，`manifest.json`、`background.js`、`popup/`、`icons/`、`content/`。
+  - `renderer/`：本地渲染服务（原 `tools/advanced-pdf`）。`server.js` 是 HTTP 入口，`render.js` 是 payload→HTML→PDF 的命令行，`lib/` 按职责拆分（`config`、`http-utils`、`jobs`、`export-sessions`、`bundle`、`zip`、`bundle-content`、`agent-trace-files`、`assets`、`document`/`messages`/`markdown`/`math`/`charts`/`mermaid`/`images`/`text`/`util`、`pagination`、`pdf`、`dil-runtime`），`static/` 放样式表和头像。
+  - `cli/`：用户命令行 `convo-vault.mjs`（`export`/`setup`/`verify`/`doctor`/`update`/`skill install`/`mcp`/`backend`）、`mcp-server.mjs` 和 `lib/`；`start-local-backend.mjs` 供扩展弹窗的 Copy Start 使用。
+  - `scripts/`：仓库自己的工具，`build-extension.mjs`、`check.mjs`、`package-release.mjs`、`lib/`（内容脚本拼装、zip 写入）。
+  - `skills/convo-vault/SKILL.md`：Claude/Codex 的 skill 模板，`{{CLI}}` 在安装时替换成命令行绝对路径。
+  - `tests/`、`docs/`（只放图片）。`content.js` 不再提交，只在 `dist/` 里生成。
+- **内容脚本模块**：`npm run build:extension` 从 `extension/content/index.js` 生成 `dist/convo-vault-extension/content.js`，`// @convo-vault-include <name>` 按 `scripts/lib/content-build.mjs` 的 `INCLUDE_FILES` 原位展开，所有模块共享同一个作用域，新增模块要在 `INCLUDE_FILES` 里登记。模块：`constants`/`selectors` 常量与选择器；`capture-orchestrator`/`capture-hybrid`/`capture-budget` 三种模式的采集编排；`capture-validation` 取消与完整性报告；`capture-jobs` 采集任务管理；`message-snapshot`/`debug-log` 消息快照与调试日志；`selector-panel` 选择面板；`message-discovery` 消息节点、角色、正文与时间识别；`agent-trace` 回答过程的有序事件记录（PDF 思考时间线和 agent-trace 文件的唯一来源）；`thinking-flyouts` 页面上展开的思考面板（Full 模式）；`dom-serializer` DOM 转 Markdown；`bundle-export` 导出与图片下载；`auto-export` 自动导出任务（URL 哈希 `#convo-vault-job=<id>` 触发，认领、扫描、过完整性闸门、导出并回报，不经面板）；`capture-fast`/`capture-full` 两种采集；`chatgpt-markup`/`chatgpt-dom` ChatGPT 格式适配；`conversation-manifest` 完整性清单；`date-format`/`dom-utils`/`page-utils`/`text-utils` 通用工具。
+- **命令行与 Skill**：`cli/convo-vault.mjs` 经本地渲染服务的 `/jobs` 接口让扩展自动导出；`npm run package` 生成发布包，推送 `v*` 标签由 `.github/workflows/release.yml` 发布。
+- **生成式界面 (DIL)**：Fast 把 `metadata.model_dil_v2` 打包为消息的 `dil` 字段，`renderer/lib/dil-runtime.js` 在 PDF 页面里执行并绘制；页面 CSP 禁止一切网络请求，失败时显示 Markdown fallback。
+- **每次交付都升版本号**：任何交给用户安装或测试的代码改动，都至少提升补丁版本，并同步 `package.json`、`renderer/package.json`、`extension/manifest.json`、`extension/content/index.js` 的 `EXPORTER_VERSION`、`extension/popup/popup.html`、`tests/version.test.mjs`、`README.md` 与 `README.zh-CN.md` 的“当前版本”和更新说明（`README.md` 是英文默认版），以及 `CHANGELOG.md`、`CHANGELOG.zh-CN.md`，让用户能从面板和扩展页面看出装的是哪一版。`tests/version.test.mjs` 会检查。
 
 ---
 

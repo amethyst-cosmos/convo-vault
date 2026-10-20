@@ -88,8 +88,8 @@ Agent 会克隆项目、安装依赖、构建扩展、安装 skill，并运行�
 从 [Releases](https://github.com/amethyst-cosmos/convo-vault/releases) 下载 `convo-vault-<版本>.zip` 解压，或者克隆仓库，然后：
 
 ```bash
-node scripts/convo-vault.mjs setup     # 装依赖、构建扩展、安装 skill，并打开扩展页面
-node scripts/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里的扩展有响应
+node cli/convo-vault.mjs setup     # 装依赖、构建扩展、安装 skill，并打开扩展页面
+node cli/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里的扩展有响应
 ```
 
 需要 Node 20 或更新版本。
@@ -101,7 +101,7 @@ node scripts/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器
 | 环境 | 支持 | 方式 |
 | --- | :---: | --- |
 | Claude Code、Claude 桌面版的 Code 标签、Codex | ✅ | skill，`setup` 自动安装 |
-| Claude 桌面版的普通聊天、Cursor 等支持本地 MCP 的客户端 | ✅ | `node scripts/convo-vault.mjs mcp install`，在聊天里发链接或截图 |
+| Claude 桌面版的普通聊天、Cursor 等支持本地 MCP 的客户端 | ✅ | `node cli/convo-vault.mjs mcp install`，在聊天里发链接或截图 |
 | claude.ai 网页、ChatGPT 网页（含 Agent 模式） | ❌ | 它们跑在云端沙盒里，碰不到你电脑上的浏览器和本地服务 |
 
 ## 它是怎么做到不用点的
@@ -142,10 +142,10 @@ flowchart LR
 ## 命令行
 
 ```bash
-node scripts/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
-node scripts/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
-node scripts/convo-vault.mjs export <链接> --mode hybrid               # fast（默认）| hybrid | full
-node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
+node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
+node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
+node cli/convo-vault.mjs export <链接> --mode hybrid               # fast（默认）| hybrid | full
+node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 ```
 
 | 命令 | 作用 |
@@ -172,7 +172,7 @@ node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 
 ## 手动使用扩展面板
 
-只想导出其中几条消息时，可以不用 Agent：打开 ChatGPT 对话，点浏览器工具栏的 Convo Vault 图标，点 **Open Selector**，选好模式后 **Start Scan**，核对完整性报告再导出。面板方式要先启动渲染服务：运行 `node scripts/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start** 并把命令粘贴到终端。
+只想导出其中几条消息时，可以不用 Agent：打开 ChatGPT 对话，点浏览器工具栏的 Convo Vault 图标，点 **Open Selector**，选好模式后 **Start Scan**，核对完整性报告再导出。面板方式要先启动渲染服务：运行 `node cli/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start** 并把命令粘贴到终端。
 
 <table>
   <tr>
@@ -206,14 +206,14 @@ PDF 是给人看的阅读档案，JSON 和资源清单是给机器和恢复用�
 
 ```bash
 npm test                  # 全部测试
-npm run check             # 语法与 JSON 校验，并确认 content.js 与 src/content 同步
+npm run check             # 语法与 JSON 校验，并确认内容脚本能构建
 npm run build:extension   # 生成 dist/convo-vault-extension 和 zip
 npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ```
 
-- `content.js` 由 `src/content/index.js` 加各模块生成，改了 `src/content` 后运行 `npm run build:extension`
+- 扩展源码在 `extension/`，内容脚本由 `npm run build:extension` 从 `extension/content/index.js` 和各模块生成，输出到 `dist/convo-vault-extension`
 - 发布：改版本号后推送 `v<版本>` 标签，GitHub Actions 会检查、测试、打包并创建 Release
-- 版本号需要同步：`package.json`、`manifest.json`、`tools/advanced-pdf/package.json`、`src/content/index.js`、`popup.html`、两份 README、两份 CHANGELOG；`tests/version.test.mjs` 会检查
+- 版本号需要同步：`package.json`、`renderer/package.json`、`extension/manifest.json`、`extension/content/index.js`、`extension/popup/popup.html`、两份 README、两份 CHANGELOG；`tests/version.test.mjs` 会检查
 
 ## 更新日志
 

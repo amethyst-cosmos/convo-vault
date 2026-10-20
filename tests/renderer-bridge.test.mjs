@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 test("background renderer bridge preserves the serialized request and downloads the prepared ZIP", async () => {
-  const backgroundSource = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const backgroundSource = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
   const runtimeMessageEvent = createEvent();
   const runtimeConnectEvent = createEvent();
   const fetchCalls = [];
@@ -114,7 +114,7 @@ test("background renderer bridge preserves the serialized request and downloads 
 });
 
 test("background renderer bridge stages image bytes outside the control JSON", async () => {
-  const backgroundSource = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const backgroundSource = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
   const runtimeMessageEvent = createEvent();
   const runtimeConnectEvent = createEvent();
   const fetchCalls = [];
@@ -244,7 +244,7 @@ test("background renderer bridge stages image bytes outside the control JSON", a
 });
 
 test("background renderer bridge stages page-downloaded ChatGPT file images without refetching", async () => {
-  const backgroundSource = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const backgroundSource = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
   const runtimeConnectEvent = createEvent();
   const fetchCalls = [];
   const stagedBodies = [];

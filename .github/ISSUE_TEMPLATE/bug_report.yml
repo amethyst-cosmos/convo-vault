@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Convo Vault version
-      description: Shown in the extension popup, or `node scripts/convo-vault.mjs doctor`.
+      description: Shown in the extension popup, or `node cli/convo-vault.mjs doctor`.
     validations:
       required: true
   - type: dropdown
@@ -53,5 +53,5 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: Output of `node scripts/convo-vault.mjs doctor`
+      label: Output of `node cli/convo-vault.mjs doctor`
       render: text

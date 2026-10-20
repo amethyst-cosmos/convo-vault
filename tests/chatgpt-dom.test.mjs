@@ -76,7 +76,7 @@ async function loadDomModule() {
   const source = (await Promise.all([
     "chatgpt-dom.js",
     "conversation-manifest.js"
-  ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
+  ].map((file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({
     makeFence: () => "```",
     uniqueStrings: (values) => [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]

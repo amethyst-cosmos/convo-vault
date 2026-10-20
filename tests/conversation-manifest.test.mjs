@@ -170,7 +170,7 @@ async function loadManifestModule() {
     "conversation-manifest.js",
     "agent-trace.js",
     "capture-fast.js"
-  ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
+  ].map((file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({
     normalizeCaptureMode(value) {
       const mode = String(value || "").toLowerCase();

@@ -7,7 +7,6 @@
 *.md text eol=lf
 *.html text eol=lf
 *.css text eol=lf
-*.ps1 text eol=crlf
 *.yaml text eol=lf
 *.yml text eol=lf
 *.lock text eol=lf

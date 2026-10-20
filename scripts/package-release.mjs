@@ -27,18 +27,12 @@ const include = [
   "SECURITY.md",
   "CONTRIBUTING.md",
   "package.json",
-  "manifest.json",
-  "background.js",
-  "content.js",
-  "popup.html",
-  "popup.css",
-  "popup.js",
-  "assets",
   "docs/images",
+  "cli",
   "scripts",
   "skills",
-  "src",
-  "tools/advanced-pdf"
+  "extension",
+  "renderer"
 ];
 const skipNames = new Set(["node_modules", "tmp", ".DS_Store"]);
 
@@ -65,7 +59,7 @@ await fs.rm(stagingRoot, { recursive: true, force: true });
 
 const { size } = await fs.stat(zipPath);
 console.log(`Release package: ${zipPath} (${(size / 1024 / 1024).toFixed(1)} MB)`);
-console.log("Unzip it, then run: node scripts/convo-vault.mjs setup");
+console.log("Unzip it, then run: node cli/convo-vault.mjs setup");
 
 async function copyEntry(source, destination) {
   const stat = await fs.stat(source);

@@ -2,14 +2,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { buildContentScript } from "../scripts/lib/content-build.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 test("project version is synchronized", async () => {
   const rootPackage = await readJson("package.json");
-  const manifest = await readJson("manifest.json");
-  const backendPackage = await readJson(path.join("tools", "advanced-pdf", "package.json"));
-  const content = await readFile(path.join(repoRoot, "content.js"), "utf8");
+  const manifest = await readJson(path.join("extension", "manifest.json"));
+  const backendPackage = await readJson(path.join("renderer", "package.json"));
+  const content = await buildContentScript(repoRoot);
 
   assert.equal(rootPackage.version, "0.11.0");
   assert.equal(manifest.version, rootPackage.version);
@@ -19,7 +20,7 @@ test("project version is synchronized", async () => {
 
 test("docs carry the project version", async () => {
   const { version } = await readJson("package.json");
-  const popup = await readFile(path.join(repoRoot, "popup.html"), "utf8");
+  const popup = await readFile(path.join(repoRoot, "extension", "popup", "popup.html"), "utf8");
   const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
   const readmeZh = await readFile(path.join(repoRoot, "README.zh-CN.md"), "utf8");
   const changelog = await readFile(path.join(repoRoot, "CHANGELOG.md"), "utf8");

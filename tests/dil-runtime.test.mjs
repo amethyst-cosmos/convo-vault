@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const runtimeSource = await readFile(path.join(repoRoot, "tools", "advanced-pdf", "dil-runtime.js"), "utf8");
+const runtimeSource = await readFile(path.join(repoRoot, "renderer", "lib", "dil-runtime.js"), "utf8");
 
 // Compiled the way ChatGPT ships model_dil_v2.code: a function component at
 // the root, constants by index, __dilSafe-wrapped loops, Link with children,

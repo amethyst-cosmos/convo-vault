@@ -42,13 +42,13 @@ function buildPayload() {
 }
 
 test("PDF page breaks keep answer meta with its content and move cramped prompts to a new page", { skip: !chromePath && "Chrome not found" }, async () => {
-  const { chromium } = require("../tools/advanced-pdf/node_modules/playwright-core");
+  const { chromium } = require("../renderer/node_modules/playwright-core");
   const payloadPath = path.join(outputDir, "payload.json");
   const htmlPath = path.join(outputDir, "pagination.html");
 
   await mkdir(outputDir, { recursive: true });
   await writeFile(payloadPath, JSON.stringify(buildPayload()), "utf8");
-  await execFileAsync(process.execPath, [path.join(repoRoot, "tools", "advanced-pdf", "render.js"), payloadPath, "--html", htmlPath, "--html-only"], { cwd: repoRoot });
+  await execFileAsync(process.execPath, [path.join(repoRoot, "renderer", "render.js"), payloadPath, "--html", htmlPath, "--html-only"], { cwd: repoRoot });
 
   const browser = await chromium.launch({ executablePath: chromePath, headless: true });
   try {
