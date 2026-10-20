@@ -308,8 +308,8 @@ async function verify(flags) {
   }
 
   throw new Error([
-    "No browser answered. Load the extension: open the browser's Extensions page, turn on Developer mode,",
-    `click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
+    "No browser answered. Open the browser's Extensions page. If Convo Vault is listed but switched off, turn it on and click its reload icon.",
+    `If it is not listed, turn on Developer mode, click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
   ].join("\n"));
 }
 

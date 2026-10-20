@@ -40,7 +40,7 @@ node "{{CLI}}" export "<url-or-id>"
 
 | Message | What to do |
 | --- | --- |
-| `did not pick up the job` / extension did not respond | The extension is not loaded or ChatGPT is not signed in in that browser. Tell the user to run `node "{{CLI}}" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
+| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off on the extensions page, or ChatGPT is not signed in in that browser. Tell the user to run `node "{{CLI}}" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
 | `Renderer dependencies are not installed` | Run `node "{{CLI}}" setup`. |
 | `cannot run export jobs` | An old renderer is running. Run `node "{{CLI}}" backend stop` and export again. |
 | `Capture is incomplete` | Report the listed issues. Offer `--mode hybrid` or ask whether a partial export is acceptable. |

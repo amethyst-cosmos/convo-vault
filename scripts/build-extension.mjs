@@ -29,21 +29,22 @@ const copiedFiles = [
   "icons/icon-128.png"
 ];
 
-await fs.rm(extensionDir, { recursive: true, force: true });
+// The folder is updated in place, never deleted: a browser that has it loaded
+// disables the extension when its manifest disappears, even for a moment.
 await fs.mkdir(extensionDir, { recursive: true });
+const written = new Set();
 
-for (const file of copiedFiles) {
-  const destination = path.join(extensionDir, file);
-  await fs.mkdir(path.dirname(destination), { recursive: true });
-
+for (const file of copiedFiles.filter((name) => name !== "manifest.json")) {
   try {
-    await fs.copyFile(path.join(sourceDir, file), destination);
+    await writeAtomically(file, await fs.readFile(path.join(sourceDir, file)));
   } catch {
     throw new Error(`Missing or unreadable extension file: ${path.join(sourceDir, file)}`);
   }
 }
 
-await fs.writeFile(path.join(extensionDir, "content.js"), await buildContentScript(repoRoot), "utf8");
+await writeAtomically("content.js", await buildContentScript(repoRoot));
+await writeAtomically("manifest.json", await fs.readFile(path.join(sourceDir, "manifest.json")));
+await removeStaleFiles(extensionDir);
 
 await fs.rm(zipPath, { force: true });
 await createZipFromDirectory(extensionDir, zipPath);
@@ -53,6 +54,29 @@ console.log(`Extension zip:    ${zipPath}`);
 console.log("");
 console.log("Chrome development mode still uses Load unpacked with the extension folder.");
 console.log("Use the zip for sharing or archiving; unzip it before Load unpacked if needed.");
+
+// Writes next to the target and renames, so a reader never sees half a file.
+async function writeAtomically(relativePath, data) {
+  const destination = path.join(extensionDir, relativePath);
+  const temporary = `${destination}.tmp`;
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(temporary, data);
+  await fs.rename(temporary, destination);
+  written.add(path.resolve(destination));
+}
+
+async function removeStaleFiles(dir) {
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      await removeStaleFiles(entryPath);
+      if (!(await fs.readdir(entryPath)).length) await fs.rmdir(entryPath);
+    } else if (!written.has(path.resolve(entryPath))) {
+      await fs.rm(entryPath);
+    }
+  }
+}
 
 function parseArgs(args) {
   const parsed = {};
