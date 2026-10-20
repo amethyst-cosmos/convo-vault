@@ -206,14 +206,14 @@ PDF 是给人看的阅读档案，JSON 和资源清单是给机器和恢复用�
 
 ```bash
 npm test                  # 全部测试
-npm run check             # 语法与 JSON 校验，并确认 content.js 与 src/content 同步
+npm run check             # 语法与 JSON 校验，并确认内容脚本能构建
 npm run build:extension   # 生成 dist/convo-vault-extension 和 zip
 npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ```
 
-- `content.js` 由 `src/content/index.js` 加各模块生成，改了 `src/content` 后运行 `npm run build:extension`
+- 扩展源码在 `extension/`，内容脚本由 `npm run build:extension` 从 `extension/content/index.js` 和各模块生成，输出到 `dist/convo-vault-extension`
 - 发布：改版本号后推送 `v<版本>` 标签，GitHub Actions 会检查、测试、打包并创建 Release
-- 版本号需要同步：`package.json`、`manifest.json`、`renderer/package.json`、`src/content/index.js`、`popup.html`、两份 README、两份 CHANGELOG；`tests/version.test.mjs` 会检查
+- 版本号需要同步：`package.json`、`renderer/package.json`、`extension/manifest.json`、`extension/content/index.js`、`extension/popup/popup.html`、两份 README、两份 CHANGELOG；`tests/version.test.mjs` 会检查
 
 ## 更新日志
 

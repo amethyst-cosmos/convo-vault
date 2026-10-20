@@ -17,8 +17,8 @@ Node 20 or newer is required. PDF rendering needs a local Chrome or Chromium.
 ## Before you open a pull request
 
 - Run `npm run check` and `npm test`. CI runs both on Ubuntu, macOS and Windows.
-- `content.js` is generated. Edit `src/content/*.js`, then run `npm run build:extension`. `npm run check` fails if they disagree.
-- Every change someone would install or test bumps the version. Keep it identical in `package.json`, `manifest.json`, `renderer/package.json`, `src/content/index.js` (`EXPORTER_VERSION`), `popup.html`, `README.md`, `README.zh-CN.md`, `CHANGELOG.md` and `CHANGELOG.zh-CN.md`. `tests/version.test.mjs` checks it.
+- The content script is generated from `extension/content/*.js` by `npm run build:extension` (output in `dist/`). Edit the modules, not the output. `npm run check` fails if it no longer builds.
+- Every change someone would install or test bumps the version. Keep it identical in `package.json`, `renderer/package.json`, `extension/manifest.json`, `extension/content/index.js` (`EXPORTER_VERSION`), `extension/popup/popup.html`, `README.md`, `README.zh-CN.md`, `CHANGELOG.md` and `CHANGELOG.zh-CN.md`. `tests/version.test.mjs` checks it.
 - Add a test with the change. Export bugs are best captured as a fixture in `tests/fixtures/` (see `tests/fixtures/README.md`).
 - Keep the integrity gate honest: never make an incomplete capture look complete.
 

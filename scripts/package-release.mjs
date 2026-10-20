@@ -27,17 +27,10 @@ const include = [
   "SECURITY.md",
   "CONTRIBUTING.md",
   "package.json",
-  "manifest.json",
-  "background.js",
-  "content.js",
-  "popup.html",
-  "popup.css",
-  "popup.js",
-  "assets",
   "docs/images",
   "scripts",
   "skills",
-  "src",
+  "extension",
   "renderer"
 ];
 const skipNames = new Set(["node_modules", "tmp", ".DS_Store"]);

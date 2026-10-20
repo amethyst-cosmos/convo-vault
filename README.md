@@ -210,14 +210,14 @@ Conversation text is kept as Unicode and never translated, so Chinese, Japanese,
 
 ```bash
 npm test                  # all tests
-npm run check             # syntax and JSON checks; verifies content.js matches src/content
+npm run check             # syntax and JSON checks, and that the content script builds
 npm run build:extension   # build dist/convo-vault-extension and its zip
 npm run package           # build dist/convo-vault-<version>.zip
 ```
 
-- `content.js` is generated from `src/content/index.js` and its modules. Run `npm run build:extension` after editing `src/content`.
+- The extension is in `extension/`; its content script is generated from `extension/content/index.js` and its modules by `npm run build:extension`, which writes the loadable folder to `dist/convo-vault-extension`.
 - Releases: bump the version, merge, then push a `v<version>` tag. GitHub Actions checks, tests, packages and publishes the release.
-- Keep the version in sync across `package.json`, `manifest.json`, `renderer/package.json`, `src/content/index.js`, `popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
+- Keep the version in sync across `package.json`, `renderer/package.json`, `extension/manifest.json`, `extension/content/index.js`, `extension/popup/popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 

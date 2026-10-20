@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const source = await readFile(path.join(repoRoot, "src", "content", "auto-export.js"), "utf8");
+const source = await readFile(path.join(repoRoot, "extension", "content", "auto-export.js"), "utf8");
 const JOB_ID = "a".repeat(48);
 
 function load({ claim, collect, exportMessages, hash = `#convo-vault-job=${JOB_ID}` }) {

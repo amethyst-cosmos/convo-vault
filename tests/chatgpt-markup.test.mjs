@@ -357,7 +357,7 @@ test("DIL loops over non-literal data keep ChatGPT's fallback Markdown", async (
 });
 
 async function loadMarkupModule() {
-  const source = await readFile(path.join(repoRoot, "src", "content", "chatgpt-markup.js"), "utf8");
+  const source = await readFile(path.join(repoRoot, "extension", "content", "chatgpt-markup.js"), "utf8");
   const context = vm.createContext({ makeFence, escapeMarkdownLinkLabel, URL });
   vm.runInContext(`${source}\nglobalThis.__markupTest = {
     buildCitationSourceIndex,
@@ -379,7 +379,7 @@ async function loadFastModule() {
     "conversation-manifest.js",
     "agent-trace.js",
     "capture-fast.js"
-  ].map((file) => readFile(path.join(repoRoot, "src", "content", file), "utf8")))).join("\n");
+  ].map((file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({
     cleanMarkdown: (value) => String(value || "").replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
     countMarkdownImages: (value) => (String(value || "").match(/!\[[^\]]*]\(/g) || []).length,

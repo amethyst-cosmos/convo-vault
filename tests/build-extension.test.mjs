@@ -31,7 +31,7 @@ test("cross-platform extension build creates loadable folder and zip", async () 
     assert.equal(manifest.name, "Convo Vault");
     assert.equal(manifest.version, rootPackage.version);
     assert.equal((await stat(path.join(extensionDir, "content.js"))).isFile(), true);
-    assert.equal((await stat(path.join(extensionDir, "assets", "icons", "icon-128.png"))).isFile(), true);
+    assert.equal((await stat(path.join(extensionDir, "icons", "icon-128.png"))).isFile(), true);
     assert.equal(zipHeader.subarray(0, 2).toString("utf8"), "PK");
   } finally {
     await rm(tempDir, { recursive: true, force: true });

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 test("DOM image markdown deduplicates ChatGPT asset layers by stable file id", async () => {
-  const source = await readFile(path.join(repoRoot, "src", "content", "index.js"), "utf8");
+  const source = await readFile(path.join(repoRoot, "extension", "content", "index.js"), "utf8");
   const functions = source.match(/  function dedupeMarkdownImageReferences[\s\S]+?(?=\n  function countEmbeddedMarkdownImages)/)?.[0];
   assert.ok(functions, "Expected image dedupe helpers in the content source");
 

@@ -1,5 +1,5 @@
 // Builds the bundle's agent-trace files from the per-message traces the
-// extension captured (src/content/agent-trace.js, version 2).
+// extension captured (extension/content/agent-trace.js, version 2).
 //
 // agent-trace.json keeps every event with full content, for analysing how
 // ChatGPT worked. agent-trace.md is the readable chronological view; long tool

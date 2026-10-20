@@ -17,17 +17,13 @@ const INCLUDE_FILES = {
   "dom-serializer": "dom-serializer.js"
 };
 
-export async function buildContentScript(repoRoot, options = {}) {
-  const srcDir = path.join(repoRoot, "src", "content");
+/** Concatenates extension/content/index.js with its include fragments into one content script. */
+export async function buildContentScript(repoRoot) {
+  const srcDir = path.join(repoRoot, "extension", "content");
   const indexPath = path.join(srcDir, "index.js");
   const content = await fs.readFile(indexPath, "utf8");
-  const built = await replaceIncludes(content, srcDir);
 
-  if (options.write !== false) {
-    await fs.writeFile(path.join(repoRoot, "content.js"), built, "utf8");
-  }
-
-  return built;
+  return replaceIncludes(content, srcDir);
 }
 
 async function replaceIncludes(content, srcDir) {

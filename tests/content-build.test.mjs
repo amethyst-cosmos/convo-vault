@@ -7,12 +7,11 @@ import { buildContentScript } from "../scripts/lib/content-build.mjs";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 test("content script is generated from modular Hybrid, Fast, and Full sources", async () => {
-  const generated = await buildContentScript(repoRoot, { write: false });
-  const current = await readFile(path.join(repoRoot, "content.js"), "utf8");
-  const debugModule = await readFile(path.join(repoRoot, "src", "content", "debug-log.js"), "utf8");
-  const fastModule = await readFile(path.join(repoRoot, "src", "content", "capture-fast.js"), "utf8");
-  const fullModule = await readFile(path.join(repoRoot, "src", "content", "capture-full.js"), "utf8");
-  const background = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const generated = await buildContentScript(repoRoot);
+  const debugModule = await readFile(path.join(repoRoot, "extension", "content", "debug-log.js"), "utf8");
+  const fastModule = await readFile(path.join(repoRoot, "extension", "content", "capture-fast.js"), "utf8");
+  const fullModule = await readFile(path.join(repoRoot, "extension", "content", "capture-full.js"), "utf8");
+  const background = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
   const rendererLib = path.join(repoRoot, "renderer", "lib");
   const backendServer = [
     await readFile(path.join(repoRoot, "renderer", "server.js"), "utf8"),
@@ -23,11 +22,10 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
     ...await Promise.all((await readdir(rendererLib)).filter((name) => name.endsWith(".js")).map((name) => readFile(path.join(rendererLib, name), "utf8"))),
     await readFile(path.join(repoRoot, "renderer", "static", "render.css"), "utf8")
   ].join("\n");
-  const manifest = JSON.parse(await readFile(path.join(repoRoot, "manifest.json"), "utf8"));
-  const popupHtml = await readFile(path.join(repoRoot, "popup.html"), "utf8");
-  const popupJs = await readFile(path.join(repoRoot, "popup.js"), "utf8");
+  const manifest = JSON.parse(await readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8"));
+  const popupHtml = await readFile(path.join(repoRoot, "extension", "popup", "popup.html"), "utf8");
+  const popupJs = await readFile(path.join(repoRoot, "extension", "popup", "popup.js"), "utf8");
 
-  assert.equal(current.replace(/\r\n/g, "\n"), generated);
   assert.match(generated, /function createDebugLog/);
   assert.match(generated, /function buildConversationManifest/);
   assert.match(generated, /function buildManifestCompletenessReport/);

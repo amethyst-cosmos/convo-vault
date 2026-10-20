@@ -277,7 +277,7 @@ async function setup(flags) {
 
 async function ensureExtensionBuilt() {
   const builtDir = path.join(repoRoot, "dist", "convo-vault-extension");
-  const hasSource = await fs.stat(path.join(repoRoot, "src", "content", "index.js")).then(() => true, () => false);
+  const hasSource = await fs.stat(path.join(repoRoot, "extension", "content", "index.js")).then(() => true, () => false);
 
   if (hasSource) {
     const result = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "build-extension.mjs")], { cwd: repoRoot, stdio: "ignore" });
@@ -344,7 +344,7 @@ async function doctor() {
   const rows = [];
   const add = (ok, label, detail = "") => rows.push(`${ok ? "OK  " : "FAIL"} ${label}${detail ? `  ${detail}` : ""}`);
   const config = await readConfig();
-  const manifest = JSON.parse(await fs.readFile(path.join(repoRoot, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await fs.readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8"));
 
   add(Number(process.versions.node.split(".")[0]) >= 20, "Node 20+", process.version);
   add(backendDependenciesInstalled(), "Renderer dependencies", backendDependenciesInstalled() ? "" : "run: setup");
