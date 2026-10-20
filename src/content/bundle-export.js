@@ -14,6 +14,7 @@
     const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
       captureMode: options.captureMode,
       debugLog: options.debugLog,
+      jobId: options.jobId,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
@@ -98,6 +99,7 @@
     options.onProgress?.("Rendering Markdown, PDF, and data files...");
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
+      ...(options.jobId ? { jobId: options.jobId } : {}),
       fileName: defaultFileName,
       pageImages: pageImageDownloads.images,
       pageImageFailures: pageImageDownloads.failures

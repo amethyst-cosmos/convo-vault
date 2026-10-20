@@ -1,18 +1,23 @@
 {
   "name": "convo-vault",
-  "version": "0.9.5",
+  "version": "0.10.0",
   "private": true,
-  "description": "Deterministic, private, and auditable ChatGPT export vault with complete local state control.",
+  "description": "Local-first ChatGPT export vault: a Chrome extension, a CLI and an agent skill that turn conversations into Markdown, PDF and structured knowledge packs.",
   "scripts": {
     "check": "node scripts/check.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:fixtures": "node --test tests/export-fixtures.test.mjs tests/backend-fixtures.test.mjs",
     "build:extension": "node scripts/build-extension.mjs",
+    "package": "node scripts/package-release.mjs",
+    "cli": "node scripts/convo-vault.mjs",
     "backend": "node scripts/start-local-backend.mjs",
     "backend:detached": "node scripts/start-local-backend.mjs --detached",
     "backend:check": "node scripts/check-local-backend.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "bin": {
+    "convo-vault": "scripts/convo-vault.mjs"
   }
 }

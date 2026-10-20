@@ -32,8 +32,13 @@ const RENDER_SCRIPT = path.join(__dirname, "render.js");
 const DEFAULT_CACHE_ROOT = path.join(ROOT_DIR, ".convo-vault");
 const BUNDLE_DOWNLOAD_TTL_MS = 10 * 60 * 1000;
 const EXPORT_SESSION_TTL_MS = 30 * 60 * 1000;
+const EXPORT_JOB_TTL_MS = 30 * 60 * 1000;
+const EXPORT_JOB_ID_PATTERN = /^[a-f0-9]{48}$/;
 const preparedBundleDownloads = new Map();
 const exportSessions = new Map();
+// Export jobs let a local program (the CLI or an agent skill) ask the extension
+// to export a conversation without anyone touching the selector panel.
+const exportJobs = new Map();
 
 fs.mkdirSync(WORK_DIR, { recursive: true });
 
@@ -49,7 +54,7 @@ const server = http.createServer((request, response) => {
 server.listen(PORT, HOST, () => {
   console.log(`[advanced-pdf-server] Listening on http://${HOST}:${PORT}`);
   console.log(`[advanced-pdf-server] Local API token: ${LOCAL_API_TOKEN ? "required" : "not configured; browser-origin requests will be rejected"}`);
-  console.log("[advanced-pdf-server] Endpoints: GET /health, POST /shutdown, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
+  console.log("[advanced-pdf-server] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
 });
 
 async function handleRequest(request, response) {
@@ -69,13 +74,27 @@ async function handleRequest(request, response) {
       renderer: "advanced-local-chrome",
       version: readPackageVersion(),
       authRequired: Boolean(LOCAL_API_TOKEN),
+      capabilities: ["jobs"],
       cacheRoot: getCacheRoot()
     });
     return;
   }
 
+  // Jobs are driven by local programs (no browser Origin) and claimed by the
+  // extension, so they sit before the token gate and carry their own checks.
+  if (url.pathname === "/jobs" || url.pathname.startsWith("/jobs/")) {
+    if (await handleJobRequest(request, response, url)) {
+      return;
+    }
+  }
+
   if (request.method === "GET" && url.pathname.startsWith("/download-bundle/")) {
     handlePreparedBundleDownload(url, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/shutdown" && isLocalProcessRequest(request)) {
+    handleShutdown(response);
     return;
   }
 
@@ -120,6 +139,171 @@ async function handleRequest(request, response) {
     ok: false,
     error: "Not found"
   });
+}
+
+/**
+ * Routes /jobs requests. Returns false when the request is not a job route so
+ * the caller can continue with the normal token-gated routes.
+ */
+async function handleJobRequest(request, response, url) {
+  const jobMatch = url.pathname.match(/^\/jobs\/([a-f0-9]{48})(?:\/(claim|status|bundle))?$/);
+
+  if (url.pathname === "/jobs") {
+    if (request.method !== "POST") return false;
+    if (!isLocalProcessRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Jobs can only be created by local programs." });
+      return true;
+    }
+    const body = await readJsonBody(request);
+    sendJson(response, 200, createExportJob(body));
+    return true;
+  }
+
+  if (!jobMatch) {
+    return false;
+  }
+
+  const [, jobId, action] = jobMatch;
+  pruneExportJobs();
+  const job = exportJobs.get(jobId);
+
+  if (!job) {
+    sendJson(response, 404, { ok: false, error: "Export job was not found or has expired." });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "claim") {
+    // Only the extension may claim: page scripts cannot forge a chrome-extension Origin.
+    if (!String(request.headers.origin || "").toLowerCase().startsWith("chrome-extension://")) {
+      sendJson(response, 403, { ok: false, error: "Only the Convo Vault extension can claim a job." });
+      return true;
+    }
+    if (job.state !== "waiting") {
+      sendJson(response, 409, { ok: false, error: "This export job was already claimed." });
+      return true;
+    }
+    updateExportJob(job, "claimed", "Extension picked up the job.");
+    sendJson(response, 200, { ok: true, options: job.options, token: LOCAL_API_TOKEN });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "status") {
+    if (!isLocalApiAuthorized(request)) {
+      sendJson(response, 401, { ok: false, error: "Missing or invalid local API token." });
+      return true;
+    }
+    const body = await readJsonBody(request);
+    const state = body?.state === "error" ? "error" : "working";
+    updateExportJob(job, state, String(body?.message || "").slice(0, 2000));
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "GET" && !action) {
+    if (!isLocalProcessRequest(request) && !isLocalApiAuthorized(request)) {
+      sendJson(response, 403, { ok: false, error: "Jobs can only be read by local programs." });
+      return true;
+    }
+    sendJson(response, 200, describeExportJob(job));
+    return true;
+  }
+
+  if (request.method === "GET" && action === "bundle") {
+    if (!isLocalProcessRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Bundles can only be read by local programs." });
+      return true;
+    }
+    if (job.state !== "done" || !job.result?.zipPath || !fs.existsSync(job.result.zipPath)) {
+      sendJson(response, 409, { ok: false, error: "The export bundle is not ready." });
+      return true;
+    }
+    response.writeHead(200, {
+      "Content-Type": "application/zip",
+      "Content-Length": job.result.size,
+      "Content-Disposition": makeContentDisposition(job.result.filename),
+      "Cache-Control": "no-store, max-age=0"
+    });
+    fs.createReadStream(job.result.zipPath).pipe(response);
+    return true;
+  }
+
+  return false;
+}
+
+function createExportJob(body) {
+  const jobId = crypto.randomBytes(24).toString("hex");
+  const captureMode = ["fast", "hybrid", "full"].includes(body?.captureMode) ? body.captureMode : "fast";
+  const job = {
+    id: jobId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    state: "waiting",
+    message: "Waiting for the browser extension to pick up the job.",
+    options: {
+      captureMode,
+      allowIncomplete: body?.allowIncomplete === true,
+      closeTab: body?.closeTab !== false
+    },
+    result: null
+  };
+  exportJobs.set(jobId, job);
+  return { ok: true, jobId, options: job.options };
+}
+
+function updateExportJob(job, state, message) {
+  job.state = state;
+  job.updatedAt = Date.now();
+  if (message) {
+    job.message = message;
+  }
+}
+
+function completeExportJob(jobId, result) {
+  const job = EXPORT_JOB_ID_PATTERN.test(String(jobId || "")) ? exportJobs.get(jobId) : null;
+  if (!job) return;
+  job.result = result;
+  updateExportJob(job, "done", `Exported ${result.filename}.`);
+}
+
+function describeExportJob(job) {
+  return {
+    ok: true,
+    jobId: job.id,
+    state: job.state,
+    message: job.message,
+    ageMs: Date.now() - job.createdAt,
+    idleMs: Date.now() - job.updatedAt,
+    options: job.options,
+    result: job.result
+      ? {
+        filename: job.result.filename,
+        size: job.result.size,
+        bundleFiles: job.result.bundleFiles,
+        assetCount: job.result.assetCount,
+        assetStats: job.result.assetStats
+      }
+      : null
+  };
+}
+
+function pruneExportJobs() {
+  const cutoff = Date.now() - EXPORT_JOB_TTL_MS;
+  for (const [jobId, job] of exportJobs) {
+    if (job.updatedAt < cutoff) {
+      exportJobs.delete(jobId);
+    }
+  }
+}
+
+// A request from a program on this machine, not from a web page: browsers always
+// label their requests with an Origin or Sec-Fetch-Site header, plain HTTP clients
+// do not. The Host check blocks DNS-rebinding pages.
+function isLocalProcessRequest(request) {
+  if (request.headers.origin || request.headers["sec-fetch-site"]) {
+    return false;
+  }
+  const host = String(request.headers.host || "").toLowerCase();
+  return host === `127.0.0.1:${PORT}` || host === `localhost:${PORT}`;
 }
 
 function handleShutdown(response) {
@@ -389,6 +573,15 @@ async function handlePrepareRenderBundle(request, response) {
     expirePreparedBundleDownload(downloadId);
   }, BUNDLE_DOWNLOAD_TTL_MS);
   expirationTimer.unref?.();
+
+  completeExportJob(body?.jobId, {
+    zipPath: artifact.zipPath,
+    filename: artifact.filename,
+    size: artifact.bundleSize,
+    bundleFiles: artifact.bundleFiles,
+    assetCount: artifact.assetCount,
+    assetStats: artifact.assetStats
+  });
 
   sendJson(response, 200, {
     ok: true,

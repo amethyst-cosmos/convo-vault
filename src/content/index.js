@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.9.5";
+  const EXPORTER_VERSION = "0.10.0";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -2369,4 +2369,6 @@
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
+
+  // @convo-vault-include auto-export
 })();

@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const INCLUDE_FILES = {
+  "auto-export": "auto-export.js",
   "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",
   "selector-panel": "selector-panel.js",

@@ -6,6 +6,85 @@ const MAX_LOCAL_RENDERER_REQUEST_BYTES = 256 * 1024 * 1024;
 const LOCAL_RENDERER_KEEPALIVE_MS = 15000;
 const LOCAL_RENDERER_ASSET_CONCURRENCY = 4;
 
+const EXPORT_JOB_ID_PATTERN = /^[a-f0-9]{48}$/;
+
+// Export jobs: a local program (the CLI or an agent skill) opens a ChatGPT tab
+// with #convo-vault-job=<id>. The content script claims the job here, reports
+// progress, and the finished bundle goes back to the local program instead of
+// the browser's Downloads folder.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== "CONVO_VAULT_JOB" || !isTrustedExporterSender(sender)) {
+    return false;
+  }
+
+  handleJobMessage(message, sender)
+    .then((result) => sendResponse(result))
+    .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
+
+  return true;
+});
+
+async function handleJobMessage(message, sender) {
+  const jobId = String(message.jobId || "");
+
+  if (!EXPORT_JOB_ID_PATTERN.test(jobId)) {
+    return { ok: false, error: "Invalid export job id." };
+  }
+
+  const settings = await loadRendererSettings();
+  const rendererUrl = `http://127.0.0.1:${settings.port}`;
+
+  if (message.action === "claim") {
+    const response = await fetch(`${rendererUrl}/jobs/${jobId}/claim`, { method: "POST" });
+    const result = await readRendererJson(response);
+
+    if (!response.ok || !result?.ok) {
+      return { ok: false, error: result?.error || `Claim failed (${response.status}).` };
+    }
+
+    // The renderer hands out its own token so a job works without opening the popup.
+    await saveBackendToken(String(result.token || ""));
+    return { ok: true, options: result.options || {} };
+  }
+
+  if (message.action === "status") {
+    await fetch(`${rendererUrl}/jobs/${jobId}/status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Convo-Vault-Token": settings.backendToken
+      },
+      body: JSON.stringify({
+        state: message.state === "error" ? "error" : "working",
+        message: String(message.message || "")
+      })
+    });
+    return { ok: true };
+  }
+
+  if (message.action === "close-tab" && sender?.tab?.id) {
+    chrome.tabs.remove(sender.tab.id);
+    return { ok: true };
+  }
+
+  return { ok: false, error: "Unknown export job action." };
+}
+
+function saveBackendToken(token) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([SETTINGS_STORAGE_KEY], (result) => {
+      const settings = result?.[SETTINGS_STORAGE_KEY] || {};
+      if (settings.backendToken === token) {
+        resolve();
+        return;
+      }
+      chrome.storage.local.set({
+        [SETTINGS_STORAGE_KEY]: { ...settings, backendToken: token }
+      }, resolve);
+    });
+  });
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port?.name !== LOCAL_RENDERER_BUNDLE_PORT) {
     return;
@@ -216,7 +295,9 @@ async function prepareAndDownloadLocalBundle(serializedBody) {
   }
 
   const filename = String(prepared.filename || "chatgpt-conversation.zip");
-  const browserDownloadId = await downloadPreparedBundle(downloadUrl.href, filename);
+  // A job's bundle is collected from the renderer by the program that created it.
+  const isJob = EXPORT_JOB_ID_PATTERN.test(String(body?.jobId || ""));
+  const browserDownloadId = isJob ? null : await downloadPreparedBundle(downloadUrl.href, filename);
 
   return {
     ok: true,
