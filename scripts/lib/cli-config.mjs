@@ -2,7 +2,8 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const CONFIG_DIR = path.join(os.homedir(), ".convo-vault");
+// CONVO_VAULT_HOME moves the config folder (tests use it instead of faking the home directory).
+export const CONFIG_DIR = process.env.CONVO_VAULT_HOME || path.join(os.homedir(), ".convo-vault");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
 export async function readConfig() {
