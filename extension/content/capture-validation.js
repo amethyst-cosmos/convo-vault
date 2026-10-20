@@ -374,13 +374,6 @@
     return ["fast", "full", "hybrid"].includes(mode) ? mode : "fast";
   }
 
-  function formatCaptureMode(value) {
-    const mode = normalizeCaptureMode(value);
-    if (mode === "full") return "Full";
-    if (mode === "fast") return "Fast";
-    return "Hybrid";
-  }
-
   function normalizeTurnNumber(value, index = 0) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : index + 1;

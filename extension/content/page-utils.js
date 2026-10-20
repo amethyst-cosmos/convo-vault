@@ -25,67 +25,12 @@
     return `${safeTitle}-${timestamp}.${safeExtension}`;
   }
 
-  function getBestScrollTarget() {
-    // ChatGPT has used both document-level and nested scroll containers. Score
-    // candidates by scroll range plus whether they contain conversation turns,
-    // but only keep targets whose scrollTop can actually be changed. Some
-    // recent ChatGPT builds expose large scrollHeight on <main> while the real
-    // scroll owner is an ancestor/document scroller; choosing that inert node
-    // leaves virtualized turns empty forever.
-    const main = document.querySelector("main");
-    const firstTurn = document.querySelector('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]');
-    const candidates = [
-      document.scrollingElement,
-      document.documentElement,
-      document.body,
-      main,
-      main?.parentElement,
-      ...getAncestorChain(firstTurn),
-      ...getAncestorChain(main),
-      ...document.querySelectorAll("[data-radix-scroll-area-viewport], [class*='overflow-y-auto'], [class*='overflow-auto'], [class*='scroll']")
-    ].filter(Boolean);
-
-    const ranked = uniqueElements(candidates)
-      .filter((element) => getScrollHeight(element) - getClientHeight(element) > 40)
-      .filter((element) => canProgrammaticallyScroll(element))
-      .map((element) => ({ element, score: scoreScrollTarget(element, main) }))
-      .sort((a, b) => b.score - a.score);
-
-    return ranked[0]?.element || document.scrollingElement || document.documentElement;
-  }
-
-  function getAncestorChain(element) {
-    const ancestors = [];
-    let current = element;
-
-    while (current && current !== document.documentElement) {
-      ancestors.push(current);
-      current = current.parentElement;
-    }
-
-    ancestors.push(document.documentElement, document.body);
-    return ancestors;
-  }
-
-  function scoreScrollTarget(element, main) {
-    const range = getScrollHeight(element) - getClientHeight(element);
-    const containsMain = main && (element === main || element.contains(main) || main.contains(element));
-    const containsMessages = Boolean(element.querySelector?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-message-author-role], [data-message-id]'));
-    const isChrome = Boolean(element.closest?.("nav, aside, header"));
-
-    return range + (containsMessages ? 100_000 : 0) + (containsMain ? 25_000 : 0) - (isChrome ? 100_000 : 0);
-  }
-
   function getScrollTop(element) {
     if (isDocumentScroller(element)) {
       return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
     }
 
     return element.scrollTop;
-  }
-
-  function setScrollTop(element, value) {
-    rawSetScrollTop(element, value);
   }
 
   function rawSetScrollTop(element, value) {
@@ -141,23 +86,6 @@
 
   function isDocumentScroller(element) {
     return element === document.scrollingElement || element === document.documentElement || element === document.body;
-  }
-
-  function getOrderHint(node, fallback) {
-    const turnNumber = getConversationTurnNumber(node);
-
-    if (Number.isFinite(turnNumber)) {
-      return turnNumber;
-    }
-
-    const turn = isTurnNode(node) ? node : getClosestTurnNode(node);
-    const domIndex = getAllTurnNodes().indexOf(turn);
-
-    if (domIndex >= 0) {
-      return domIndex + 1_000_000;
-    }
-
-    return fallback + 2_000_000;
   }
 
   function getConversationTurnNumber(node) {

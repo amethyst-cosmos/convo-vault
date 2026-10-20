@@ -42,7 +42,6 @@ Usage:
 
 Export options:
   --out DIR            Where to save (default: ~/Downloads/convo-vault)
-  --mode MODE          fast (default) | hybrid | full
   --browser NAME       Chrome, Edge, Brave... (default: the one that worked last time)
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
@@ -80,7 +79,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "mode", "browser", "timeout", "agents", "client"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -124,8 +123,6 @@ function parseConversation(input) {
 
 async function exportConversation(input, flags) {
   const conversationUrl = parseConversation(input);
-  const captureMode = flags.mode || "fast";
-  if (!["fast", "hybrid", "full"].includes(captureMode)) throw new Error("--mode must be fast, hybrid or full.");
 
   const config = await readConfig();
   const outDir = path.resolve(flags.out || config.outDir || path.join(os.homedir(), "Downloads", "convo-vault"));
@@ -139,10 +136,10 @@ async function exportConversation(input, flags) {
 
   for (const browser of candidates) {
     jobId = await createJob({
-      captureMode,
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
-      pdf: flags.pdf !== false
+      pdf: flags.pdf !== false,
+      domThinking: flags.domThinking === true
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser);

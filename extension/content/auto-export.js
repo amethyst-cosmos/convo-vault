@@ -55,7 +55,6 @@
       return;
     }
 
-    const captureMode = normalizeCaptureMode(claim.options?.captureMode);
     let lastStatusAt = 0;
     const report = (message, state = "working", options = {}) => {
       const now = Date.now();
@@ -69,21 +68,12 @@
     };
 
     try {
-      await report(`Scanning with ${formatCaptureMode(captureMode)} capture...`, "working", { force: true });
-      const capture = await messageExtractor.collect({ captureMode, onProgress: (message) => report(message) });
-      const messages = capture?.messages || [];
-
-      if (!messages.length) {
-        throw new Error("The conversation has no messages to export.");
-      }
-
-      await report(`Captured ${messages.length} messages. Rendering the bundle...`, "working", { force: true });
-      await exportSelectedMessages(messages, {
-        captureMode: capture.captureMode,
-        completeness: capture.completeness,
-        allowIncomplete: claim.options?.allowIncomplete === true,
+      await report("Reading the conversation from ChatGPT...", "working", { force: true });
+      await exportCurrentConversation({
         jobId,
+        allowIncomplete: claim.options?.allowIncomplete === true,
         skipPdf: claim.options?.pdf === false,
+        domThinking: claim.options?.domThinking === true,
         onProgress: (message) => report(message)
       });
 

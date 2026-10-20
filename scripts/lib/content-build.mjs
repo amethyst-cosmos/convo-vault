@@ -1,15 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const INCLUDE_FILES = {
+export const INCLUDE_FILES = {
   "constants": "constants.js",
   "selectors": "selectors.js",
   "capture-orchestrator": "capture-orchestrator.js",
-  "capture-hybrid": "capture-hybrid.js",
-  "capture-budget": "capture-budget.js",
   "capture-validation": "capture-validation.js",
   "message-snapshot": "message-snapshot.js",
-  "capture-jobs": "capture-jobs.js",
   "date-format": "date-format.js",
   "dom-utils": "dom-utils.js",
   "page-utils": "page-utils.js",
@@ -17,10 +14,8 @@ const INCLUDE_FILES = {
   "auto-export": "auto-export.js",
   "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",
-  "selector-panel": "selector-panel.js",
   "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",
-  "capture-full": "capture-full.js",
   "message-discovery": "message-discovery.js",
   "chatgpt-dom": "chatgpt-dom.js",
   "chatgpt-markup": "chatgpt-markup.js",

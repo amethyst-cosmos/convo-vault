@@ -53,7 +53,6 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const claimed = await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" });
   assert.equal(claimed.status, 200);
   const { token, options } = JSON.parse(claimed.body);
-  assert.equal(options.captureMode, "fast");
   assert.equal(options.closeTab, true);
   assert.match(token, /^[a-f0-9]{64}$/);
   assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).status, 409);

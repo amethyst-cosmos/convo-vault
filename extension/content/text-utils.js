@@ -1,16 +1,3 @@
-  function isBlockElement(tag) {
-    return [
-      "article",
-      "aside",
-      "div",
-      "figcaption",
-      "figure",
-      "footer",
-      "header",
-      "main",
-      "section"
-    ].includes(tag);
-  }
 
   function getElementText(element) {
     return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
@@ -18,23 +5,6 @@
 
   function getRawElementText(element) {
     return String(element?.textContent || "").replace(/\s+/g, " ").trim();
-  }
-
-  function normalizeTextNode(text, parentElement) {
-    const normalized = String(text || "").replace(/\r\n?/g, "\n");
-
-    if (preservesWhitespace(parentElement)) {
-      return normalized
-        .replace(/[ \t]+\n/g, "\n")
-        .replace(/\n[ \t]+/g, "\n")
-        .replace(/\n{3,}/g, "\n\n");
-    }
-
-    return normalized.replace(/\s+/g, " ");
-  }
-
-  function preservesWhitespace(element) {
-    return Boolean(element?.closest?.("pre, textarea, [class*='whitespace-pre-wrap'], [style*='white-space: pre-wrap']"));
   }
 
   function cleanMarkdown(markdown) {
@@ -148,69 +118,6 @@
     return result;
   }
 
-  function trimTrailingNewlines(text) {
-    return String(text || "").replace(/\n+$/g, "");
-  }
-
-  function markdownTableRow(cells) {
-    return `| ${cells.join(" | ")} |`;
-  }
-
-  function padRow(row, length) {
-    return [...row, ...Array.from({ length: length - row.length }, () => "")];
-  }
-
-  function escapeTableCell(text) {
-    return sanitizeTableCellMarkdown(text).replace(/\|/g, "\\|");
-  }
-
-  function sanitizeTableCellMarkdown(text) {
-    return String(text || "")
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/\[!\\?\[[^\]\n]*\\?\]\([^)]+\)\s*([^\]]*?)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => formatCleanPdfMarkdownLink(label, url))
-      .replace(/!\\?\[[^\]\n]*\\?\]\([^)]+\)/g, "")
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => formatCleanPdfMarkdownLink(label, url))
-      .replace(/[ \t]*\r?\n+[ \t]*/g, " ")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-  }
-
-  function formatCleanPdfMarkdownLink(label, url) {
-    const cleanLabel = cleanPdfLinkLabel(label, url);
-    return cleanLabel && cleanLabel !== url
-      ? `[${escapeMarkdownLinkLabel(cleanLabel)}](${url})`
-      : url;
-  }
-
-  function cleanPdfLinkLabel(label, url = "") {
-    const value = stripMarkdownImagesFromLinkLabel(label)
-      .replace(/\s+/g, " ")
-      .trim();
-    const normalizedUrl = String(url || "").trim();
-
-    if (!value) {
-      return compactUrlLabel(normalizedUrl);
-    }
-
-    if (/^https?:\/\//i.test(value)) {
-      return compactUrlLabel(value);
-    }
-
-    if (normalizedUrl && value.includes(normalizedUrl)) {
-      const withoutUrl = value.replaceAll(normalizedUrl, " ").replace(/\s+/g, " ").trim();
-      return withoutUrl || compactUrlLabel(normalizedUrl);
-    }
-
-    return value;
-  }
-
-  function stripMarkdownImagesFromLinkLabel(label) {
-    return String(label || "")
-      .replace(/!\\?\[[^\]\n]*\\?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, " ")
-      .replace(/\\?\[?image-\d+\\?]?/gi, " ");
-  }
-
   function compactUrlLabel(url) {
     if (!url) {
       return "";
@@ -229,14 +136,6 @@
     return String(text || "").replace(/[[\]\\]/g, "\\$&");
   }
 
-  function escapeHtmlComment(text) {
-    return String(text || "").replace(/--/g, "- -").replace(/[<>]/g, "");
-  }
-
-  function escapeRegExp(text) {
-    return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
   function cssString(text) {
     return String(text || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
@@ -248,19 +147,6 @@
       .replace(/[. ]+$/g, "")
       .trim()
       || "chatgpt-conversation";
-  }
-
-  function sanitizeAltText(text) {
-    return String(text || "image").replace(/\s+/g, " ").trim().slice(0, 120) || "image";
-  }
-
-  function sanitizeCssClass(text) {
-    return String(text || "message").toLowerCase().replace(/[^a-z0-9_-]/g, "-") || "message";
-  }
-
-  function formatRole(role) {
-    const normalized = String(role || "message").toLowerCase();
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
   }
 
   function hashString(text) {

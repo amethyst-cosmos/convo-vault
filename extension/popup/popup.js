@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 exportButton.addEventListener("click", async () => {
-  setBusy(true, "Opening selector...");
+  setBusy(true, "Exporting. Keep this window open...");
 
   try {
     await saveSettingsFromForm({ quiet: true });
@@ -42,14 +42,13 @@ exportButton.addEventListener("click", async () => {
       throw new Error("Open a ChatGPT conversation tab first.");
     }
 
-    const response = await sendOpenSelectorMessage(tab.id);
+    const response = await sendExportMessage(tab.id);
 
     if (!response?.ok) {
-      throw new Error(response?.error || "Could not open the message selector.");
+      throw new Error(response?.error || "The export failed.");
     }
 
-    setStatus("Selector opened on the page.");
-    window.close();
+    setStatus(`Saved ${response.filename}. ${response.messageCount} messages.`);
   } catch (error) {
     setStatus(error.message || String(error));
   } finally {
@@ -281,11 +280,9 @@ function isChatGptUrl(url = "") {
   }
 }
 
-async function sendOpenSelectorMessage(tabId) {
+async function sendExportMessage(tabId) {
   try {
-    return await chrome.tabs.sendMessage(tabId, {
-      type: "OPEN_CHATGPT_EXPORT_SELECTOR"
-    });
+    return await chrome.tabs.sendMessage(tabId, { type: "CONVO_VAULT_EXPORT_CURRENT" });
   } catch (firstError) {
     // If the tab was already open before the extension was loaded, inject the
     // content script once and try again.
@@ -294,9 +291,7 @@ async function sendOpenSelectorMessage(tabId) {
       files: ["content.js"]
     });
 
-    return chrome.tabs.sendMessage(tabId, {
-      type: "OPEN_CHATGPT_EXPORT_SELECTOR"
-    });
+    return chrome.tabs.sendMessage(tabId, { type: "CONVO_VAULT_EXPORT_CURRENT" });
   }
 }
 

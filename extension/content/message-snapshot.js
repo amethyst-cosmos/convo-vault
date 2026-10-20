@@ -264,35 +264,6 @@
     };
   }
 
-  function makeMessagePreview(message) {
-    const text = [
-      message.markdown,
-      message.thinkingMarkdown ? `Thinking: ${message.thinkingMarkdown}` : ""
-    ].filter(Boolean).join(" ");
-    const preview = text
-      .replace(/```[\s\S]*?```/g, "[code block]")
-      .replace(/!\[[^\]]*]\([^)]+\)/g, "[image]")
-      .replace(/[#*_>`~\[\]()|]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (preview) {
-      return truncatePreview(preview, 30);
-    }
-
-    const extras = [];
-
-    if (message.codeBlockCount) {
-      extras.push(`${message.codeBlockCount} code block(s)`);
-    }
-
-    if (message.imageCount) {
-      extras.push(`${message.imageCount} image(s)`);
-    }
-
-    return extras.join(", ") || "No text preview available.";
-  }
-
   function truncatePreview(text, maxLength) {
     const value = String(text || "").trim();
 
@@ -301,38 +272,6 @@
     }
 
     return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-  }
-
-  function isLikelyNonMessageMarkdown(message) {
-    const text = [message.markdown, message.thinkingMarkdown].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-
-    if (!text) {
-      return false;
-    }
-
-    return isTimestampDividerText(text) || (text.length <= 320 && NON_MESSAGE_TEXT_RE.test(text));
-  }
-
-  function getMessageStats(message) {
-    const stats = [];
-
-    if (message.timestamp) {
-      stats.push(message.timestamp);
-    }
-
-    if (message.codeBlockCount) {
-      stats.push(`${message.codeBlockCount} code`);
-    }
-
-    if (message.imageCount) {
-      stats.push(`${message.imageCount} img`);
-    }
-
-    if (message.thinkingMarkdown) {
-      stats.push("thinking");
-    }
-
-    return stats.join(" | ") || "text";
   }
 
   function summarizeNode(node) {
@@ -439,25 +378,3 @@
     return parts.join(" > ");
   }
 
-  function highlightMessageNode(node) {
-    const previousOutline = node.style.outline;
-    const previousOutlineOffset = node.style.outlineOffset;
-    const previousBackground = node.style.backgroundColor;
-    const previousTransition = node.style.transition;
-
-    node.style.transition = "outline-color 160ms ease, background-color 160ms ease";
-    node.style.outline = "3px solid #0f766e";
-    node.style.outlineOffset = "6px";
-    node.style.backgroundColor = "rgba(15, 118, 110, 0.08)";
-
-    window.setTimeout(() => {
-      if (!node.isConnected) {
-        return;
-      }
-
-      node.style.outline = previousOutline;
-      node.style.outlineOffset = previousOutlineOffset;
-      node.style.backgroundColor = previousBackground;
-      node.style.transition = previousTransition;
-    }, 1600);
-  }

@@ -29,7 +29,6 @@ const TOOLS = [
       type: "object",
       properties: {
         url: { type: "string", description: "Conversation link like https://chatgpt.com/c/<id>, or the bare conversation id." },
-        mode: { type: "string", enum: ["fast", "hybrid", "full"], description: "Capture mode. Leave unset (fast) unless the user asks for page-only details." },
         out_dir: { type: "string", description: "Folder to save into. Default: ~/Downloads/convo-vault." },
         pdf: { type: "boolean", description: "Set false to skip the PDF and export data only (faster). Default true." }
       },
@@ -85,7 +84,6 @@ async function callTool(name, args) {
 
   if (name === "export_conversation") {
     const cliArgs = ["export", String(args.url || "")];
-    if (args.mode) cliArgs.push("--mode", String(args.mode));
     if (args.out_dir) cliArgs.push("--out", String(args.out_dir));
     if (args.pdf === false) cliArgs.push("--no-pdf");
     const id = randomBytes(6).toString("hex");

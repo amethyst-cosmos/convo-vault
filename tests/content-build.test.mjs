@@ -6,11 +6,10 @@ import { buildContentScript } from "../scripts/lib/content-build.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
-test("content script is generated from modular Hybrid, Fast, and Full sources", async () => {
+test("content script is generated from its modules and keeps the Fast capture, image and renderer bridges", async () => {
   const generated = await buildContentScript(repoRoot);
   const debugModule = await readFile(path.join(repoRoot, "extension", "content", "debug-log.js"), "utf8");
   const fastModule = await readFile(path.join(repoRoot, "extension", "content", "capture-fast.js"), "utf8");
-  const fullModule = await readFile(path.join(repoRoot, "extension", "content", "capture-full.js"), "utf8");
   const background = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
   const rendererLib = path.join(repoRoot, "renderer", "lib");
   const backendServer = [
@@ -31,7 +30,6 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function buildManifestCompletenessReport/);
   assert.match(generated, /function renderChatGptInlineTokens/);
   assert.match(generated, /function getDilFallbackMarkdown/);
-  assert.match(generated, /CHATGPT_MESSAGE_UNIT_SELECTOR = "\[data-chatgpt-search-unit-key\]"/);
   assert.match(generated, /async function collectFastConversationMessages/);
   assert.match(generated, /\/api\/auth\/session/);
   assert.match(generated, /Bearer \$\{attempt\.accessToken\}/);
@@ -42,7 +40,6 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /getChatGptAccessTokenFromPageBootstrap/);
   assert.match(generated, /tree_format=true/);
   assert.match(generated, /routes\/_conversation\.g\.\$gizmoId\.c\.\$conversationId/);
-  assert.match(generated, /function createMessageCollector/);
   assert.match(generated, /function enrichVisibleThinkingFlyouts/);
   assert.match(generated, /function settleVisibleThinkingFlyoutSnapshots/);
   assert.match(generated, /function extractThinkingFlyoutSources/);
@@ -62,41 +59,14 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function isThinkingSourceTriggerElement/);
   assert.match(generated, /\.filter\(isThinkingPanelTriggerElement\)/);
   assert.match(generated, /element\.getAttribute\("aria-label"\) \|\| ""/);
-  assert.match(generated, /element\.closest\("#chatgpt-exporter-selector-host, nav, header, aside, \[role='menu'\]"\)/);
   assert.match(generated, /screen-threadFlyOut/);
   assert.match(generated, /sourceCount: snapshot\.sources/);
-  assert.match(generated, /async function collectHybridConversationMessages/);
-  assert.match(generated, /function reconcileHybridMessages/);
-  assert.match(generated, /hybridCapture\.reconciled/);
-  assert.match(generated, /hybridCapture\.fullOnlyCandidates/);
   assert.match(generated, /function downloadChatGptFileImages/);
   assert.match(generated, /imagesDeferred/);
-  assert.match(generated, /base64 embedding deferred until export/);
   assert.doesNotMatch(generated, /base64 embedding disabled during message scan/);
   assert.match(generated, /function dedupeMarkdownImageReferences/);
   assert.match(generated, /chatgpt-asset:/);
-  assert.match(generated, /function stripMarkdownImagesFromLinkLabel/);
-  assert.match(generated, /function isFaviconImageUrl/);
-  assert.match(generated, /function isTimestampDividerText/);
-  assert.match(generated, /option value="fast" selected>Fast \(Recommended\)/);
-  assert.match(generated, /option value="hybrid">Hybrid \(Fast \+ page details\)/);
-  assert.match(generated, /option value="full">Full \(page scan only\)/);
-  assert.match(generated, /data-action="start-scan">Start Scan/);
-  assert.match(generated, /Opening the selector does not scan/);
-  const selectorOpen = generated.match(/open\(nextApi\)\s*\{[\s\S]*?return \{ ok: true, panelOpen: true \};\s*\}/)?.[0] || "";
-  assert.ok(selectorOpen, "selector open method should be present");
-  assert.doesNotMatch(selectorOpen, /startScan\(|\.loadMessages\(/);
-  assert.match(generated, /function createCaptureJobManager/);
-  assert.match(generated, /A stale capture job cannot replace the loaded snapshot/);
   assert.match(generated, /function buildCaptureCompletenessReport/);
-  assert.match(generated, /data-option="allow-incomplete"/);
-  assert.match(generated, /snapshot\.captureMode/);
-  assert.match(generated, /modeSelect\.disabled = isBusy/);
-  assert.doesNotMatch(generated, /function reloadMessages/);
-  assert.doesNotMatch(generated, /data-action=['"]refresh['"]/);
-  assert.doesNotMatch(generated, /Export Loaded Hybrid Bundle/);
-  assert.match(generated, /Switch to Full mode if you want to scan the page/);
-  assert.doesNotMatch(generated, /falling back to Full scan/);
   assert.match(generated, /assetDownload\.done/);
   assert.match(generated, /function fetchChatGptFileImage/);
   assert.match(generated, /sediment/);
@@ -110,7 +80,6 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(fastModule, /asset_pointer/);
   assert.match(fastModule, /fastCapture\.thinkingMerged/);
   assert.match(fastModule, /removeApiPrivateUseArtifacts/);
-  assert.match(fullModule, /async function hydrateVirtualizedTurns/);
   // ChatGPT-hosted images are downloaded by the page; the worker only fetches public images.
   assert.match(generated, /\/backend-api\/files\/download\//);
   assert.match(background, /credentials: "omit"/);

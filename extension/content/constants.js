@@ -1,17 +1,3 @@
-  const TOP_LOAD_ATTEMPTS = 32;
-  const WALK_ATTEMPTS = 240;
-  const SCROLL_SETTLE_MS = 110;
-  const DOM_IDLE_MS = 45;
-  const MAX_DOM_IDLE_MS = 220;
-  const CAPTURE_SETTLE_MS = 12;
-  const TOP_STABLE_PASSES = 2;
-  const MAX_SCAN_MS = 75_000;
-  const HYDRATE_RESERVED_MS = 15_000;
-  const MISSING_TURN_RECOVERY_MS = 18_000;
-  const MAX_ADAPTIVE_SCAN_MS = 210_000;
-  const MAX_ADAPTIVE_HYDRATE_RESERVED_MS = 60_000;
-  const MAX_ADAPTIVE_MISSING_RECOVERY_MS = 120_000;
-  const TURN_HYDRATION_SETTLE_MS = 70;
   // A 2,700-node conversation takes about 10 s as one tree and 5-8 s per
   // 100-turn page, so requests get a generous timeout; broken routes still
   // fail fast with an HTTP error.

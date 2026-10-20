@@ -98,7 +98,6 @@ async function handleJobRequest(request, response, url) {
 
 function createExportJob(body) {
   const jobId = crypto.randomBytes(24).toString("hex");
-  const captureMode = ["fast", "hybrid", "full"].includes(body?.captureMode) ? body.captureMode : "fast";
   const job = {
     id: jobId,
     createdAt: Date.now(),
@@ -106,13 +105,14 @@ function createExportJob(body) {
     state: "waiting",
     message: "Waiting for the browser extension to pick up the job.",
     options: {
-      captureMode,
       allowIncomplete: body?.allowIncomplete === true,
       closeTab: body?.closeTab !== false,
       // A ping job only proves the extension is installed and answering.
       ping: body?.ping === true,
       // false skips the PDF: a data-only bundle needs no headless Chrome.
-      pdf: body?.pdf !== false
+      pdf: body?.pdf !== false,
+      // Experimental: also read thinking panels from the page (for comparison).
+      domThinking: body?.domThinking === true
     },
     result: null
   };

@@ -8,38 +8,6 @@ import { buildContentScript } from "../scripts/lib/content-build.mjs";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const source = await buildContentScript(repoRoot);
 
-test("capture job manager cancels superseded work and rejects stale commits", () => {
-  const context = loadFunctions([
-    "createCaptureCancelledError",
-    "normalizeCaptureMode",
-    "createCaptureJobManager"
-  ]);
-  const manager = context.createCaptureJobManager();
-  const first = manager.start("hybrid");
-  const second = manager.start("full");
-
-  assert.equal(first.captureMode, "hybrid");
-  assert.equal(first.signal.aborted, true);
-  assert.equal(second.captureMode, "full");
-  assert.equal(Object.isFrozen(second), true);
-  assert.throws(
-    () => manager.commit(first, { messages: [] }),
-    /stale capture job/i
-  );
-
-  const snapshot = manager.commit(second, {
-    messages: [{ id: "m1", role: "user" }],
-    completeness: { complete: true }
-  });
-
-  assert.equal(snapshot.captureMode, "full");
-  assert.equal(snapshot.messages.length, 1);
-  assert.equal(Object.isFrozen(snapshot), true);
-  assert.equal(Object.isFrozen(snapshot.messages), true);
-  assert.equal(manager.getActiveJob(), null);
-  assert.equal(manager.getLoadedSnapshot(), snapshot);
-});
-
 test("capture mode defaults to Fast", () => {
   const context = loadFunctions(["normalizeCaptureMode"]);
 
