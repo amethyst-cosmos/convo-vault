@@ -14,6 +14,7 @@ Agents run the export. From this version you do not click the panel: tell Claude
 - **The renderer exits by itself** two minutes after its last request (never while a request is running). The one started with **Copy Start** in the popup stays up.
 - **Data-only export.** `--no-pdf` (MCP argument `pdf: false`) skips the PDF, so no headless Chrome is needed.
 - **Fix:** `--no-extract` and `setup --no-open` had no effect.
+- **Fix, found by the first real export in Chrome:** the Markdown showed layout tags that ChatGPT's generative-UI fallback leaves behind (`<box ...>`, `<row ...>`, `<checkbox .../>`). They are removed and checkboxes become `- [ ]` / `- [x]`. The PDF was already correct.
 - **Project basics.** English is the default for README, CHANGELOG and INSTALL (Chinese versions are `*.zh-CN.md`); MIT license, `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates, fuller `package.json` metadata, a PDF output sample, and a release package built by `npm run package`.
 
 ## 0.10.1

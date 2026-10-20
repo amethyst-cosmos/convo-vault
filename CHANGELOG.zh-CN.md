@@ -12,6 +12,7 @@
 - **渲染服务自动退出**：最后一次使用两分钟后自己退出（处理请求时不会退出）；扩展弹窗的 Copy Start 启动的服务保持常驻
 - **只导出数据**：`--no-pdf`（MCP 参数 `pdf: false`）跳过 PDF，不依赖无头 Chrome
 - **修复**：`--no-extract` 和 `setup --no-open` 之前不生效
+- **修复（首次在 Chrome 真实导出时发现）**：Markdown 里出现了 ChatGPT 生成式界面的 fallback 遗留的布局标签（`<box ...>`、`<row ...>`、`<checkbox .../>`），现已去掉，复选框改为 `- [ ]` / `- [x]`；PDF 本来就是对的
 - **项目规范**：英文成为 README、CHANGELOG、INSTALL 的默认语言（中文版为 `*.zh-CN.md`）；新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板、更完整的 `package.json` 元数据、PDF 效果样张，以及 `npm run package` 生成的发布包
 
 ## 0.10.1

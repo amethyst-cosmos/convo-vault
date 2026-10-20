@@ -416,3 +416,31 @@ function makeFence(code) {
   const longestRun = Math.max(0, ...[...String(code).matchAll(/`+/g)].map((match) => match[0].length));
   return "`".repeat(Math.max(3, longestRun + 1));
 }
+
+test("DIL fallback Markdown drops layout tags the fallback leaves behind and keeps checkboxes readable", async () => {
+  const markup = await loadMarkupModule();
+  const rendered = markup.chooseDilMarkdown("<box>unused</box>", [
+    "## One",
+    "",
+    "<row align=start gap={3}>",
+    "[images: kanban board]",
+    "",
+    "<box background=\"surface-secondary\" border={{size:1,color:\"red\"}} padding={3}>",
+    "**Backlog**",
+    "",
+    "<checkbox defaultChecked={false} lineThrough={false}/> · Add a chart · (High)",
+    "",
+    "<checkbox defaultChecked={true}/> · Done item",
+    "",
+    "```html",
+    "<box>keep me</box>",
+    "```"
+  ].join("\n")).markdown;
+
+  assert.doesNotMatch(rendered.split("```html")[0], /<\/?(?:row|box|checkbox)\b/);
+  assert.match(rendered, /\*\[Image search: kanban board\]\*/);
+  assert.match(rendered, /\*\*Backlog\*\*/);
+  assert.match(rendered, /^- \[ \] Add a chart · \(High\)$/m);
+  assert.match(rendered, /^- \[x\] Done item$/m);
+  assert.match(rendered, /```html\n<box>keep me<\/box>\n```/);
+});

@@ -5676,7 +5676,13 @@
   // The fallback writes AsyncImage as "[images: query]"; exports label image
   // searches the same way everywhere.
   function normalizeDilFallbackMarkdown(markdown) {
-    return String(markdown || "").replace(/^\[images:\s*(.+?)\]\s*$/gm, (match, query) => `*[Image search: ${escapeMarkdownLinkLabel(query)}]*`);
+    return mapOutsideCodeFences(String(markdown || ""), (segment) => segment
+      .replace(/^\[images:\s*(.+?)\]\s*$/gm, (match, query) => `*[Image search: ${escapeMarkdownLinkLabel(query)}]*`)
+      // The fallback leaves layout tags it could not draw: whole lines such as
+      // `<box background="..." padding={3}>`, and checkboxes as `<checkbox .../>`.
+      .replace(/^[ \t]*<checkbox\b([^\n]*?)\/?>[ \t]*(?:·[ \t]*)?/gm, (match, attributes) => (/\b(?:defaultChecked|checked)=\{true\}/.test(attributes) ? "- [x] " : "- [ ] "))
+      .replace(/^[ \t]*<\/?(?:box|row|grid|grid-item|stack|column|col|card|spacer|divider|pressable|radio-group|radio|button|badge|icon|title|text|caption)\b[^\n]*>[ \t]*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n"));
   }
 
   const DIL_LOOP_OPEN_RE = /\{#each\s/;
