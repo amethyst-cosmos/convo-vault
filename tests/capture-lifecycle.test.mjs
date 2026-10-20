@@ -39,12 +39,12 @@ test("capture job manager cancels superseded work and rejects stale commits", ()
   assert.equal(manager.getLoadedSnapshot(), snapshot);
 });
 
-test("capture mode defaults to Full", () => {
+test("capture mode defaults to Fast", () => {
   const context = loadFunctions(["normalizeCaptureMode"]);
 
-  assert.equal(context.normalizeCaptureMode(), "full");
-  assert.equal(context.normalizeCaptureMode("unknown"), "full");
-  assert.equal(context.normalizeCaptureMode("fast"), "fast");
+  assert.equal(context.normalizeCaptureMode(), "fast");
+  assert.equal(context.normalizeCaptureMode("unknown"), "fast");
+  assert.equal(context.normalizeCaptureMode("full"), "full");
 });
 
 test("completeness gate blocks the 28 user plus 17 assistant regression", () => {

@@ -18,8 +18,12 @@ const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
   assistant: loadPngDataUri("artificial-intelligence.png")
 };
-const FIRST_PAGE_TOC_ROWS = 54;
-const CONTINUATION_TOC_ROWS = 88;
+const DIL_RUNTIME = fs.readFileSync(path.join(__dirname, "dil-runtime.js"), "utf8");
+// The page runs ChatGPT's compiled DIL code, so it may load only local files and
+// inline resources; no request can leave the machine.
+const PAGE_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src file: data: blob:; font-src file: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval'";
+const CJK_STRONG_OPEN = "CVSTRONGOPENX";
+const CJK_STRONG_CLOSE = "CVSTRONGCLOSEX";
 
 main().catch((error) => {
   console.error(`[advanced-pdf] ${error.stack || error.message || error}`);
@@ -159,6 +163,7 @@ function buildDocumentHtml(payload) {
 <html lang="${escapeAttr(documentLanguage)}">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="${PAGE_CONTENT_SECURITY_POLICY}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(payload.title)}</title>
   <style>${buildCss()}</style>
@@ -170,6 +175,7 @@ function buildDocumentHtml(payload) {
     ${messages.map((message, index) => renderMessage(md, message, index, imageRegistry)).join("\n")}
   </main>
 
+  <script>${DIL_RUNTIME}</script>
   <script>${buildPaginationScript()}</script>
 </body>
 </html>`;
@@ -185,29 +191,28 @@ function normalizeDocumentLanguage(value) {
   return "und";
 }
 
+// The prompt index is one multi-column flow; Chrome fills each page's two
+// columns in order, so row height never has to be predicted.
 function renderIntroPages(payload, messages, exportedAt, tocRows) {
-  return chunkTocRows(tocRows).map((rows, index) => {
-    const isFirst = index === 0;
-    return `<section class="intro-sheet ${isFirst ? "intro-sheet-first" : "intro-sheet-continuation"} page-break-after">
-      ${isFirst ? renderCoverCard(payload, messages, exportedAt) : ""}
-      ${renderTocCard(rows, index)}
+  return `<section class="intro-sheet intro-sheet-first page-break-after">
+      ${renderCoverCard(payload, messages, exportedAt)}
+      ${renderTocCard(tocRows)}
     </section>`;
-  }).join("\n");
 }
 
 function renderCoverCard(payload, messages, exportedAt) {
-  return `<div class="cover-card">
-    <div class="cover-rule"></div>
+  const prompts = messages.filter((message) => message.role === "user").length;
+  return `<header class="cover-card">
+    <div class="cover-eyebrow">ChatGPT conversation</div>
     <h1>${escapeHtml(payload.title)}</h1>
-    <p>Exported ${escapeHtml(exportedAt)} | ${messages.length} messages | ChatGPT conversation</p>
-    ${payload.source ? `<p class="source">Source: <a href="${escapeAttr(payload.source)}">${escapeHtml(payload.source)}</a></p>` : ""}
-  </div>`;
+    <p class="cover-meta">${escapeHtml(exportedAt)}<span class="meta-dot">·</span>${prompts} prompts<span class="meta-dot">·</span>${messages.length} messages</p>
+    ${payload.source ? `<p class="source"><a href="${escapeAttr(payload.source)}">${escapeHtml(payload.source)}</a></p>` : ""}
+  </header>`;
 }
 
-function renderTocCard(rows, sectionIndex) {
-  const title = sectionIndex === 0 ? "Contents" : "Contents (continued)";
+function renderTocCard(rows) {
   return `<section class="toc">
-    <h2>${title}</h2>
+    <h2>Prompts</h2>
     <div class="toc-grid">
       ${rows.map((row) => renderTocRow(row)).join("")}
     </div>
@@ -216,28 +221,10 @@ function renderTocCard(rows, sectionIndex) {
 
 function renderTocRow(row) {
   return `
-        <a class="toc-row ${row.kind} ${row.hasThinking ? "has-thinking" : ""}" href="#${escapeAttr(row.id)}">
+        <a class="toc-row ${row.kind}" href="#${escapeAttr(row.id)}">
+          <span class="toc-number">${escapeHtml(row.number)}</span>
           <span class="toc-label" dir="auto">${escapeHtml(row.label)}</span>
-          <span class="toc-meta">
-            ${row.hasThinking ? `<span class="toc-chip" aria-label="Thinking"></span>` : ""}
-            <span class="toc-type">${escapeHtml(row.type)}</span>
-          </span>
         </a>`;
-}
-
-function chunkTocRows(rows) {
-  const chunks = [];
-  let index = 0;
-
-  chunks.push(rows.slice(index, FIRST_PAGE_TOC_ROWS));
-  index += FIRST_PAGE_TOC_ROWS;
-
-  while (index < rows.length) {
-    chunks.push(rows.slice(index, index + CONTINUATION_TOC_ROWS));
-    index += CONTINUATION_TOC_ROWS;
-  }
-
-  return chunks;
 }
 
 function createMarkdownRenderer() {
@@ -248,11 +235,9 @@ function createMarkdownRenderer() {
     breaks: true,
     highlight(code, language) {
       const lang = normalizeLanguage(language);
-      const highlighted = lang && hljs.getLanguage(lang)
+      return lang && hljs.getLanguage(lang)
         ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
         : hljs.highlightAuto(code).value;
-      const label = shouldShowCodeLabel(lang) ? `<div class="code-label">${escapeHtml(lang)}</div>` : "";
-      return `${label}<pre class="hljs"><code>${highlighted}</code></pre>`;
     }
   });
 
@@ -272,7 +257,18 @@ function createMarkdownRenderer() {
       return renderChartBlock(token.content || "", language);
     }
 
-    return defaultFence(tokens, index, options, env, self);
+    // ChatGPT writing blocks hold prose meant to be copied; ChatGPT shows them
+    // as a formatted card, not as source code.
+    if (language === "writing") {
+      return `<section class="writing-block"><div class="writing-label">Writing</div><div class="writing-body">${md.render(token.content || "", env)}</div></section>`;
+    }
+
+    // Labelled blocks are assembled here so the label sits above a single
+    // <pre>; returning the label from highlight() made markdown-it wrap the
+    // whole fragment in a second <pre>.
+    const highlighted = options.highlight(token.content || "", language);
+    const label = shouldShowCodeLabel(language) ? `<div class="code-label">${escapeHtml(language)}</div>` : "";
+    return `${label}<pre class="hljs"><code>${highlighted}</code></pre>\n`;
   };
 
   md.renderer.rules.link_open = (tokens, index, options, env, self) => {
@@ -1628,7 +1624,7 @@ function renderMessage(md, message, index, imageRegistry) {
   const time = message.timestamp ? `<time>${escapeHtml(message.timestamp)}</time>` : "";
   const turnHeading = renderTurnHeading(message, index);
   const messageMarkdown = isUser ? stripAttachmentOnlyLines(message.markdown) : message.markdown;
-  const content = messageMarkdown.trim() ? renderMessageMarkdown(md, messageMarkdown, imageRegistry) : "";
+  const content = messageMarkdown.trim() ? renderMessageMarkdown(md, messageMarkdown, imageRegistry, anchorId) : "";
   const thinking = isAssistant && message.thinkingMarkdown
     ? renderThinking(md, message.thinkingMarkdown, imageRegistry)
     : "";
@@ -1636,38 +1632,54 @@ function renderMessage(md, message, index, imageRegistry) {
   if (isUser) {
     return `<article id="${escapeAttr(anchorId)}" class="message user-message" data-turn-number="${escapeAttr(message.turnNumber)}">
       <div class="user-stack">
-        <div class="user-meta-row">
-          ${turnHeading}
-          ${renderUserAvatar()}
-        </div>
+        ${turnHeading}
         ${renderAttachmentLead(message.markdown, imageRegistry)}
         ${content ? `<div class="bubble user-bubble">${content}</div>` : ""}
-        ${time ? `<div class="message-time user-time">${time}</div>` : ""}
+        ${renderMessageMeta(message, index, time)}
       </div>
     </article>`;
   }
 
   return `<article id="${escapeAttr(anchorId)}" class="message assistant-message" data-turn-number="${escapeAttr(message.turnNumber)}">
-    <div class="assistant-row">
-      <div class="assistant-gutter">
-        ${renderAssistantAvatar()}
-      </div>
-      <div class="assistant-main">
-        <div class="assistant-intro">
-          <div class="assistant-header">
-            <div class="assistant-title">
-              ${turnHeading}
-              ${time ? `<div class="message-time assistant-time">${time}</div>` : ""}
-            </div>
-          </div>
-          ${thinking}
-        </div>
-        <div class="assistant-body">
-          <div class="assistant-content">${content}</div>
-        </div>
-      </div>
+    <div class="assistant-intro">
+      ${turnHeading}
+      ${renderMessageMeta(message, index, time)}
+      ${thinking}
     </div>
+    <div class="assistant-content">${renderAssistantBody(message, content)}</div>
   </article>`;
+}
+
+// DIL answers are drawn from ChatGPT's compiled UI program by dil-runtime.js;
+// the Markdown rendering stays in the page and shows if the program fails.
+function renderAssistantBody(message, content) {
+  const blocks = Array.isArray(message.dil) ? message.dil.filter((block) => block && typeof block.code === "string") : [];
+
+  if (!blocks.length) {
+    return content;
+  }
+
+  const roots = blocks.map((block) => `<div class="dil-root"></div><script type="application/json">${serializeScriptJson(block)}</script>`).join("");
+  return `<div class="dil-message">${roots}<div class="dil-fallback">${content}</div></div>`;
+}
+
+function serializeScriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+// One muted line per message: avatar, speaker, turn number, and time. The
+// turn heading above stays in the DOM (visually hidden) for PDF accessibility.
+function renderMessageMeta(message, index, time) {
+  const isUser = message.role === "user";
+  const speaker = isUser ? "" : `<span class="meta-speaker">${escapeHtml(formatRole(message.role))}</span>`;
+  const number = `<span class="meta-turn">#${escapeHtml(String(formatTurnNumber(message, index)).replace(/^Turn\s+/, ""))}</span>`;
+  const details = [speaker, number, time].filter(Boolean).join('<span class="meta-dot">·</span>');
+  return isUser
+    ? `<div class="message-meta user-meta"><span class="meta-text">${details}</span>${renderUserAvatar()}</div>`
+    : `<div class="message-meta assistant-meta">${renderAssistantAvatar()}<span class="meta-text">${details}</span></div>`;
 }
 
 function renderTurnHeading(message, index) {
@@ -1699,62 +1711,243 @@ function renderThinking(md, thinkingMarkdown, imageRegistry) {
   </section>`;
 }
 
-function renderMessageMarkdown(md, markdown, imageRegistry) {
+function renderMessageMarkdown(md, markdown, imageRegistry, anchorPrefix = "message") {
   const cleaned = cleanMarkdownForHtml(markdown || "_No text content found._");
-  return `<div class="markdown-body" dir="auto">${md.render(cleaned, { imageRegistry })}</div>`;
+  const { body, footnotes } = extractMarkdownFootnotes(cleaned);
+  // Definitions with the same text (one page cited several times) share a number.
+  const sources = [];
+  const numbers = new Map();
+  for (const footnote of footnotes) {
+    let number = sources.indexOf(footnote.text) + 1;
+    if (!number) {
+      sources.push(footnote.text);
+      number = sources.length;
+    }
+    numbers.set(footnote.id, number);
+  }
+  const placeholder = (id) => `CVFOOTNOTEREF${hashFootnoteId(id)}X`;
+  // Adjacent references that resolve to the same source collapse to one.
+  const withPlaceholders = body.replace(/(?:\[\^[^\]\s]+\])+/g, (run) => {
+    const seen = new Set();
+    return [...run.matchAll(/\[\^([^\]\s]+)\]/g)].map(([match, id]) => {
+      if (!numbers.has(id)) {
+        return match;
+      }
+      if (seen.has(numbers.get(id))) {
+        return "";
+      }
+      seen.add(numbers.get(id));
+      return placeholder(id);
+    }).join("");
+  });
+  let html = md.render(protectCjkStrongRuns(withPlaceholders), { imageRegistry });
+
+  for (const [id, number] of numbers) {
+    html = html.split(placeholder(id)).join(
+      `<sup class="footnote-ref"><a href="#${escapeAttr(`${anchorPrefix}-fn-${number}`)}">${number}</a></sup>`
+    );
+  }
+
+  html = html
+    .replace(/<\/sup>(\s*)<sup class="footnote-ref">/g, '</sup><sup class="footnote-sep">,</sup><sup class="footnote-ref">')
+    .split(CJK_STRONG_OPEN).join("<strong>")
+    .split(CJK_STRONG_CLOSE).join("</strong>");
+
+  const list = sources.length
+    ? `<section class="footnotes"><ol>${sources.map((text, index) => `<li id="${escapeAttr(`${anchorPrefix}-fn-${index + 1}`)}">${md.renderInline(text, { imageRegistry })}</li>`).join("")}</ol></section>`
+    : "";
+  return `<div class="markdown-body" dir="auto">${html}${list}</div>`;
 }
 
+/**
+ * CommonMark rejects **bold** whose delimiter touches punctuation on the
+ * inside and a letter on the outside, which is common in Chinese text
+ * ("把**状态（Paid）**的"). ChatGPT renders those runs as bold, so they are
+ * swapped for placeholders that become <strong> after rendering. Runs that
+ * CommonMark accepts, code spans, and fenced code are left unchanged.
+ */
+function protectCjkStrongRuns(markdown) {
+  let fence = "";
+
+  return String(markdown || "").split("\n").map((line) => {
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+
+    if (fenceMatch) {
+      fence = fence ? (line.trim().startsWith(fence) ? "" : fence) : fenceMatch[1];
+      return line;
+    }
+
+    if (fence || !line.includes("**")) {
+      return line;
+    }
+
+    return line.split(/(`+[^`]*`+)/).map((segment, index) => (index % 2 === 1
+      ? segment
+      : segment.replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, (match, content, offset, text) => {
+        const before = text[offset - 1] || " ";
+        const after = text[offset + match.length] || " ";
+        const openOk = !isPunctuationChar(content[0]) || /\s/.test(before) || isPunctuationChar(before);
+        const closeOk = !isPunctuationChar(content[content.length - 1]) || /\s/.test(after) || isPunctuationChar(after);
+        return openOk && closeOk ? match : `${CJK_STRONG_OPEN}${content}${CJK_STRONG_CLOSE}`;
+      }))).join("");
+  }).join("\n");
+}
+
+function isPunctuationChar(char) {
+  return /[\p{P}\p{S}]/u.test(String(char || ""));
+}
+
+/**
+ * Splits Markdown footnote definitions ([^id]: text) from the body. Lines in
+ * fenced code blocks are left untouched.
+ */
+function extractMarkdownFootnotes(markdown) {
+  const footnotes = [];
+  const seen = new Set();
+  const lines = [];
+  let fence = "";
+
+  for (const line of String(markdown || "").split("\n")) {
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+
+    if (fenceMatch) {
+      fence = fence ? (line.trim().startsWith(fence) ? "" : fence) : fenceMatch[1];
+      lines.push(line);
+      continue;
+    }
+
+    const definition = !fence && line.match(/^\[\^([^\]\s]+)\]:\s*(.*)$/);
+
+    if (definition) {
+      if (!seen.has(definition[1])) {
+        seen.add(definition[1]);
+        footnotes.push({ id: definition[1], text: definition[2] });
+      }
+      continue;
+    }
+
+    lines.push(line);
+  }
+
+  return { body: lines.join("\n").trim(), footnotes };
+}
+
+function hashFootnoteId(id) {
+  return Array.from(String(id)).map((char) => char.codePointAt(0).toString(36)).join("");
+}
+
+// Page breaks are decided on Chrome's own fragmentation: while measuring, the
+// conversation is laid out as columns exactly one page tall, so every element's
+// column is the page it prints on. Forced breaks are added in document order
+// and the layout is re-read after each one.
 function buildPaginationScript() {
   return `
 (() => {
-  const CONTENT_HEIGHT = 1014;
-  const HALF_PAGE = CONTENT_HEIGHT * 0.55;
+  const CONTENT_HEIGHT = 1011;
+  const PAGE_WIDTH = 674;
+  // Room kept below a prompt so its answer starts on the same page.
+  const ANSWER_LEAD_HEIGHT = 140;
+  // A new exchange never starts in the last quarter of a page.
+  const MIN_EXCHANGE_START_SPACE = CONTENT_HEIGHT * 0.25;
+  // A block that avoids page breaks inside it keeps that rule only up to this
+  // height; a taller one would leave a large gap when moved to the next page.
+  const AVOID_BREAK_LIMIT = CONTENT_HEIGHT * 0.4;
 
-  function outerHeight(element) {
-    const rect = element.getBoundingClientRect();
-    const style = window.getComputedStyle(element);
-    const marginTop = Number.parseFloat(style.marginTop) || 0;
-    const marginBottom = Number.parseFloat(style.marginBottom) || 0;
-    return rect.height + marginTop + marginBottom;
+  function releaseTallUnbreakableBlocks(conversation) {
+    const tall = [];
+    for (const element of conversation.querySelectorAll("*")) {
+      const breakInside = window.getComputedStyle(element).breakInside;
+      if (breakInside !== "avoid" && breakInside !== "avoid-page") continue;
+      const limit = element.closest(".user-message") ? CONTENT_HEIGHT : AVOID_BREAK_LIMIT;
+      if (element.getBoundingClientRect().height > limit) tall.push(element);
+    }
+    tall.forEach((element) => element.classList.add("break-released"));
   }
 
-  function advancePage(y, height, canSplit) {
-    if (!canSplit && y > 0 && y + height > CONTENT_HEIGHT) {
-      y = 0;
-    }
+  // Page index and offset within the page of a client rect in measuring mode.
+  function locate(rect, origin) {
+    const page = Math.max(0, Math.round((rect.left - origin.left) / PAGE_WIDTH));
+    return { page, top: rect.top - origin.top, bottom: rect.bottom - origin.top };
+  }
 
-    if (!canSplit || y + height <= CONTENT_HEIGHT) {
-      return y + height >= CONTENT_HEIGHT ? (y + height) % CONTENT_HEIGHT : y + height;
-    }
+  function fragments(element, origin) {
+    return Array.from(element.getClientRects())
+      .filter((rect) => rect.height > 0)
+      .map((rect) => locate(rect, origin));
+  }
 
-    return (height - (CONTENT_HEIGHT - y)) % CONTENT_HEIGHT;
+  // First visible line or image after the message meta row.
+  function firstContentRect(message, meta) {
+    const walker = document.createTreeWalker(message, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode(node) {
+        if (meta.contains(node) || !(meta.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) return NodeFilter.FILTER_SKIP;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          return /^(IMG|SVG|CANVAS|VIDEO)$/i.test(node.tagName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+        return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
+    });
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      let rects;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rects = range.getClientRects();
+      } else {
+        rects = node.getClientRects();
+      }
+      const rect = Array.from(rects).find((item) => item.height > 0);
+      if (rect) return rect;
+    }
+    return null;
+  }
+
+  function forceBreak(message) {
+    message.classList.add("force-page-before");
   }
 
   window.applyConversationPageBreaks = () => {
-    const messages = Array.from(document.querySelectorAll(".conversation > .message"));
-    let y = 0;
+    const conversation = document.querySelector(".conversation");
+    if (!conversation) return;
+    const messages = Array.from(conversation.querySelectorAll(":scope > .message"));
+    messages.forEach((message) => message.classList.remove("force-page-before"));
+    conversation.querySelectorAll(".break-released").forEach((element) => element.classList.remove("break-released"));
+    releaseTallUnbreakableBlocks(conversation);
 
-    for (const message of messages) {
-      message.classList.remove("force-page-before");
+    document.documentElement.classList.add("paginating");
+    try {
+      messages.forEach((message, index) => {
+        const origin = conversation.getBoundingClientRect();
+        const previous = messages[index - 1];
+
+        // A prompt starts a new page when the previous answer leaves too
+        // little room for the prompt and the start of its answer.
+        if (message.classList.contains("user-message") && previous?.classList.contains("assistant-message")) {
+          const end = fragments(previous, origin).pop();
+          const prompt = fragments(message, origin);
+          if (end && prompt.length) {
+            const used = end.bottom;
+            const promptHeight = Math.min(prompt.reduce((sum, part) => sum + part.bottom - part.top, 0), CONTENT_HEIGHT);
+            if (used > 0 && CONTENT_HEIGHT - used < Math.max(promptHeight + ANSWER_LEAD_HEIGHT, MIN_EXCHANGE_START_SPACE)) {
+              forceBreak(message);
+            }
+          }
+          return;
+        }
+
+        // An answer's meta row stays on the page where its content starts.
+        if (message.classList.contains("assistant-message")) {
+          const meta = message.querySelector(".message-meta");
+          const metaRect = meta && Array.from(meta.getClientRects()).find((rect) => rect.height > 0);
+          const contentRect = meta && firstContentRect(message, meta);
+          if (metaRect && contentRect && locate(contentRect, origin).page > locate(metaRect, origin).page) {
+            forceBreak(message);
+          }
+        }
+      });
+    } finally {
+      document.documentElement.classList.remove("paginating");
     }
-
-    messages.forEach((message, index) => {
-      const isUser = message.classList.contains("user-message");
-      const isAssistant = message.classList.contains("assistant-message");
-      const height = Math.min(Math.max(outerHeight(message), 1), CONTENT_HEIGHT * 8);
-
-      if (message.classList.contains("force-page-before") && y > 0) {
-        y = 0;
-      }
-
-      y = advancePage(y, height, !isUser);
-
-      const next = messages[index + 1];
-      if (isAssistant && next?.classList.contains("user-message") && y > HALF_PAGE) {
-        next.classList.add("force-page-before");
-        y = 0;
-      }
-    });
   };
 
   window.addEventListener("load", () => {
@@ -1815,17 +2008,21 @@ function extractLeadingAttachments(markdown) {
   return result;
 }
 
+// The contents list one row per prompt; answers are reached by reading on.
+// A conversation that opens with an assistant message keeps that row too.
 function buildTocRows(messages) {
   const rows = [];
 
   messages.forEach((message, index) => {
-    const label = getMessageLabel(message, index);
+    if (message.role !== "user" && !(index === 0 && message.role === "assistant")) {
+      return;
+    }
+
     rows.push({
       id: getMessageAnchorId(message, index),
       kind: message.role || "message",
-      type: formatRole(message.role),
-      label,
-      hasThinking: Boolean(message.thinkingMarkdown)
+      number: formatTurnNumber(message, index).replace(/^Turn\s+/, ""),
+      label: getTocLabel(messages, message, index).replace(/^Turn\s+\d+\.\s*/, "")
     });
   });
 
@@ -1935,6 +2132,24 @@ function getMessageLabel(message, index) {
   const source = markdownSource || cleanMarkdownForHtml(message.preview || message.thinkingMarkdown || "");
   const text = stripMarkdown(source).replace(/\s+/g, " ").trim();
   return `${formatTurnNumber(message, index)}. ${text.slice(0, 82) || attachmentDescription || formatRole(message.role)}`;
+}
+
+// An image-only prompt says nothing by itself; its answer names the content.
+function getTocLabel(messages, message, index) {
+  const label = getMessageLabel(message, index);
+  const next = messages[index + 1];
+  const isAttachmentOnly = message.role === "user"
+    && !stripAttachmentOnlyLines(cleanMarkdownForHtml(message.markdown || ""))
+    && describeAttachmentOnlyMessage(message);
+
+  if (!isAttachmentOnly || next?.role !== "assistant") {
+    return label;
+  }
+
+  const imageCount = extractLeadingAttachments(message.markdown).filter((item) => item.type === "image").length;
+  const answer = stripMarkdown(cleanMarkdownForHtml(next.markdown || "")).replace(/\s+/g, " ").trim().slice(0, 70);
+  const prefix = imageCount === 1 ? "[image]" : `[${imageCount} images]`;
+  return `${formatTurnNumber(message, index)}. ${prefix} ${answer}`;
 }
 
 function describeAttachmentOnlyMessage(message) {
@@ -2076,8 +2291,8 @@ async function renderPdfWithChrome({ htmlPath, outputPath, chromePath }) {
   try {
     const page = await browser.newPage({
       viewport: {
-        width: 702,
-        height: 1015
+        width: 674,
+        height: 1011
       }
     });
     await page.goto(pathToFileURL(htmlPath).href, {
@@ -2099,13 +2314,13 @@ async function renderPdfWithChrome({ htmlPath, outputPath, chromePath }) {
       outline: true,
       preferCSSPageSize: true,
       margin: {
-        top: "44px",
-        right: "34px",
-        bottom: "44px",
-        left: "34px"
+        top: "56px",
+        right: "60px",
+        bottom: "56px",
+        left: "60px"
       },
-      headerTemplate: `<div style="width:100%;font-size:8px;color:#6b7280;padding:0 34px;font-family:Arial,sans-serif;display:flex;justify-content:space-between;"><span></span><span></span></div>`,
-      footerTemplate: `<div style="width:100%;font-size:9px;color:#6b7280;padding:0 34px;font-family:Arial,sans-serif;display:flex;justify-content:center;gap:4px;"><span>Page</span><span class="pageNumber"></span><span>/</span><span class="totalPages"></span></div>`
+      headerTemplate: `<div style="width:100%;font-size:8px;color:#a3a3a3;padding:0 60px;font-family:'Helvetica Neue',Helvetica,Arial,'PingFang SC','Microsoft YaHei',sans-serif;"><span class="title" style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"></span></div>`,
+      footerTemplate: `<div style="width:100%;font-size:8px;color:#a3a3a3;padding:0 60px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;display:flex;justify-content:flex-end;gap:3px;"><span class="pageNumber"></span><span>/</span><span class="totalPages"></span></div>`
     });
   } finally {
     await browser.close();
@@ -2373,11 +2588,6 @@ function findChromeExecutable() {
 
 function buildCss() {
   return `
-@page {
-  size: A4;
-  margin: 44px 34px;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -2460,8 +2670,8 @@ a {
 }
 
 .toc h2 {
-  margin: 0 0 10px;
-  font-size: 18px;
+  margin: 0 0 8px;
+  font-size: 16px;
   line-height: 1.25;
 }
 
@@ -2475,13 +2685,13 @@ a {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   break-inside: avoid;
-  min-height: 16px;
-  padding: 2.5px 0;
+  min-height: 13px;
+  padding: 1.5px 0;
   color: #334155;
   text-decoration: none;
-  border-bottom: 1px dotted #dbe3ed;
-  font-size: 10.9px;
-  line-height: 1.22;
+  border-bottom: 1px dotted #e5eaf1;
+  font-size: 9.6px;
+  line-height: 1.2;
 }
 
 .toc-row.thinking {
@@ -2541,7 +2751,7 @@ a {
 .user-message {
   display: block;
   break-inside: auto;
-  margin: 0 0 16px;
+  margin: 0 0 12px;
 }
 
 .user-stack {
@@ -2652,11 +2862,29 @@ a {
 .assistant-message {
   display: block;
   break-inside: auto;
-  margin: 0 0 26px;
+  margin: 0 0 20px;
 }
 
-.user-message.force-page-before {
+.message.force-page-before {
   break-before: page;
+}
+
+/* Measuring mode for applyConversationPageBreaks: one column per page. */
+.paginating .conversation {
+  height: 1011px;
+  padding: 0;
+  column-width: 674px;
+  column-gap: 0;
+  column-fill: auto;
+}
+
+.paginating .message.force-page-before {
+  break-before: column;
+}
+
+.break-released {
+  break-inside: auto !important;
+  page-break-inside: auto !important;
 }
 
 .assistant-row {
@@ -2841,6 +3069,36 @@ a {
   padding-left: 2px;
 }
 
+.markdown-body .footnote-ref {
+  font-size: 0.72em;
+  line-height: 0;
+  margin-left: 1px;
+}
+
+.markdown-body .footnote-ref a {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.markdown-body .footnotes {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 10px;
+  color: #4b5563;
+}
+
+.markdown-body .footnotes ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.markdown-body .footnotes li {
+  margin: 2px 0;
+  word-break: break-word;
+}
+
 .markdown-body blockquote {
   margin: 12px 0;
   padding: 8px 12px 8px 14px;
@@ -2889,6 +3147,30 @@ a {
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.writing-block {
+  margin: 12px 0 14px;
+  border: 1px solid #dbe3ed;
+  border-radius: 12px;
+  background: #ffffff;
+  break-inside: avoid;
+  overflow: hidden;
+}
+
+.writing-label {
+  padding: 6px 14px;
+  border-bottom: 1px solid #edf1f5;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.writing-body {
+  padding: 4px 16px;
 }
 
 .math-card {
@@ -3290,7 +3572,8 @@ a {
 
 .user-attachments {
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, ...) keeps a wide screenshot from stretching the track past the page margin. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   break-inside: auto;
   text-align: right;
@@ -3374,14 +3657,20 @@ a {
   display: block;
 }
 
+.user-attachments > .attachment-card.with-thumb {
+  width: 100%;
+}
+
+/* Screenshots carry the content being discussed, so grids scale them down
+   instead of cropping them to a fixed height. */
 .user-attachments.image-grid .attachment-thumb,
 .user-attachments.image-grid .attachment-thumb img {
-  height: 210px;
-  max-height: 210px;
+  height: auto;
+  max-height: 320px;
 }
 
 .user-attachments.image-grid .attachment-thumb img {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .attachment-icon {
@@ -3555,6 +3844,711 @@ a {
 .hljs-variable,
 .hljs-params {
   color: #953800;
+}
+
+/* DIL (generative UI) answers drawn by dil-runtime.js */
+.dil-message.dil-ok .dil-fallback,
+.dil-message:not(.dil-ok) .dil-root {
+  display: none;
+}
+
+.dil-root {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #0d0d0d;
+}
+
+.dil-root > * + * {
+  margin-top: 12px;
+}
+
+.dil-box,
+.dil-row,
+.dil-grid {
+  gap: 8px;
+}
+
+.dil-root > .dil-title:not(:first-child) {
+  margin-top: 22px;
+}
+
+.dil-card,
+.dil-pressable,
+.dil-code,
+.dil-image,
+.dil-table {
+  break-inside: avoid;
+}
+
+:where(.dil-text, .dil-caption, .dil-title) {
+  margin: 0;
+}
+
+.dil-title {
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.dil-caption {
+  color: #8f8f8f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dil-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dil-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.dil-icon-inline {
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.dil-divider {
+  width: 100%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid #ececec;
+}
+
+.dil-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #0d0d0d;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.dil-button-outline,
+.dil-button-secondary,
+.dil-button-ghost {
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  color: #0d0d0d;
+}
+
+.dil-button-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.dil-button-disabled {
+  opacity: .45;
+}
+
+.dil-pressable {
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.dil-radio-group {
+  display: flex;
+  gap: 8px;
+}
+
+.dil-radio {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+}
+
+.dil-radio-dot,
+.dil-checkbox {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid #b4b4b4;
+  border-radius: 999px;
+}
+
+.dil-checkbox {
+  border-radius: 4px;
+}
+
+.dil-radio-dot-on,
+.dil-checkbox-on {
+  border-color: #0d0d0d;
+  box-shadow: inset 0 0 0 3px #ffffff;
+  background: #0d0d0d;
+}
+
+.dil-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.dil-blockquote {
+  margin: 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid #e3e3e3;
+  color: #4d4d4d;
+}
+
+.dil-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.dil-table th,
+.dil-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #ececec;
+  text-align: left;
+  vertical-align: top;
+}
+
+.dil-table th {
+  border-bottom-color: #d9d9d9;
+  font-weight: 650;
+}
+
+.dil-inline-code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: #ececec;
+  font-size: 0.86em;
+}
+
+.dil-cite-group {
+  white-space: nowrap;
+}
+
+.dil-cite {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f0f0f0;
+  color: #5d5d5d;
+  font-size: 10px;
+  line-height: 1.7;
+  text-decoration: none;
+  vertical-align: 1px;
+}
+
+.dil-entity {
+  text-decoration: underline dotted #b4b4b4;
+  text-underline-offset: 3px;
+}
+
+.dil-link {
+  color: #0d0d0d;
+  text-decoration-color: #b4b4b4;
+}
+
+.dil-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #1f6fd1;
+  font-weight: 550;
+}
+
+.dil-image {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #f4f4f4;
+  overflow: hidden;
+}
+
+.dil-image-caption {
+  color: #8f8f8f;
+  font-size: 9.5px;
+  line-height: 1.3;
+}
+
+.dil-writing {
+  border: 1px solid #e3e3e3;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.dil-writing-label,
+.dil-code-label {
+  padding: 6px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #8f8f8f;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dil-writing-body {
+  padding: 10px 16px;
+  white-space: pre-wrap;
+}
+
+.dil-writing-body p {
+  margin: 0;
+}
+
+.dil-writing-body p + p {
+  margin-top: 10px;
+}
+
+.dil-code {
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  background: #f9f9f9;
+  overflow: hidden;
+}
+
+.dil-code pre {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+
+.dil-math {
+  font-family: "Times New Roman", serif;
+  font-style: italic;
+}
+
+/* ==========================================================================
+   Reading theme: ChatGPT-like single reading column.
+   Later rules override the base component styles above.
+   ========================================================================== */
+
+@page {
+  size: A4;
+  margin: 56px 60px;
+}
+
+body {
+  color: #0d0d0d;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", "Noto Sans CJK JP", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", "Noto Sans", "Noto Sans Arabic", "Noto Sans Hebrew", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: #0d0d0d;
+  text-decoration-color: #b4b4b4;
+}
+
+/* Cover and prompt index */
+.cover-card {
+  margin: 0 0 28px;
+  padding: 0 0 22px;
+  border: 0;
+  border-bottom: 1px solid #ececec;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cover-eyebrow {
+  margin-bottom: 8px;
+  color: #8f8f8f;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cover-card h1 {
+  margin: 0 0 10px;
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cover-card p {
+  margin: 2px 0;
+  color: #6b6b6b;
+  font-size: 12px;
+}
+
+.cover-card .source a {
+  color: #6b6b6b;
+}
+
+.meta-dot {
+  margin: 0 6px;
+  color: #b4b4b4;
+}
+
+.toc {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.toc h2 {
+  margin: 0 0 10px;
+  color: #6b6b6b;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.toc-grid {
+  column-count: 2;
+  column-gap: 28px;
+  column-fill: auto;
+}
+
+.toc-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
+  padding: 2.5px 0;
+  border-bottom: 0;
+  color: #2f2f2f;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.toc-row.assistant {
+  color: #2f2f2f;
+}
+
+.toc-number {
+  color: #a3a3a3;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Conversation */
+.conversation {
+  padding-top: 0;
+}
+
+.turn-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #9b9b9b;
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.user-meta {
+  justify-content: flex-end;
+}
+
+.message-meta .avatar,
+.message-meta .assistant-avatar,
+.message-meta .avatar img,
+.message-meta .assistant-avatar img {
+  width: 18px;
+  height: 18px;
+}
+
+.message-meta .avatar,
+.message-meta .assistant-avatar {
+  flex: 0 0 18px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
+.meta-speaker {
+  color: #6b6b6b;
+  font-weight: 600;
+}
+
+.user-message {
+  margin: 26px 0 14px;
+}
+
+.conversation > .user-message:first-child {
+  margin-top: 0;
+}
+
+.user-stack {
+  width: 100%;
+  text-align: right;
+}
+
+.user-stack > * {
+  margin-top: 6px;
+}
+
+.user-bubble {
+  display: inline-block;
+  max-width: 76%;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 18px;
+  background: #f4f4f4;
+  color: #0d0d0d;
+  text-align: left;
+  box-shadow: none;
+}
+
+.user-bubble .markdown-body {
+  font-size: 14px;
+}
+
+.user-meta {
+  margin-top: 5px;
+}
+
+.user-attachments {
+  width: min(400px, 76%);
+  gap: 6px;
+}
+
+.attachment-thumb,
+.attachment-card.with-thumb {
+  border-radius: 14px;
+}
+
+.attachment-thumb {
+  border: 1px solid #ececec;
+}
+
+.assistant-message {
+  margin: 0 0 8px;
+}
+
+.assistant-meta {
+  margin-bottom: 4px;
+}
+
+.assistant-content {
+  min-width: 0;
+}
+
+/* Answer typography */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 20px 0 8px;
+  padding-top: 0;
+  border-top: 0;
+  color: #0d0d0d;
+  font-weight: 650;
+  line-height: 1.35;
+  break-after: avoid;
+}
+
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 18px; }
+.markdown-body h3 { font-size: 16px; }
+.markdown-body h4 { font-size: 14px; }
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body strong {
+  font-weight: 650;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.markdown-body li {
+  margin: 3px 0;
+}
+
+.markdown-body li > p {
+  margin: 0;
+}
+
+.markdown-body hr {
+  height: 0;
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid #ececec;
+  background: none;
+}
+
+.markdown-body blockquote {
+  margin: 10px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid #e3e3e3;
+  border-radius: 0;
+  background: transparent;
+  color: #4d4d4d;
+  font-style: normal;
+}
+
+.markdown-body code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: #ececec;
+  color: #0d0d0d;
+  font-size: 0.86em;
+}
+
+.markdown-body table {
+  width: 100%;
+  margin: 12px 0 14px;
+  border: 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid #ececec;
+  background: transparent;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th {
+  border-bottom-color: #d9d9d9;
+  font-weight: 650;
+  background: transparent;
+}
+
+.markdown-body tr:nth-child(even) td {
+  background: transparent;
+}
+
+.code-label {
+  margin: 12px 0 0;
+  padding: 6px 14px;
+  border: 1px solid #ececec;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: #f9f9f9;
+  color: #6b6b6b;
+  font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.markdown-body pre {
+  margin: 12px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  background: #f9f9f9;
+}
+
+.code-label + pre {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.markdown-body pre code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.writing-block {
+  border-color: #e3e3e3;
+  border-radius: 14px;
+}
+
+.writing-label {
+  background: transparent;
+  color: #8f8f8f;
+}
+
+.writing-body {
+  padding: 6px 16px 2px;
+}
+
+.markdown-body .footnotes {
+  margin-top: 12px;
+  border-top-color: #ececec;
+  color: #6b6b6b;
+}
+
+.markdown-body .footnote-ref a {
+  color: #6b6b6b;
+}
+
+.markdown-body .footnote-sep {
+  font-size: 0.72em;
+  line-height: 0;
+  color: #9b9b9b;
+}
+
+.thinking {
+  margin: 4px 0 12px;
+  padding: 2px 0 2px 14px;
+  border: 0;
+  border-left: 2px solid #e3e3e3;
+  border-radius: 0;
+  background: transparent;
+  color: #6b6b6b;
+  font-size: 12px;
+}
+
+.thinking h3 {
+  margin: 0 0 4px;
+  color: #8f8f8f;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thinking .markdown-body {
+  font-size: 12px;
+  line-height: 1.6;
 }
 `;
 }

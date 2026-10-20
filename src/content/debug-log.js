@@ -1,5 +1,9 @@
   function createDebugLog(options = {}) {
     const startedAt = new Date();
+    // ChatGPT is a single-page app: the user can open another conversation
+    // while a long export renders, so page identity is fixed at capture start.
+    const pageUrl = location.href;
+    const pageTitle = getConversationTitle();
     const events = [];
     const isDetailed = options.detailed ?? DETAILED_DEBUG_LOG;
     const maxEvents = options.maxEvents || DEBUG_EVENT_LIMIT;
@@ -347,8 +351,8 @@
             warningsCount: fidelityWarnings.length,
             warnings: fidelityWarnings
           },
-          pageUrl: location.href,
-          title: getConversationTitle(),
+          pageUrl,
+          title: pageTitle,
           startedAt: startedAt.toISOString(),
           finishedAt: new Date().toISOString(),
           pageTurnDiagnostics,
@@ -364,8 +368,8 @@
           exportPayload: {
             schemaVersion: 1,
             exporterVersion: EXPORTER_VERSION,
-            title: getConversationTitle(),
-            source: location.href,
+            title: pageTitle,
+            source: pageUrl,
             exportedAt: new Date().toISOString(),
             captureMode,
             messages: exportMessages

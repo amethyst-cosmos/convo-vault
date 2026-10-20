@@ -2,8 +2,7 @@ param(
   [string]$CacheDir = "",
   [int]$Port = 38474,
   [string]$BrowserPath = "",
-  [string]$LocalApiToken = "",
-  [switch]$Headless
+  [string]$LocalApiToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +22,6 @@ if ($BrowserPath) {
   $arguments += $BrowserPath
 }
 
-if ($Headless) {
-  $arguments += "--headless"
-}
 
 Set-Location $repoRoot
 if ($LocalApiToken) {

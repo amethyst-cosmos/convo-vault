@@ -175,6 +175,89 @@ for (const fixtureCase of cases) {
   });
 }
 
+test("advanced PDF renderer renders CJK bold, merged footnotes, and avatars in message meta", async () => {
+  const payloadPath = path.join(outputDir, "reading-layout.payload.json");
+  const htmlPath = path.join(outputDir, "reading-layout.html");
+  const payload = {
+    title: "Reading layout regression",
+    exportedAt: "2026-10-14T00:00:00.000Z",
+    language: "zh",
+    messages: [{
+      id: "user-1",
+      role: "user",
+      turnNumber: 1,
+      markdown: "需要整理吗？"
+    }, {
+      id: "assistant-1",
+      role: "assistant",
+      turnNumber: 2,
+      markdown: [
+        "是否需要我把**工时表各个状态（Draft、Paid）**的含义整理成表？",
+        "",
+        "第一点。[^1][^2] 第二点。[^3]",
+        "",
+        "[^1]: [Get certified](https://example.test/certified)",
+        "[^2]: [Get certified](https://example.test/certified)",
+        "[^3]: [Fees](https://example.test/fees)"
+      ].join("\n")
+    }]
+  };
+
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(payloadPath, JSON.stringify(payload), "utf8");
+  await execFileAsync(process.execPath, [
+    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    payloadPath,
+    "--html",
+    htmlPath,
+    "--html-only"
+  ], { cwd: repoRoot, encoding: "utf8" });
+
+  const html = await readFile(htmlPath, "utf8");
+
+  assert.match(html, /我把<strong>工时表各个状态（Draft、Paid）<\/strong>的含义/);
+  assert.doesNotMatch(html, /CVSTRONG|CVFOOTNOTEREF/);
+  // [^1] and [^2] cite the same page: one number, one list entry.
+  assert.match(html, /第一点。<sup class="footnote-ref"><a href="#[^"]+-fn-1">1<\/a><\/sup> 第二点。<sup class="footnote-ref"><a href="#[^"]+-fn-2">2<\/a><\/sup>/);
+  assert.equal((html.match(/<li id="[^"]+-fn-\d+">/g) || []).length, 2);
+  assert.match(html, /class="message-meta user-meta"><span class="meta-text">[\s\S]*?<\/span><div class="avatar user-avatar"/);
+  assert.match(html, /class="message-meta assistant-meta"><div class="assistant-avatar"/);
+});
+
+test("advanced PDF renderer embeds DIL programs with the Markdown fallback beside them", async () => {
+  const payloadPath = path.join(outputDir, "dil.payload.json");
+  const htmlPath = path.join(outputDir, "dil.html");
+  const code = "DIL.render(__dil.jsx(\"text\",null,\"</script><b>x</b>\"))";
+  const payload = {
+    title: "DIL regression",
+    exportedAt: "2026-10-15T00:00:00.000Z",
+    messages: [
+      { id: "user-1", role: "user", turnNumber: 1, markdown: "Draw it" },
+      { id: "assistant-1", role: "assistant", turnNumber: 2, markdown: "Fallback **text**", dil: [{ version: 2, code, constants: {}, appData: {}, widgets: {}, citations: {} }] },
+      { id: "assistant-2", role: "assistant", turnNumber: 3, markdown: "Plain answer" }
+    ]
+  };
+
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(payloadPath, JSON.stringify(payload), "utf8");
+  await execFileAsync(process.execPath, [
+    path.join(repoRoot, "tools", "advanced-pdf", "render.js"),
+    payloadPath,
+    "--html",
+    htmlPath,
+    "--html-only"
+  ], { cwd: repoRoot, encoding: "utf8" });
+
+  const html = await readFile(htmlPath, "utf8");
+
+  assert.match(html, /<meta http-equiv="Content-Security-Policy" content="default-src 'none';[^"]*script-src 'unsafe-inline' 'unsafe-eval'">/);
+  assert.match(html, /window\.renderDilRoots = renderAll;/);
+  assert.equal((html.match(/<div class="dil-message">/g) || []).length, 1);
+  assert.match(html, /<div class="dil-root"><\/div><script type="application\/json">\{"version":2,"code":"DIL\.render\(__dil\.jsx\(\\"text\\",null,\\"\\u003c\/script>\\u003cb>x\\u003c\/b>\\"\)\)"/);
+  assert.match(html, /<div class="dil-fallback">[\s\S]*?Fallback <strong>text<\/strong>/);
+  assert.match(html, /<p>Plain answer<\/p>/);
+});
+
 test("advanced PDF renderer keeps attachments after prose, embedded images, and single line breaks", async () => {
   const payloadPath = path.join(outputDir, "attachment-linebreak.payload.json");
   const htmlPath = path.join(outputDir, "attachment-linebreak.html");
@@ -236,8 +319,9 @@ test("advanced PDF renderer keeps attachments after prose, embedded images, and 
   assert.doesNotMatch(html, /Image Attachments/);
   assert.match(html, /class="user-attachments image-grid" data-image-count="5"/);
   assert.equal((html.match(/class="attachment-card image with-thumb image-preview-card"/g) || []).length, 5);
-  assert.match(html, /Turn 03\. Assistant image/);
-  assert.doesNotMatch(html, /Turn 03\.[^<]*data:application/);
+  // The prompt index lists prompts only; answers follow them in the body.
+  assert.match(html, /<span class="toc-number">01<\/span>\s*<span class="toc-label" dir="auto">正文第一行/);
+  assert.doesNotMatch(html, /class="toc-label"[^>]*>[^<]*data:application/);
   assert.match(html, /data:image\/png;base64,/);
 });
 

@@ -243,6 +243,68 @@ test("background renderer bridge stages image bytes outside the control JSON", a
   assert.equal(port.sent.find((message) => message.type === "RESULT")?.result?.assetStats?.imagesEmbedded, 1);
 });
 
+test("background renderer bridge stages page-downloaded ChatGPT file images without refetching", async () => {
+  const backgroundSource = await readFile(path.join(repoRoot, "background.js"), "utf8");
+  const runtimeConnectEvent = createEvent();
+  const fetchCalls = [];
+  const stagedBodies = [];
+  const sessionId = "e".repeat(48);
+  const downloaded = "file-service://file-downloaded";
+  const failed = "sediment://file_failed";
+  const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7]);
+  const dataUri = `data:image/png;base64,${Buffer.from(imageBytes).toString("base64")}`;
+  const chrome = {
+    runtime: { id: "page-image-test", lastError: null, onMessage: createEvent(), onConnect: runtimeConnectEvent },
+    storage: { local: { get(_keys, callback) { callback({ convoVaultSettings: { backendToken: "token" } }); } } },
+    downloads: { download(_options, callback) { callback(5); } }
+  };
+  const context = {
+    AbortController, Blob, URL, TextEncoder, Uint8Array, atob, btoa, chrome, console,
+    crypto: webcrypto, setTimeout, clearTimeout, setInterval: () => 1, clearInterval: () => {},
+    fetch: async (url, options = {}) => {
+      fetchCalls.push(String(url));
+      if (url === "http://127.0.0.1:38474/export-sessions") {
+        return jsonResponse({ ok: true, sessionId });
+      }
+      if (String(url).startsWith(`http://127.0.0.1:38474/export-sessions/${sessionId}/assets/`)) {
+        stagedBodies.push(options.body);
+        return jsonResponse({ ok: true, sha256: "f".repeat(64), reused: false });
+      }
+      if (url === "http://127.0.0.1:38474/prepare-render-bundle") {
+        return jsonResponse({ ok: true, filename: "page-images.zip", downloadPath: `/download-bundle/${"9".repeat(48)}`, assetStats: JSON.parse(options.body).exportPayload.assetStats });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+  };
+
+  vm.runInNewContext(backgroundSource, context, { filename: "background.js" });
+  const port = createPort();
+  runtimeConnectEvent.emit(port);
+  const serializedBody = JSON.stringify({
+    exportPayload: {
+      source: "https://chatgpt.com/c/page-images",
+      assetStats: {},
+      messages: [{ id: "u1", role: "user", markdown: `![Image](${downloaded})\n\n![Image](${failed})`, thinkingMarkdown: "" }]
+    },
+    fileName: "page-images.zip",
+    pageImages: { [downloaded]: dataUri },
+    pageImageFailures: { [failed]: "file download lookup HTTP 404" }
+  });
+
+  port.onMessage.emit({ type: "START", totalCharacters: serializedBody.length, totalBytes: serializedBody.length });
+  port.onMessage.emit({ type: "CHUNK", data: serializedBody });
+  port.onMessage.emit({ type: "END" });
+  await waitFor(() => port.sent.some((message) => message.type === "RESULT"));
+
+  assert.equal(fetchCalls.some((url) => url.includes("chatgpt.com")), false);
+  assert.equal(stagedBodies.length, 1);
+  assert.equal(stagedBodies[0].size, imageBytes.length);
+  const result = port.sent.find((message) => message.type === "RESULT").result;
+  assert.equal(result.assetStats.imagesEmbedded, 1);
+  assert.equal(result.assetStats.imagesFailed, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.assetStats.imageFailureSamples)), ["page download failed: file download lookup HTTP 404"]);
+});
+
 function jsonResponse(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,

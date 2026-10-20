@@ -2,9 +2,19 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const INCLUDE_FILES = {
+  "auto-export": "auto-export.js",
+  "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",
+  "selector-panel": "selector-panel.js",
+  "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",
-  "capture-full": "capture-full.js"
+  "capture-full": "capture-full.js",
+  "message-discovery": "message-discovery.js",
+  "chatgpt-dom": "chatgpt-dom.js",
+  "chatgpt-markup": "chatgpt-markup.js",
+  "conversation-manifest": "conversation-manifest.js",
+  "thinking-flyouts": "thinking-flyouts.js",
+  "dom-serializer": "dom-serializer.js"
 };
 
 export async function buildContentScript(repoRoot, options = {}) {

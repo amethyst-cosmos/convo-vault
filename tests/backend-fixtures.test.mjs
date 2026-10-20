@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -14,8 +15,79 @@ const fixturesDir = path.join(repoRoot, "tests", "fixtures");
 const cases = JSON.parse(
   await readFile(path.join(fixturesDir, "export-regression-cases.json"), "utf8")
 );
+const { buildDataBundle, buildMarkdownDocument, normalizePayload } = createRequire(import.meta.url)(
+  path.join(repoRoot, "tools", "advanced-pdf", "bundle-content.js")
+);
 
-test("backend Markdown and data endpoints preserve export fixture text", async (t) => {
+test("bundle Markdown and data builders preserve export fixture text", async () => {
+  for (const fixtureCase of cases) {
+    const payload = JSON.parse(await readFile(path.join(fixturesDir, fixtureCase.payload), "utf8"));
+    const normalized = normalizePayload({ exportPayload: payload });
+
+    const markdown = buildMarkdownDocument(normalized);
+    assertFixtureText(markdown, fixtureCase, "markdown");
+    assert.ok(
+      markdown.includes(`**Messages:** ${fixtureCase.expectedCounts.messages}`),
+      `Expected ${fixtureCase.name} markdown to report message count`
+    );
+
+    const data = buildDataBundle(normalized);
+    assertFixtureText(collectDataText(data), fixtureCase, "data");
+    assertFixtureData(data, fixtureCase);
+  }
+});
+
+test("agent trace files keep every event in order and the full output only in JSON", () => {
+  const longOutput = `${"x".repeat(2500)}END`;
+  const trace = {
+    version: 2,
+    model: { slug: "gpt-6-thinking", resolvedSlug: "gpt-6-thinking", thinkingEffort: "extended", cotVersion: "v5" },
+    durationSeconds: 75,
+    stats: { events: 5, thoughts: 1, notes: 0, toolCalls: 2, toolResults: 2, hiddenInputs: 1, sources: 1, citedSources: 1 },
+    events: [
+      { seq: 1, nodeId: "t1", offsetSeconds: 0, kind: "thought", summary: "Plan", content: "Search first.", finished: true },
+      { seq: 2, nodeId: "w1", offsetSeconds: 1.5, kind: "tool_call", tool: "web.run", title: "正在搜索网页", input: "", inputHidden: true },
+      { seq: 3, nodeId: "w2", offsetSeconds: 2, kind: "tool_result", tool: "web.run", callSeq: 2, title: "正在搜索 1 个网站", output: "", sources: [{ url: "https://example.test/a", title: "Source A", domain: "example.test", snippet: "About A" }] },
+      { seq: 4, nodeId: "c1", offsetSeconds: 3, kind: "tool_call", tool: "api_tool.call_tool", title: "Read repo", input: "{\"path\":\"/GitHub/fetch\"}", arguments: { path: "/GitHub/fetch" }, inputHidden: false },
+      { seq: 5, nodeId: "r1", offsetSeconds: 4, kind: "tool_result", tool: "api_tool.call_tool", callSeq: 4, output: longOutput }
+    ],
+    sources: [{ url: "https://example.test/a", title: "Source A", domain: "example.test", refIds: [], seenAt: [3], cited: true }],
+    citations: [],
+    memories: []
+  };
+  const normalized = normalizePayload({
+    exportPayload: {
+      title: "Trace",
+      exporterVersion: "0.9.5",
+      messages: [
+        { id: "u1", role: "user", turnNumber: 1, markdown: "Find a repo" },
+        { id: "a1", role: "assistant", turnNumber: 2, markdown: "Use A.", agentTrace: trace }
+      ]
+    }
+  });
+
+  const data = buildDataBundle(normalized);
+
+  assert.equal(data.agentTrace.version, 2);
+  assert.equal(data.agentTrace.turns.length, 1);
+  assert.equal(data.agentTrace.turns[0].prompt, "Find a repo");
+  assert.equal(data.agentTrace.turns[0].events[4].output, longOutput);
+  assert.deepEqual(data.agentTrace.sources, [{ url: "https://example.test/a", title: "Source A", domain: "example.test", turns: [2], cited: true }]);
+  // Data messages carry only the counts; the trace has one home.
+  assert.equal(data.messages[1].agentTrace, undefined);
+  assert.equal(data.messages[1].agentTraceStats.toolCalls, 2);
+
+  const markdown = data.agentTraceMarkdown;
+  assert.match(markdown, /## Turn 2 · gpt-6-thinking · extended · 1m 15s/);
+  assert.ok(markdown.indexOf("🧠 **Thought**") < markdown.indexOf("🔧 **Call `web.run`**"));
+  assert.match(markdown, /2\. `\+1\.5s` 🔧 \*\*Call `web\.run`\*\* — 正在搜索网页 · input not stored by ChatGPT/);
+  assert.match(markdown, /↩️ \*\*Result `web\.run`\*\* — 正在搜索 1 个网站 · for call 2 · 1 sources/);
+  assert.match(markdown, /\.\.\. \[503 more characters in turns\[0\]\.events\[4\]\]|… \[503 more characters in turns\[0\]\.events\[4\]\]/);
+  assert.doesNotMatch(markdown, /END/);
+  assert.match(markdown, /\| \[Source A\]\(https:\/\/example\.test\/a\) \| 2 \| yes \|/);
+});
+
+test("backend renderer prepares and serves export bundles", async (t) => {
   const port = await getAvailablePort();
   const token = `fixture-token-${process.pid}-${Date.now()}`;
   const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "convo-vault-backend-cache-"));
@@ -54,26 +126,6 @@ test("backend Markdown and data endpoints preserve export fixture text", async (
   });
 
   await waitForHealth(port, token, () => `${stdout}\n${stderr}`);
-
-  for (const fixtureCase of cases) {
-    const payload = JSON.parse(await readFile(path.join(fixturesDir, fixtureCase.payload), "utf8"));
-    const requestBody = JSON.stringify({
-      exportPayload: payload,
-      fileName: `${fixtureCase.name}.fixture`
-    });
-
-    const markdown = await postText(port, token, "/render-markdown", requestBody);
-    assertFixtureText(markdown, fixtureCase, "markdown");
-    assert.ok(
-      markdown.includes(`**Messages:** ${fixtureCase.expectedCounts.messages}`),
-      `Expected ${fixtureCase.name} markdown to report message count`
-    );
-
-    const dataJson = await postText(port, token, "/render-data", requestBody);
-    const data = JSON.parse(dataJson);
-    assertFixtureText(collectDataText(data), fixtureCase, "data");
-    assertFixtureData(data, fixtureCase);
-  }
 
   const bundleFixture = cases[0];
   const bundlePayload = JSON.parse(await readFile(path.join(fixturesDir, bundleFixture.payload), "utf8"));
@@ -266,21 +318,6 @@ async function waitForHealth(port, token, getLogs) {
   }
 
   throw new Error(`Backend fixture server did not become healthy: ${lastError}\n${getLogs()}`);
-}
-
-async function postText(port, token, endpoint, body) {
-  const response = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Convo-Vault-Token": token
-    },
-    body
-  });
-
-  const text = await response.text();
-  assert.equal(response.ok, true, `${endpoint} failed: ${response.status} ${text}`);
-  return text;
 }
 
 function assertFixtureText(output, fixtureCase, label) {

@@ -13,7 +13,10 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   const fastModule = await readFile(path.join(repoRoot, "src", "content", "capture-fast.js"), "utf8");
   const fullModule = await readFile(path.join(repoRoot, "src", "content", "capture-full.js"), "utf8");
   const background = await readFile(path.join(repoRoot, "background.js"), "utf8");
-  const backendServer = await readFile(path.join(repoRoot, "tools", "advanced-pdf", "server.js"), "utf8");
+  const backendServer = [
+    await readFile(path.join(repoRoot, "tools", "advanced-pdf", "server.js"), "utf8"),
+    await readFile(path.join(repoRoot, "tools", "advanced-pdf", "bundle-content.js"), "utf8")
+  ].join("\n");
   const backendRender = await readFile(path.join(repoRoot, "tools", "advanced-pdf", "render.js"), "utf8");
   const manifest = JSON.parse(await readFile(path.join(repoRoot, "manifest.json"), "utf8"));
   const popupHtml = await readFile(path.join(repoRoot, "popup.html"), "utf8");
@@ -21,6 +24,11 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
 
   assert.equal(current.replace(/\r\n/g, "\n"), generated);
   assert.match(generated, /function createDebugLog/);
+  assert.match(generated, /function buildConversationManifest/);
+  assert.match(generated, /function buildManifestCompletenessReport/);
+  assert.match(generated, /function renderChatGptInlineTokens/);
+  assert.match(generated, /function getDilFallbackMarkdown/);
+  assert.match(generated, /CHATGPT_MESSAGE_UNIT_SELECTOR = "\[data-chatgpt-search-unit-key\]"/);
   assert.match(generated, /async function collectFastConversationMessages/);
   assert.match(generated, /\/api\/auth\/session/);
   assert.match(generated, /Bearer \$\{attempt\.accessToken\}/);
@@ -58,7 +66,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function reconcileHybridMessages/);
   assert.match(generated, /hybridCapture\.reconciled/);
   assert.match(generated, /hybridCapture\.fullOnlyCandidates/);
-  assert.match(generated, /function refreshPortableMessageImageStats/);
+  assert.match(generated, /function downloadChatGptFileImages/);
   assert.match(generated, /imagesDeferred/);
   assert.match(generated, /base64 embedding deferred until export/);
   assert.doesNotMatch(generated, /base64 embedding disabled during message scan/);
@@ -67,8 +75,9 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(generated, /function stripMarkdownImagesFromLinkLabel/);
   assert.match(generated, /function isFaviconImageUrl/);
   assert.match(generated, /function isTimestampDividerText/);
-  assert.match(generated, /option value="full" selected>Full \(Recommended\)/);
-  assert.match(generated, /Hybrid \(Experimental for ImageGen\)/);
+  assert.match(generated, /option value="fast" selected>Fast \(Recommended\)/);
+  assert.match(generated, /option value="hybrid">Hybrid \(Fast \+ page details\)/);
+  assert.match(generated, /option value="full">Full \(page scan only\)/);
   assert.match(generated, /data-action="start-scan">Start Scan/);
   assert.match(generated, /Opening the selector does not scan/);
   const selectorOpen = generated.match(/open\(nextApi\)\s*\{[\s\S]*?return \{ ok: true, panelOpen: true \};\s*\}/)?.[0] || "";
@@ -85,25 +94,25 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.doesNotMatch(generated, /Export Loaded Hybrid Bundle/);
   assert.match(generated, /Switch to Full mode if you want to scan the page/);
   assert.doesNotMatch(generated, /falling back to Full scan/);
-  assert.match(generated, /assetEmbed\.start/);
-  assert.match(generated, /assetEmbed\.domFallback/);
-  assert.match(generated, /resolveMountedMessageNodeForPortableMessage/);
+  assert.match(generated, /assetDownload\.done/);
+  assert.match(generated, /function fetchChatGptFileImage/);
   assert.match(generated, /sediment/);
-  assert.match(generated, /ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY/);
+  assert.match(generated, /BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY/);
   assert.match(generated, /CONVO_VAULT_LOCAL_RENDERER_BUNDLE/);
   assert.match(generated, /function requestBackgroundBundleExport/);
   assert.doesNotMatch(generated, /fetch\(`\$\{rendererUrl\}\/render-bundle`/);
   assert.match(debugModule, /function downloadDebugLog/);
   assert.match(fastModule, /function buildMessagesFromConversationApi/);
-  assert.match(fastModule, /function getApiMessageStructuralSkipReason/);
+  assert.match(fastModule, /function isApiInternalToolCallNode/);
   assert.match(fastModule, /asset_pointer/);
   assert.match(fastModule, /fastCapture\.thinkingMerged/);
   assert.match(fastModule, /removeApiPrivateUseArtifacts/);
   assert.match(fullModule, /async function hydrateVirtualizedTurns/);
-  assert.match(background, /file-service/);
-  assert.match(background, /sediment/);
-  assert.match(background, /\/backend-api\/files\/\$\{encodedId\}\/content/);
-  assert.match(background, /extractImageUrlsFromMetadata/);
+  // ChatGPT-hosted images are downloaded by the page; the worker only fetches public images.
+  assert.match(generated, /\/backend-api\/files\/download\//);
+  assert.match(background, /credentials: "omit"/);
+  assert.doesNotMatch(background, /\/api\/auth\/session/);
+  assert.doesNotMatch(background, /FETCH_IMAGE_AS_DATA_URI/);
   assert.match(background, /CONVO_VAULT_LOCAL_RENDERER_BUNDLE/);
   assert.match(background, /\/prepare-render-bundle/);
   assert.match(background, /chrome\.downloads\.download/);
@@ -123,7 +132,7 @@ test("content script is generated from modular Hybrid, Fast, and Full sources", 
   assert.match(backendServer, /buildOutputObjectIndex/);
   assert.match(backendServer, /outputObjects/);
   assert.match(backendServer, /degradedObjectCount/);
-  assert.match(backendRender, /margin: 44px 34px/);
+  assert.match(backendRender, /@page {\n  size: A4;\n  margin: 56px 60px;\n}/);
   assert.match(backendRender, /<html lang="\$\{escapeAttr\(documentLanguage\)\}">/);
   assert.match(backendRender, /normalizeDocumentLanguage/);
   assert.match(backendRender, /language: payload\.language \|\| payload\.locale \|\| payload\.documentLanguage/);

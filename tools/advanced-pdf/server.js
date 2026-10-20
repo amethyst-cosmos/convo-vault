@@ -9,13 +9,16 @@ const { spawn } = require("child_process");
 const { Transform } = require("stream");
 const { pipeline } = require("stream/promises");
 const { pathToFileURL } = require("url");
-const { captureConversationWithEdge, findEdgeExecutable, getCacheRoot } = require("./capture");
 const {
   buildAssetManifest,
-  buildOutputObjectIndex,
   dedupeEmbeddedImageAssets,
   externalizeEmbeddedImageAssets
 } = require("./assets");
+const {
+  buildMarkdownDocument,
+  normalizePayload,
+  writeDataSidecars
+} = require("./bundle-content");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.CGCE_ADVANCED_PDF_PORT || 38474);
@@ -26,10 +29,16 @@ const LOCAL_API_TOKEN = String(process.env.CGCE_LOCAL_API_TOKEN || "").trim();
 const ROOT_DIR = path.resolve(__dirname, "..", "..");
 const WORK_DIR = path.join(ROOT_DIR, "tmp", "advanced-pdf-server");
 const RENDER_SCRIPT = path.join(__dirname, "render.js");
+const DEFAULT_CACHE_ROOT = path.join(ROOT_DIR, ".convo-vault");
 const BUNDLE_DOWNLOAD_TTL_MS = 10 * 60 * 1000;
 const EXPORT_SESSION_TTL_MS = 30 * 60 * 1000;
+const EXPORT_JOB_TTL_MS = 30 * 60 * 1000;
+const EXPORT_JOB_ID_PATTERN = /^[a-f0-9]{48}$/;
 const preparedBundleDownloads = new Map();
 const exportSessions = new Map();
+// Export jobs let a local program (the CLI or an agent skill) ask the extension
+// to export a conversation without anyone touching the selector panel.
+const exportJobs = new Map();
 
 fs.mkdirSync(WORK_DIR, { recursive: true });
 
@@ -45,7 +54,7 @@ const server = http.createServer((request, response) => {
 server.listen(PORT, HOST, () => {
   console.log(`[advanced-pdf-server] Listening on http://${HOST}:${PORT}`);
   console.log(`[advanced-pdf-server] Local API token: ${LOCAL_API_TOKEN ? "required" : "not configured; browser-origin requests will be rejected"}`);
-  console.log("[advanced-pdf-server] Endpoints: GET /health, POST /shutdown, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /render-pdf, POST /render-markdown, POST /render-data, POST /render-bundle, POST /prepare-render-bundle, GET /download-bundle/:id, POST /capture-render-pdf, POST /capture-render-markdown");
+  console.log("[advanced-pdf-server] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
 });
 
 async function handleRequest(request, response) {
@@ -65,14 +74,27 @@ async function handleRequest(request, response) {
       renderer: "advanced-local-chrome",
       version: readPackageVersion(),
       authRequired: Boolean(LOCAL_API_TOKEN),
-      cacheRoot: getCacheRoot(),
-      edgePath: findEdgeExecutable() || null
+      capabilities: ["jobs"],
+      cacheRoot: getCacheRoot()
     });
     return;
   }
 
+  // Jobs are driven by local programs (no browser Origin) and claimed by the
+  // extension, so they sit before the token gate and carry their own checks.
+  if (url.pathname === "/jobs" || url.pathname.startsWith("/jobs/")) {
+    if (await handleJobRequest(request, response, url)) {
+      return;
+    }
+  }
+
   if (request.method === "GET" && url.pathname.startsWith("/download-bundle/")) {
     handlePreparedBundleDownload(url, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/shutdown" && isLocalProcessRequest(request)) {
+    handleShutdown(response);
     return;
   }
 
@@ -108,43 +130,8 @@ async function handleRequest(request, response) {
     return;
   }
 
-  if (request.method === "POST" && url.pathname === "/render-pdf") {
-    await handleRenderPdf(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/render-markdown") {
-    await handleRenderMarkdown(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/render-data") {
-    await handleRenderData(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/render-bundle") {
-    await handleRenderBundle(request, response);
-    return;
-  }
-
   if (request.method === "POST" && url.pathname === "/prepare-render-bundle") {
     await handlePrepareRenderBundle(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/capture") {
-    await handleCapture(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/capture-render-pdf") {
-    await handleCaptureRenderPdf(request, response);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/capture-render-markdown") {
-    await handleCaptureRenderMarkdown(request, response);
     return;
   }
 
@@ -152,6 +139,173 @@ async function handleRequest(request, response) {
     ok: false,
     error: "Not found"
   });
+}
+
+/**
+ * Routes /jobs requests. Returns false when the request is not a job route so
+ * the caller can continue with the normal token-gated routes.
+ */
+async function handleJobRequest(request, response, url) {
+  const jobMatch = url.pathname.match(/^\/jobs\/([a-f0-9]{48})(?:\/(claim|status|bundle))?$/);
+
+  if (url.pathname === "/jobs") {
+    if (request.method !== "POST") return false;
+    if (!isLocalProcessRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Jobs can only be created by local programs." });
+      return true;
+    }
+    const body = await readJsonBody(request);
+    sendJson(response, 200, createExportJob(body));
+    return true;
+  }
+
+  if (!jobMatch) {
+    return false;
+  }
+
+  const [, jobId, action] = jobMatch;
+  pruneExportJobs();
+  const job = exportJobs.get(jobId);
+
+  if (!job) {
+    sendJson(response, 404, { ok: false, error: "Export job was not found or has expired." });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "claim") {
+    // Only the extension may claim: page scripts cannot forge a chrome-extension Origin.
+    if (!String(request.headers.origin || "").toLowerCase().startsWith("chrome-extension://")) {
+      sendJson(response, 403, { ok: false, error: "Only the Convo Vault extension can claim a job." });
+      return true;
+    }
+    if (job.state !== "waiting") {
+      sendJson(response, 409, { ok: false, error: "This export job was already claimed." });
+      return true;
+    }
+    updateExportJob(job, "claimed", "Extension picked up the job.");
+    sendJson(response, 200, { ok: true, options: job.options, token: LOCAL_API_TOKEN });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "status") {
+    if (!isLocalApiAuthorized(request)) {
+      sendJson(response, 401, { ok: false, error: "Missing or invalid local API token." });
+      return true;
+    }
+    const body = await readJsonBody(request);
+    const state = body?.state === "error" ? "error" : "working";
+    updateExportJob(job, state, String(body?.message || "").slice(0, 2000));
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "GET" && !action) {
+    if (!isLocalProcessRequest(request) && !isLocalApiAuthorized(request)) {
+      sendJson(response, 403, { ok: false, error: "Jobs can only be read by local programs." });
+      return true;
+    }
+    sendJson(response, 200, describeExportJob(job));
+    return true;
+  }
+
+  if (request.method === "GET" && action === "bundle") {
+    if (!isLocalProcessRequest(request)) {
+      sendJson(response, 403, { ok: false, error: "Bundles can only be read by local programs." });
+      return true;
+    }
+    if (job.state !== "done" || !job.result?.zipPath || !fs.existsSync(job.result.zipPath)) {
+      sendJson(response, 409, { ok: false, error: "The export bundle is not ready." });
+      return true;
+    }
+    response.writeHead(200, {
+      "Content-Type": "application/zip",
+      "Content-Length": job.result.size,
+      "Content-Disposition": makeContentDisposition(job.result.filename),
+      "Cache-Control": "no-store, max-age=0"
+    });
+    fs.createReadStream(job.result.zipPath).pipe(response);
+    return true;
+  }
+
+  return false;
+}
+
+function createExportJob(body) {
+  const jobId = crypto.randomBytes(24).toString("hex");
+  const captureMode = ["fast", "hybrid", "full"].includes(body?.captureMode) ? body.captureMode : "fast";
+  const job = {
+    id: jobId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    state: "waiting",
+    message: "Waiting for the browser extension to pick up the job.",
+    options: {
+      captureMode,
+      allowIncomplete: body?.allowIncomplete === true,
+      closeTab: body?.closeTab !== false,
+      // A ping job only proves the extension is installed and answering.
+      ping: body?.ping === true
+    },
+    result: null
+  };
+  exportJobs.set(jobId, job);
+  return { ok: true, jobId, options: job.options };
+}
+
+function updateExportJob(job, state, message) {
+  job.state = state;
+  job.updatedAt = Date.now();
+  if (message) {
+    job.message = message;
+  }
+}
+
+function completeExportJob(jobId, result) {
+  const job = EXPORT_JOB_ID_PATTERN.test(String(jobId || "")) ? exportJobs.get(jobId) : null;
+  if (!job) return;
+  job.result = result;
+  updateExportJob(job, "done", `Exported ${result.filename}.`);
+}
+
+function describeExportJob(job) {
+  return {
+    ok: true,
+    jobId: job.id,
+    state: job.state,
+    message: job.message,
+    ageMs: Date.now() - job.createdAt,
+    idleMs: Date.now() - job.updatedAt,
+    options: job.options,
+    result: job.result
+      ? {
+        filename: job.result.filename,
+        size: job.result.size,
+        bundleFiles: job.result.bundleFiles,
+        assetCount: job.result.assetCount,
+        assetStats: job.result.assetStats
+      }
+      : null
+  };
+}
+
+function pruneExportJobs() {
+  const cutoff = Date.now() - EXPORT_JOB_TTL_MS;
+  for (const [jobId, job] of exportJobs) {
+    if (job.updatedAt < cutoff) {
+      exportJobs.delete(jobId);
+    }
+  }
+}
+
+// A request from a program on this machine, not from a web page: browsers always
+// label their requests with an Origin or Sec-Fetch-Site header, plain HTTP clients
+// do not. The Host check blocks DNS-rebinding pages.
+function isLocalProcessRequest(request) {
+  if (request.headers.origin || request.headers["sec-fetch-site"]) {
+    return false;
+  }
+  const host = String(request.headers.host || "").toLowerCase();
+  return host === `127.0.0.1:${PORT}` || host === `localhost:${PORT}`;
 }
 
 function handleShutdown(response) {
@@ -399,174 +553,6 @@ function scheduleExportSessionExpiry(sessionId) {
   timer.unref?.();
 }
 
-async function handleCapture(request, response) {
-  const body = await readJsonBody(request);
-  const payload = await capturePayloadFromRequest(body);
-  sendJson(response, 200, {
-    ok: true,
-    payload
-  });
-}
-
-async function handleCaptureRenderPdf(request, response) {
-  const body = await readJsonBody(request);
-  const captureResult = await capturePayloadFromRequest(body, {
-    fallbackPayload: normalizePayload(body)
-  });
-  await renderPdfPayload(captureResult.payload || captureResult, body, response, captureResult.warning || "");
-}
-
-async function handleCaptureRenderMarkdown(request, response) {
-  const body = await readJsonBody(request);
-  const captureResult = await capturePayloadFromRequest(body, {
-    fallbackPayload: normalizePayload(body)
-  });
-  await renderMarkdownPayload(captureResult.payload || captureResult, body, response, captureResult.warning || "");
-}
-
-async function handleRenderPdf(request, response) {
-  const body = await readJsonBody(request);
-  const payload = normalizePayload(body);
-
-  if (!payload.messages.length) {
-    sendJson(response, 400, {
-      ok: false,
-      error: "No messages were provided."
-    });
-    return;
-  }
-
-  await renderPdfPayload(payload, body, response);
-}
-
-async function renderPdfPayload(payload, body, response, captureWarning = "") {
-  if (!payload.messages.length) {
-    sendJson(response, 400, {
-      ok: false,
-      error: "No messages were provided."
-    });
-    return;
-  }
-
-  const baseName = sanitizeFilename(
-    stripPdfExtension(body.fileName)
-      || payload.title
-      || "chatgpt-conversation"
-  );
-  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const requestDir = path.join(WORK_DIR, id);
-  fs.mkdirSync(requestDir, { recursive: true });
-
-  const jsonPath = path.join(requestDir, `${baseName}.json`);
-  const htmlPath = path.join(requestDir, `${baseName}.html`);
-  const pdfPath = path.join(requestDir, `${baseName}.pdf`);
-
-  fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2), "utf8");
-  const dataFiles = writeDataSidecars(requestDir, baseName, payload);
-
-  const result = await runRenderer({
-    jsonPath,
-    htmlPath,
-    pdfPath,
-    baseName
-  });
-
-  if (!result.ok) {
-    sendJson(response, 500, {
-      ok: false,
-      error: "Renderer failed.",
-      stdout: result.stdout.slice(-4000),
-      stderr: result.stderr.slice(-4000)
-    });
-    return;
-  }
-
-  const pdfBytes = fs.readFileSync(pdfPath);
-  const filename = `${baseName}.pdf`;
-
-  response.writeHead(200, {
-    "Content-Type": "application/pdf",
-    "Content-Length": pdfBytes.length,
-    "Content-Disposition": makeContentDisposition(filename),
-    "X-PDF-Engine": "advanced-local-chrome",
-    "X-Renderer-HTML": encodeHeaderValue(htmlPath.replace(/\\/g, "/")),
-    "X-Data-Dir": encodeHeaderValue(requestDir.replace(/\\/g, "/")),
-    "X-Data-Files": encodeHeaderValue(dataFiles.map((file) => path.basename(file)).join(",")),
-    ...(captureWarning ? { "X-Capture-Warning": encodeHeaderValue(captureWarning) } : {})
-  });
-  response.end(pdfBytes);
-}
-
-async function handleRenderMarkdown(request, response) {
-  const body = await readJsonBody(request);
-  const payload = normalizePayload(body);
-
-  if (!payload.messages.length) {
-    sendJson(response, 400, {
-      ok: false,
-      error: "No messages were provided."
-    });
-    return;
-  }
-
-  await renderMarkdownPayload(payload, body, response);
-}
-
-async function handleRenderData(request, response) {
-  const body = await readJsonBody(request);
-  const payload = normalizePayload(body);
-
-  if (!payload.messages.length) {
-    sendJson(response, 400, {
-      ok: false,
-      error: "No messages were provided."
-    });
-    return;
-  }
-
-  const baseName = sanitizeFilename(
-    stripExtension(body.fileName, "json")
-      || payload.title
-      || "chatgpt-conversation"
-  );
-  const bundle = buildDataBundle(payload);
-  const bytes = Buffer.from(JSON.stringify(bundle, null, 2), "utf8");
-
-  response.writeHead(200, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": bytes.length,
-    "Content-Disposition": makeContentDisposition(`${baseName}.data.json`),
-    "X-Data-Engine": "advanced-local-data"
-  });
-  response.end(bytes);
-}
-
-async function handleRenderBundle(request, response) {
-  const body = await readJsonBody(request);
-  const artifact = await buildRenderBundleArtifact(body);
-
-  if (!artifact.ok) {
-    sendRenderBundleError(response, artifact);
-    return;
-  }
-
-  response.writeHead(200, {
-    "Content-Type": "application/zip",
-    "Content-Length": artifact.bundleSize,
-    "Content-Disposition": makeContentDisposition(artifact.filename),
-    "X-Bundle-Engine": "advanced-local-bundle",
-    "X-Bundle-Files": encodeHeaderValue(artifact.bundleFiles),
-    "X-Asset-Count": String(artifact.assetCount),
-    "X-Renderer-HTML": encodeHeaderValue(artifact.htmlPath.replace(/\\/g, "/")),
-    "X-Data-Dir": encodeHeaderValue(artifact.requestDir.replace(/\\/g, "/")),
-    "X-Bundle-Timings": encodeHeaderValue(JSON.stringify(artifact.rendererTimings))
-  });
-  await pipeline(fs.createReadStream(artifact.zipPath), response);
-  if (artifact.exportSessionId) {
-    exportSessions.delete(artifact.exportSessionId);
-  }
-}
-
 async function handlePrepareRenderBundle(request, response) {
   const body = await readJsonBody(request);
   const artifact = await buildRenderBundleArtifact(body);
@@ -589,6 +575,15 @@ async function handlePrepareRenderBundle(request, response) {
     expirePreparedBundleDownload(downloadId);
   }, BUNDLE_DOWNLOAD_TTL_MS);
   expirationTimer.unref?.();
+
+  completeExportJob(body?.jobId, {
+    zipPath: artifact.zipPath,
+    filename: artifact.filename,
+    size: artifact.bundleSize,
+    bundleFiles: artifact.bundleFiles,
+    assetCount: artifact.assetCount,
+    assetStats: artifact.assetStats
+  });
 
   sendJson(response, 200, {
     ok: true,
@@ -870,630 +865,6 @@ function buildBundleAssetEntries(assetManifest, cacheRoot) {
   return entries;
 }
 
-async function renderMarkdownPayload(payload, body, response, captureWarning = "") {
-  if (!payload.messages.length) {
-    sendJson(response, 400, {
-      ok: false,
-      error: "No messages were provided."
-    });
-    return;
-  }
-
-  const baseName = sanitizeFilename(
-    stripExtension(body.fileName, "md")
-      || payload.title
-      || "chatgpt-conversation"
-  );
-  const markdown = buildMarkdownDocument(payload);
-  const bytes = Buffer.from(markdown, "utf8");
-  const filename = `${baseName}.md`;
-
-  response.writeHead(200, {
-    "Content-Type": "text/markdown; charset=utf-8",
-    "Content-Length": bytes.length,
-    "Content-Disposition": makeContentDisposition(filename),
-    "X-Markdown-Engine": "advanced-local",
-    ...(captureWarning ? { "X-Capture-Warning": encodeHeaderValue(captureWarning) } : {})
-  });
-  response.end(bytes);
-}
-
-async function capturePayloadFromRequest(body, options = {}) {
-  const capture = body.capture || {};
-
-  if (!capture.url) {
-    if (options.fallbackPayload) {
-      return {
-        payload: options.fallbackPayload,
-        warning: "No capture URL was provided; used extension payload."
-      };
-    }
-    throw new Error("No capture URL was provided.");
-  }
-
-  try {
-    const payload = await captureConversationWithEdge({
-      url: capture.url,
-      title: capture.title,
-      exporterVersion: capture.exporterVersion,
-      selectedOrders: capture.selectedOrders
-    });
-    return {
-      payload,
-      warning: ""
-    };
-  } catch (error) {
-    if (!options.fallbackPayload?.messages?.length) {
-      throw error;
-    }
-
-    return {
-      payload: options.fallbackPayload,
-      warning: `Backend Edge capture failed; used extension payload. ${error.message || error}`.slice(0, 900)
-    };
-  }
-}
-
-function normalizePayload(body) {
-  const payload = body.exportPayload || body.payload || body;
-  const messages = Array.isArray(payload.messages)
-    ? payload.messages.map((message, index) => normalizePayloadMessage(message, index))
-    : [];
-
-  return {
-    schemaVersion: payload.schemaVersion || 1,
-    exporterVersion: payload.exporterVersion || "",
-    title: payload.title || "ChatGPT Conversation",
-    source: payload.source || "",
-    exportedAt: payload.exportedAt || new Date().toISOString(),
-    language: payload.language || payload.locale || payload.documentLanguage || "",
-    captureMode: payload.captureMode || "",
-    messageCount: payload.messageCount || messages.length,
-    messages
-  };
-}
-
-function normalizePayloadMessage(message, index) {
-  const turnNumber = normalizeTurnNumber(message?.turnNumber, index);
-
-  return {
-    ...message,
-    id: message?.id || `message-${turnNumber}`,
-    role: String(message?.role || "unknown").toLowerCase(),
-    turnNumber,
-    order: message?.order ?? message?.conversationOrder ?? index,
-    conversationOrder: message?.conversationOrder ?? message?.order ?? index,
-    timestamp: message?.timestamp || "",
-    preview: message?.preview || "",
-    markdown: String(message?.markdown || ""),
-    thinkingMarkdown: String(message?.thinkingMarkdown || ""),
-    sourceMessageId: message?.sourceMessageId || "",
-    codeBlockCount: message?.codeBlockCount || 0,
-    fileCount: message?.fileCount || 0,
-    imageCount: message?.imageCount || 0,
-    imagesEmbedded: message?.imagesEmbedded || 0,
-    imagesFailed: message?.imagesFailed || 0
-  };
-}
-
-function normalizeTurnNumber(value, index) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? Math.floor(number) : index + 1;
-}
-
-function writeDataSidecars(directory, baseName, payload, options = {}) {
-  const bundle = buildDataBundle(payload, options);
-  const dataJson = JSON.stringify({
-    ok: bundle.ok,
-    conversation: bundle.conversation,
-    messages: bundle.messages,
-    qaPairs: bundle.qaPairs,
-    outputObjects: bundle.outputObjects,
-    outputObjectCounts: bundle.outputObjectCounts,
-    topics: bundle.topics,
-    entities: bundle.entities
-  }, null, 2);
-  const files = [
-    [`${baseName}.data.json`, dataJson],
-    [`${baseName}.conversation.json`, JSON.stringify(bundle.conversation, null, 2)],
-    [`${baseName}.agent-trace.json`, JSON.stringify(bundle.agentTraces, null, 2)],
-    [`${baseName}.agent-trace.md`, bundle.agentTraceMarkdown],
-    [`${baseName}.messages.jsonl`, bundle.messagesJsonl],
-    [`${baseName}.qa-pairs.json`, JSON.stringify(bundle.qaPairs, null, 2)],
-    [`${baseName}.topics.json`, JSON.stringify(bundle.topics, null, 2)],
-    [`${baseName}.entities.json`, JSON.stringify(bundle.entities, null, 2)],
-    [`${baseName}.summary.md`, bundle.summaryMarkdown]
-  ];
-
-  return files.map(([name, content]) => {
-    const filePath = path.join(directory, name);
-    fs.writeFileSync(filePath, content.endsWith("\n") ? content : `${content}\n`, "utf8");
-    return filePath;
-  });
-}
-
-function buildDataBundle(payload, options = {}) {
-  const messages = payload.messages.map((message, index) => buildDataMessage(message, index));
-  const outputObjectIndex = buildOutputObjectIndex(payload, {
-    localImageAssets: options.localImageAssets
-  });
-  const agentTraces = messages
-    .filter((message) => message.agentTrace && message.agentTrace.activityCount > 0)
-    .map((message) => ({
-      turnNumber: message.turnNumber,
-      role: message.role,
-      timestamp: message.timestamp,
-      preview: message.preview,
-      trace: message.agentTrace
-    }));
-  const conversation = {
-    schemaVersion: 1,
-    exporterVersion: payload.exporterVersion || "",
-    title: payload.title || "ChatGPT Conversation",
-    source: payload.source || "",
-    exportedAt: payload.exportedAt || new Date().toISOString(),
-    generatedAt: new Date().toISOString(),
-    language: payload.language || "",
-    captureMode: payload.captureMode || "",
-    messageCount: messages.length,
-    roles: countBy(messages, (message) => message.role),
-    thinkingCount: messages.filter((message) => message.thinkingMarkdown).length,
-    imageCount: messages.reduce((sum, message) => sum + (message.counts?.images || 0), 0),
-    fileCount: messages.reduce((sum, message) => sum + (message.counts?.files || 0), 0),
-    outputObjectCount: outputObjectIndex.counts.total,
-    degradedObjectCount: outputObjectIndex.counts.degraded
-  };
-  const qaPairs = buildQaPairs(messages);
-  const topics = buildTopics(messages);
-  const entities = buildEntities(messages);
-
-  return {
-    ok: true,
-    conversation,
-    messages,
-    qaPairs,
-    agentTraces,
-    agentTraceMarkdown: buildAgentTraceMarkdown(conversation, messages, agentTraces),
-    outputObjects: outputObjectIndex.objects,
-    outputObjectCounts: outputObjectIndex.counts,
-    topics,
-    entities,
-    messagesJsonl: messages.map((message) => JSON.stringify(message)).join("\n") + "\n",
-    summaryMarkdown: buildSummaryMarkdown(conversation, qaPairs, topics, entities)
-  };
-}
-
-function buildAgentTraceMarkdown(conversation, messages, agentTraces) {
-  const lines = [
-    `# Agent Execution & Cognitive Architecture Trace: ${conversation.title}`,
-    "",
-    `> **Exported at**: ${conversation.exportedAt}`,
-    `> **Exporter Version**: ${conversation.exporterVersion || "v0.7.27"}`,
-    `> **Total Messages**: ${conversation.messageCount}`,
-    `> **AI Assistant Turns with Deep Trace**: ${agentTraces.length}`,
-    "",
-    "---",
-    ""
-  ];
-
-  if (!agentTraces.length) {
-    lines.push("*No internal tool calls or thinking traces were recorded for this session.*");
-    return lines.join("\n");
-  }
-
-  for (const entry of agentTraces) {
-    lines.push(`## Turn ${entry.turnNumber} (Assistant)`);
-    if (entry.timestamp) {
-      lines.push(`*Timestamp: ${entry.timestamp}*`);
-      lines.push("");
-    }
-
-    const trace = entry.trace || {};
-    const thinking = trace.thinkingNodes || [];
-    const searches = trace.searches || [];
-    const tools = trace.internalToolCalls || [];
-    const fileIngests = trace.fileIngestions || [];
-    const citations = trace.citations || [];
-
-    if (thinking.length) {
-      lines.push("### 💭 Reasoning & Thought Steps");
-      for (const t of thinking) {
-        const dur = t.durationSeconds ? ` (${t.durationSeconds}s)` : "";
-        if (t.summary) {
-          lines.push(`- **Summary**: ${t.summary}${dur}`);
-        }
-        if (t.content && t.content !== t.summary) {
-          lines.push(`  - Details: ${t.content.replace(/\n/g, " ")}`);
-        }
-      }
-      lines.push("");
-    }
-
-    if (fileIngests.length) {
-      lines.push("### 📄 Document Ingestions & Context Slices");
-      for (const fi of fileIngests) {
-        lines.push(`- **Tool/Channel**: \`${fi.recipient || "myfiles_browser"}\` (${fi.sizeBytes} bytes)`);
-        lines.push("  ```text");
-        lines.push(`  ${(fi.rawText || "").slice(0, 1000)}${fi.rawText?.length > 1000 ? "\n  ... [truncated in trace summary]" : ""}`);
-        lines.push("  ```");
-      }
-      lines.push("");
-    }
-
-    if (searches.length) {
-      lines.push("### 🔍 Web Searches & Information Retrieval");
-      for (const s of searches) {
-        lines.push(`- **Queries**: \`${s.queries.join("`, `")}\``);
-        if (s.results?.length) {
-          lines.push(`  - Results (${s.results.length}): ${s.results.slice(0, 5).map((r) => `[${r.title || r.url}](${r.url})`).join(", ")}`);
-        }
-      }
-      lines.push("");
-    }
-
-    if (tools.length) {
-      lines.push("### ⚙️ Tool & Code Invocations");
-      for (const tc of tools) {
-        lines.push(`- **Recipient**: \`${tc.recipient}\` (Role: ${tc.role})`);
-        lines.push("  ```text");
-        lines.push(`  ${(tc.rawContent || "").slice(0, 500)}${tc.rawContent?.length > 500 ? "\n  ..." : ""}`);
-        lines.push("  ```");
-      }
-      lines.push("");
-    }
-
-    if (citations.length) {
-      lines.push("### 📚 Citations & External Sources");
-      for (const c of citations) {
-        const title = c.metadata?.title || c.title || "Source";
-        const url = c.metadata?.url || c.url || "";
-        lines.push(`- ${url ? `[${title}](${url})` : title}`);
-      }
-      lines.push("");
-    }
-
-    lines.push("---");
-    lines.push("");
-  }
-
-  return lines.join("\n");
-}
-
-function buildDataMessage(message, index) {
-  const markdown = normalizeMarkdown(message.markdown || "");
-  const thinkingMarkdown = normalizeMarkdown(message.thinkingMarkdown || "");
-  const plainText = stripMarkdown(`${markdown}\n${thinkingMarkdown}`);
-
-  return {
-    id: message.id || `message-${index + 1}`,
-    turnNumber: normalizeTurnNumber(message.turnNumber, index),
-    role: message.role || "unknown",
-    timestamp: message.timestamp || "",
-    sourceMessageId: message.sourceMessageId || "",
-    conversationOrder: message.conversationOrder ?? message.order ?? index,
-    preview: cleanPreview(message.preview || plainText),
-    text: plainText,
-    markdown,
-    thinkingMarkdown,
-    agentTrace: message.agentTrace || null,
-    counts: {
-      codeBlocks: message.codeBlockCount || countCodeBlocks(markdown, thinkingMarkdown),
-      files: message.fileCount || extractFiles(markdown).length,
-      images: message.imageCount || extractImages(markdown).length,
-      links: extractLinks(`${markdown}\n${thinkingMarkdown}`).length
-    }
-  };
-}
-
-function buildQaPairs(messages) {
-  const pairs = [];
-
-  for (let index = 0; index < messages.length; index += 1) {
-    const question = messages[index];
-    const answer = messages[index + 1];
-
-    if (question?.role !== "user" || answer?.role !== "assistant") {
-      continue;
-    }
-
-    pairs.push({
-      id: `qa-${pairs.length + 1}`,
-      questionTurnNumber: question.turnNumber,
-      answerTurnNumber: answer.turnNumber,
-      questionPreview: cleanPreview(question.text),
-      answerPreview: cleanPreview(answer.text),
-      questionMessageId: question.id,
-      answerMessageId: answer.id,
-      timestamp: question.timestamp || answer.timestamp || ""
-    });
-  }
-
-  return pairs;
-}
-
-function buildTopics(messages) {
-  return messages.map((message) => ({
-    id: `topic-turn-${message.turnNumber}`,
-    turnNumber: message.turnNumber,
-    role: message.role,
-    title: cleanPreview(message.text, 72) || formatRole(message.role),
-    hasThinking: Boolean(message.thinkingMarkdown),
-    counts: message.counts
-  }));
-}
-
-function buildEntities(messages) {
-  const combined = messages.map((message) => `${message.markdown}\n${message.thinkingMarkdown}`).join("\n");
-  return {
-    urls: uniqueStrings(extractLinks(combined).map((link) => link.url)),
-    files: uniqueStrings(extractFiles(combined)),
-    images: uniqueStrings(extractImages(combined).map((image) => image.alt || image.src).filter(Boolean)),
-    emails: uniqueMatches(combined, /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi),
-    dates: uniqueMatches(combined, /\b(?:\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/g),
-    organizations: uniqueStrings([
-      ...uniqueMatches(combined, /\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){1,5}\b/g),
-      ...uniqueMatches(combined, /[\u4e00-\u9fffA-Za-z0-9]{2,24}(?:公司|学校|大学|学院|集团|Solutions|Limited|Ltd)\b/g)
-    ]).slice(0, 120)
-  };
-}
-
-function buildSummaryMarkdown(conversation, qaPairs, topics, entities) {
-  const lines = [
-    `# ${conversation.title}`,
-    "",
-    `- Capture mode: ${conversation.captureMode || "unknown"}`,
-    `- Messages: ${conversation.messageCount}`,
-    `- QA pairs: ${qaPairs.length}`,
-    `- Thinking messages: ${conversation.thinkingCount}`,
-    `- Images: ${conversation.imageCount}`,
-    `- Files: ${conversation.fileCount}`,
-    `- Output objects: ${conversation.outputObjectCount || 0}`,
-    `- Degraded objects: ${conversation.degradedObjectCount || 0}`,
-    ""
-  ];
-
-  if (conversation.source) {
-    lines.push(`Source: ${conversation.source}`, "");
-  }
-
-  lines.push("## Topic Index", "");
-  topics.slice(0, 80).forEach((topic) => {
-    lines.push(`- Turn ${String(topic.turnNumber).padStart(2, "0")} (${topic.role}): ${topic.title}`);
-  });
-
-  lines.push("", "## Entities", "");
-  for (const [key, values] of Object.entries(entities)) {
-    if (values.length) {
-      lines.push(`- ${key}: ${values.slice(0, 20).join(", ")}`);
-    }
-  }
-
-  return lines.join("\n").trimEnd() + "\n";
-}
-
-function countBy(items, getKey) {
-  return items.reduce((result, item) => {
-    const key = getKey(item) || "unknown";
-    result[key] = (result[key] || 0) + 1;
-    return result;
-  }, {});
-}
-
-function buildMarkdownDocument(payload) {
-  const lines = [
-    `# ${payload.title || "ChatGPT Conversation"}`,
-    "",
-    `**Exporter:** Convo Vault ${payload.exporterVersion || ""}`.trim(),
-    `**Exported:** ${formatMarkdownDateTime(payload.exportedAt)}`,
-    `**Messages:** ${payload.messages.length}`,
-    ""
-  ];
-
-  if (payload.source) {
-    lines.splice(lines.length - 1, 0, `**Link:** [${payload.source}](${payload.source})`);
-  }
-
-  payload.messages.forEach((message, index) => {
-    const role = formatRole(message.role);
-    const heading = role === "User" ? "Prompt" : role === "Assistant" ? "Response" : role;
-    lines.push(`## Turn ${String(normalizeTurnNumber(message.turnNumber, index)).padStart(2, "0")} - ${heading}`, "");
-
-    if (isDisplayableTimestamp(message.timestamp)) {
-      lines.push(message.timestamp, "");
-    }
-
-    if (message.thinkingMarkdown) {
-      lines.push("### Thinking", "", normalizeMarkdown(message.thinkingMarkdown), "");
-    }
-
-    lines.push(normalizeMarkdown(message.markdown || "_No text content found._"), "");
-  });
-
-  return lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trimEnd() + "\n";
-}
-
-function normalizeMarkdown(markdown) {
-  return compactMarkdownSourceLinks(String(markdown || "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim());
-}
-
-function compactMarkdownSourceLinks(markdown) {
-  return stripFaviconMarkdownImages(markdown)
-    .replace(/\[!\\?\[[^\]\n]*\\?\]\([^)]+\)\s*([^\]]*?)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => {
-      const cleanLabel = cleanMarkdownLinkLabel(label, url);
-      return cleanLabel ? `[${escapeMarkdownLinkLabel(cleanLabel)}](${url})` : url;
-    })
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => {
-      const cleanLabel = cleanMarkdownLinkLabel(label, url);
-      return cleanLabel ? `[${escapeMarkdownLinkLabel(cleanLabel)}](${url})` : url;
-    });
-}
-
-function stripFaviconMarkdownImages(markdown) {
-  return String(markdown || "")
-    .replace(/!\\?\[[^\]\n]*\\?\]\((https?:\/\/[^)]*(?:google\.com\/s2\/favicons|favicon)[^)]*)\)\s*/gi, "");
-}
-
-function cleanMarkdownLinkLabel(label, url = "") {
-  const value = String(label || "")
-    .replace(/!\\?\[[^\]\n]*\\?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, " ")
-    .replace(/\\?\[?image-\d+\\?]?/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!value) return compactUrl(url);
-  if (/^https?:\/\//i.test(value)) return compactUrl(value);
-  return value;
-}
-
-function escapeMarkdownLinkLabel(text) {
-  return String(text || "").replace(/[[\]\\]/g, "\\$&");
-}
-
-function stripMarkdown(markdown) {
-  return String(markdown || "")
-    .replace(/```[\s\S]*?```/g, " code ")
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/[#>*_`~|-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function cleanPreview(text, maxLength = 140) {
-  const value = String(text || "").replace(/\s+/g, " ").trim();
-  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1))}...` : value;
-}
-
-function countCodeBlocks(...parts) {
-  return parts.reduce((count, value) => {
-    const fenceCount = (String(value || "").match(/```/g) || []).length;
-    return count + Math.floor(fenceCount / 2);
-  }, 0);
-}
-
-function extractLinks(markdown) {
-  const links = [];
-  const source = String(markdown || "");
-  const markdownPattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-  const barePattern = /\bhttps?:\/\/[^\s)]+/g;
-  let match;
-
-  while ((match = markdownPattern.exec(source))) {
-    links.push({ label: cleanPreview(match[1], 100), url: stripTrailingPunctuation(match[2]) });
-  }
-
-  while ((match = barePattern.exec(source))) {
-    const url = stripTrailingPunctuation(match[0]);
-    if (!links.some((link) => link.url === url)) {
-      links.push({ label: compactUrl(url), url });
-    }
-  }
-
-  return links;
-}
-
-function extractImages(markdown) {
-  const images = [];
-  const pattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-  let match;
-
-  while ((match = pattern.exec(String(markdown || "")))) {
-    images.push({
-      alt: cleanPreview(match[1] || "Image", 120),
-      src: match[2] || ""
-    });
-  }
-
-  return images;
-}
-
-function extractFiles(markdown) {
-  const files = [];
-  const source = String(markdown || "");
-  const attachmentPattern = /\[File:\s*([^\]]+)\]/gi;
-  const filenamePattern = /[^\\/:*?"<>|\n\r]{1,140}\.(?:pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav)\b/gi;
-  let match;
-
-  while ((match = attachmentPattern.exec(source))) {
-    files.push(cleanPreview(match[1], 160));
-  }
-
-  while ((match = filenamePattern.exec(source))) {
-    files.push(cleanPreview(match[0], 160));
-  }
-
-  return uniqueStrings(files);
-}
-
-function uniqueMatches(text, pattern) {
-  return uniqueStrings([...String(text || "").matchAll(pattern)].map((match) => cleanPreview(match[0], 160)));
-}
-
-function uniqueStrings(values) {
-  const seen = new Set();
-  const result = [];
-
-  for (const value of values) {
-    const text = String(value || "").trim();
-    const key = text.toLowerCase();
-    if (!text || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    result.push(text);
-  }
-
-  return result;
-}
-
-function stripTrailingPunctuation(value) {
-  return String(value || "").replace(/[),.;!?，。；！？]+$/g, "");
-}
-
-function compactUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, "");
-  } catch {
-    return cleanPreview(url, 80);
-  }
-}
-
-function formatRole(role) {
-  const value = String(role || "Message").toLowerCase();
-  if (value === "assistant") return "Assistant";
-  if (value === "user") return "User";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function yamlString(value) {
-  return JSON.stringify(String(value || ""));
-}
-
-function formatMarkdownDateTime(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value || "");
-  }
-
-  return date.toLocaleString();
-}
-
-function isDisplayableTimestamp(value) {
-  const text = String(value || "").trim();
-
-  if (!text) {
-    return false;
-  }
-
-  return /^\d{1,2}\/\d{1,2}\/\d{4},?\s+\d{1,2}:\d{2}(?::\d{2})?/.test(text)
-    || /^\d{4}-\d{2}-\d{2}[T\s]\d{1,2}:\d{2}/.test(text)
-    || /^[A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4},?\s+\d{1,2}:\d{2}/.test(text);
-}
 
 async function createZipArchiveFile(entries, outputPath) {
   if (entries.length > 0xffff) {
@@ -1861,10 +1232,6 @@ function makeContentDisposition(filename) {
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-function encodeHeaderValue(value) {
-  return encodeURIComponent(String(value || ""));
-}
-
 function createTimings() {
   const startedAt = Date.now();
   const marks = {};
@@ -1880,10 +1247,6 @@ function createTimings() {
       };
     }
   };
-}
-
-function stripPdfExtension(filename) {
-  return String(filename || "").replace(/\.pdf$/i, "");
 }
 
 function stripExtension(filename, extension) {
@@ -1905,4 +1268,10 @@ function readPackageVersion() {
   } catch (_) {
     return "";
   }
+}
+
+function getCacheRoot() {
+  const cacheRoot = process.env.CGCE_CACHE_DIR || DEFAULT_CACHE_ROOT;
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  return cacheRoot;
 }

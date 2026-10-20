@@ -1,6 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.8.5";
-  const IS_EXTENSION_ENV = typeof chrome !== "undefined" && Boolean(chrome?.runtime?.id);
+  const EXPORTER_VERSION = "0.10.0";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -37,9 +36,11 @@
   const MAX_ADAPTIVE_HYDRATE_RESERVED_MS = 60_000;
   const MAX_ADAPTIVE_MISSING_RECOVERY_MS = 120_000;
   const TURN_HYDRATION_SETTLE_MS = 70;
-  const CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS = 3500;
-  const CONVERSATION_API_FETCH_TIMEOUT_MS = 15_000;
-  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 4500;
+  // A 2,700-node conversation takes about 10 s as one tree and 5-8 s per
+  // 100-turn page, so requests get a generous timeout; broken routes still
+  // fail fast with an HTTP error.
+  const CONVERSATION_API_FETCH_TIMEOUT_MS = 45_000;
+  const CONVERSATION_API_ATTEMPT_TIMEOUT_MS = 45_000;
   const THINKING_FLYOUT_AUTO_OPEN_LIMIT = 48;
   const FAST_THINKING_FLYOUT_AUTO_OPEN_LIMIT = 0;
   const THINKING_FLYOUT_OPEN_TIMEOUT_MS = 1400;
@@ -50,18 +51,17 @@
   const THINKING_FLYOUT_NO_PANEL_GRACE_MS = 700;
   const DEBUG_EVENT_LIMIT = 500;
   const DETAILED_DEBUG_LOG = false;
-  const ADVANCED_PDF_IMAGE_EMBED_LIMIT = 160;
-  const ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY = 4;
-  const SETTINGS_STORAGE_KEY = "convoVaultSettings";
-  const DEFAULT_EXPORTER_SETTINGS = {
-    port: 38474,
-    backendToken: ""
-  };
+  const BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY = 12;
+  const BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS = 20_000;
   const DEFAULT_ADVANCED_PDF_RENDERER_URL = "http://127.0.0.1:38474";
   const LOCAL_RENDERER_BUNDLE_PORT = "CONVO_VAULT_LOCAL_RENDERER_BUNDLE";
   const LOCAL_RENDERER_REQUEST_CHUNK_CHARACTERS = 512 * 1024;
   const MAX_LOCAL_RENDERER_REQUEST_BYTES = 256 * 1024 * 1024;
+  // Message-unit pages expose one unit per message; legacy pages expose one
+  // turn container per message. Both are the "turn nodes" of Full capture.
+  const TURN_NODE_SELECTOR = '[data-chatgpt-search-unit-key], [data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]';
   const MESSAGE_NODE_SELECTORS = [
+    '[data-chatgpt-search-unit-key]',
     '[data-turn-id]',
     '[data-turn-container]',
     '[data-turn-id-container]',
@@ -218,10 +218,8 @@
   const NON_MESSAGE_TEXT_RE = /chatgpt\s+(can|may|might)\s+make\s+mistakes|check\s+important\s+info|verify\s+important\s+information|chatgpt\s*\u4e5f?\u53ef\u80fd\u4f1a?\u72af\u9519|\u8bf7\u6838\u67e5\u91cd\u8981\u4fe1\u606f|\u8bf7\u6838\u5bf9\u91cd\u8981\u4fe1\u606f|\u6838\u67e5\u91cd\u8981\u4fe1\u606f/i;
   const NON_MESSAGE_ROLE_RE = /\b(alert|status|banner|complementary|navigation|contentinfo|dialog|tooltip|menu|menubar|search)\b/i;
   const ASSISTANT_SIGNAL_RE = /\b(assistant|bot-message|bot|model-response|model|response|answer|completion|markdown|prose)\b/i;
-  const USER_SIGNAL_RE = /\b(user|human|prompt|question|whitespace-pre-wrap)\b/i;
   const FILE_NAME_RE = /[^\\/:*?"<>|\n\r]{1,140}\.(?:pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav)/i;
   const FILE_ATTACHMENT_RE = /\b(file|attachment|download|uploaded|pdf|docx?|xlsx?|pptx?|csv|tsv|txt|md|json|zip|rar|7z|mov|mp4|mp3|wav|document)\b|\u6587\u4ef6|\u9644\u4ef6|\u4e0b\u8f7d|\u6587\u6863/i;
-  const IMAGE_DATA_URI_CACHE = new Map();
   let lastTurnNodeCache = null;
   let lastTurnNodeCacheAt = 0;
   const LANGUAGE_ALIASES = new Map([
@@ -273,19 +271,11 @@
   ]);
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "OPEN_CHATGPT_EXPORT_SELECTOR") {
-      openMessageSelectorPanel()
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
-
-      return true;
-    }
-
-    if (message?.type !== "EXPORT_CHATGPT_CONVERSATION") {
+    if (message?.type !== "OPEN_CHATGPT_EXPORT_SELECTOR") {
       return false;
     }
 
-    exportConversation()
+    openMessageSelectorPanel()
       .then((result) => sendResponse(result))
       .catch((error) => sendResponse({ ok: false, error: error.message || String(error) }));
 
@@ -301,8 +291,6 @@
   };
 
   const markdownBuilder = {
-    build: buildMarkdown,
-    download: downloadMarkdown,
     metadata: createExportMetadata,
     filename: makeFilename
   };
@@ -321,25 +309,6 @@
     });
   }
 
-  async function exportConversation() {
-    const result = await messageExtractor.collect();
-    const messages = result.messages || result;
-
-    if (!messages.length) {
-      throw new Error("No conversation messages were found on this page.");
-    }
-
-    if (!result.completeness?.complete) {
-      throw new Error(formatCaptureCompletenessError(result.completeness));
-    }
-
-    return exportSelectedMessages(messages, {
-      captureMode: result.captureMode,
-      completeness: result.completeness,
-      debugLog: result.debugLog || null
-    });
-  }
-
   async function collectConversationMessages(options = {}) {
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
     const captureMode = normalizeCaptureMode(options.captureMode);
@@ -350,12 +319,13 @@
 
     if (captureMode === "fast") {
       try {
-        const messages = await collectFastCanonicalMessages(debugLog, onProgress, {
+        const { messages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
           finishDebug: true,
           signal
         });
         return createValidatedCaptureResult({
           messages,
+          manifest,
           debugLog,
           captureMode
         }, { signal });
@@ -375,22 +345,40 @@
       return createValidatedCaptureResult(result, { signal });
     }
 
+    const manifest = await loadOptionalConversationManifest(debugLog, signal);
     const messages = await collectFullDomMessages(debugLog, onProgress, {
       finishDebug: true,
+      manifest,
       signal
     });
     return createValidatedCaptureResult({
       messages,
+      manifest,
       debugLog,
       captureMode: "full"
     }, { signal });
+  }
+
+  async function loadOptionalConversationManifest(debugLog, signal = null) {
+    try {
+      return await fetchConversationManifest(debugLog, { signal });
+    } catch (error) {
+      if (isCaptureCancelledError(error)) {
+        throw error;
+      }
+
+      debugLog.event("conversationManifest.unavailable", {
+        error: error?.message || String(error)
+      });
+      return null;
+    }
   }
 
   async function collectFastCanonicalMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
     onProgress("Loading conversation data...");
-    const messages = await collectFastConversationMessages(debugLog, { signal });
+    const { messages, manifest } = await collectFastConversationMessages(debugLog, { signal, onProgress });
     throwIfCaptureCancelled(signal);
 
     if (!messages.length) {
@@ -414,13 +402,13 @@
     }
 
     onProgress(`Found ${messages.length} messages with Fast capture.`);
-    return messages;
+    return { messages, manifest };
   }
 
   async function collectHybridConversationMessages(debugLog, onProgress, options = {}) {
     const signal = options.signal || null;
     try {
-      const fastMessages = await collectFastCanonicalMessages(debugLog, onProgress, {
+      const { messages: fastMessages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
         finishDebug: false,
         signal
       });
@@ -437,6 +425,7 @@
           progressPrefix: "Full enrichment: ",
           expectedTurnCount: fastMessages.length,
           expectedOrders: fastMessages.map((m) => Number(m.order)).filter((order) => Number.isFinite(order) && order > 0),
+          manifest,
           signal
         });
       } catch (error) {
@@ -449,7 +438,7 @@
         onProgress(`Full enrichment failed; using ${fastMessages.length} Fast canonical messages.`);
       }
 
-      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog);
+      const reconciliation = reconcileHybridMessages(fastMessages, fullMessages, debugLog, manifest);
       const messages = reconciliation.messages;
       throwIfCaptureCancelled(signal);
       debugLog.event("hybridCapture.reconciled", reconciliation.report);
@@ -457,6 +446,7 @@
       onProgress(`Hybrid ready. ${messages.length} canonical messages, ${reconciliation.report.enrichedMessages} enriched, ${reconciliation.report.ignoredFullOnlyMessages} Full-only candidate(s) ignored.`);
       return {
         messages,
+        manifest,
         debugLog,
         captureMode: "hybrid",
         reconciliationReport: reconciliation.report
@@ -506,19 +496,29 @@
       debugLog.mark("hydratedVirtualizedTurns");
       await collector.captureFromDom({ signal });
       debugLog.mark("finalCapture");
-      onProgress(`${progressPrefix}Recovering missed turns...`);
-      const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
-      const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
-      const recoveryDeadline = Date.now() + recoveryBudgetMs;
-      await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
-        expectedOrders,
-        maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
-      });
-      throwIfCaptureCancelled(signal);
-      debugLog.mark("recoveredMissingTurns");
+      if (hasChatGptMessageUnits()) {
+        // Message-unit pages expose no global turn numbers to scroll back to;
+        // missing messages are reported by the manifest completeness check.
+        debugLog.event("missingRecovery.skipped", { reason: "message-unit DOM has no conversation-turn numbers" });
+      } else {
+        onProgress(`${progressPrefix}Recovering missed turns...`);
+        const missingBeforeRecovery = getMissingConversationTurnOrders(collector.getMessages(), expectedOrders);
+        const recoveryBudgetMs = getMissingRecoveryBudgetMs(missingBeforeRecovery.length, scanBudget.pageTurnCount);
+        const recoveryDeadline = Date.now() + recoveryBudgetMs;
+        await recoverMissingTurnMessages(scrollTarget, collector, debugLog, recoveryDeadline, recoveryBudgetMs, signal, {
+          expectedOrders,
+          maxKnownOrder: expectedTurnCount || Math.max(...(getAvailableConversationTurnOrders() || [0]))
+        });
+        throwIfCaptureCancelled(signal);
+        debugLog.mark("recoveredMissingTurns");
+      }
       await collector.captureFromDom({ settleMs: 0, signal });
 
-      const messages = finalizeCollectedMessages(collector.getMessages(), debugLog);
+      const messages = applyManifestOrder(
+        finalizeCollectedMessages(collector.getMessages(), debugLog),
+        options.manifest || null,
+        debugLog
+      );
 
       if (!messages.length) {
         throw new Error("No conversation messages were found on this page.");
@@ -548,7 +548,7 @@
     }
   }
 
-  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null) {
+  function reconcileHybridMessages(fastMessages, fullMessages, debugLog = null, manifest = null) {
     const fullMatches = new Map();
     const fullOnlyCandidates = [];
     const substantiveFullOnlyCandidates = [];
@@ -566,7 +566,7 @@
         continue;
       }
 
-      const key = getHybridMessageKey(fullMessage);
+      const key = getHybridMessageKey(fullMessage, manifest);
 
       if (!key) {
         const candidate = {
@@ -589,7 +589,7 @@
     }
 
     const messages = fastMessages.map((fastMessage, index) => {
-      const key = getHybridMessageKey(fastMessage);
+      const key = getHybridMessageKey(fastMessage, manifest);
       const fullMessage = key ? fullMatches.get(key) : null;
 
       if (!fullMessage) {
@@ -702,7 +702,15 @@
     };
   }
 
-  function getHybridMessageKey(message) {
+  function getHybridMessageKey(message, manifest = null) {
+    // Message ids pair Fast and Full copies exactly; order numbers are the
+    // fallback for DOM messages that expose no ChatGPT message id.
+    const manifestIdentity = manifest ? resolveManifestIdentity(manifest, message) : "";
+
+    if (manifestIdentity) {
+      return manifestIdentity;
+    }
+
     const order = Number(message?.conversationOrder ?? message?.order ?? message?.turnNumber);
     const role = String(message?.role || "").toLowerCase();
 
@@ -844,11 +852,18 @@
     throwIfCaptureCancelled(options.signal);
     const messages = result?.messages || [];
     const captureMode = normalizeCaptureMode(result?.captureMode);
-    const completeness = buildCaptureCompletenessReport(messages, {
-      captureMode,
-      reconciliationReport: result?.reconciliationReport || null,
-      expectedSummary: result?.debugLog?.getFinalSummary?.() || null
-    });
+    // The API manifest is the expected structure whenever it loaded; the DOM
+    // turn census remains the fallback for pages where the API is unavailable.
+    const completeness = result?.manifest
+      ? buildManifestCompletenessReport(messages, result.manifest, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null
+      })
+      : buildCaptureCompletenessReport(messages, {
+        captureMode,
+        reconciliationReport: result?.reconciliationReport || null,
+        expectedSummary: result?.debugLog?.getFinalSummary?.() || null
+      });
 
     result?.debugLog?.event("capture.completeness", completeness);
     return {
@@ -1185,7 +1200,7 @@
 
   function normalizeCaptureMode(value) {
     const mode = String(value || "").toLowerCase();
-    return ["fast", "full", "hybrid"].includes(mode) ? mode : "full";
+    return ["fast", "full", "hybrid"].includes(mode) ? mode : "fast";
   }
 
   function formatCaptureMode(value) {
@@ -1200,6 +1215,8 @@
     return Number.isFinite(number) && number > 0 ? Math.floor(number) : index + 1;
   }
 
+  // The selector panel exports one format: the local renderer's ZIP bundle
+  // (Markdown, PDF, data files, and assets).
   async function exportSelectedMessages(messages, options = {}) {
     if (!messages.length) {
       throw new Error("Select at least one message to export.");
@@ -1211,124 +1228,39 @@
 
     const exportedAt = new Date();
     const metadata = markdownBuilder.metadata(messages, exportedAt);
-    const requestedFormat = options.format;
-    const format = requestedFormat === "bundle"
-      ? "bundle"
-      : requestedFormat === "pdf"
-      ? "advanced-pdf"
-      : requestedFormat === "advanced-pdf" || requestedFormat === "advanced-markdown"
-        ? requestedFormat
-        : "markdown";
-    let filename = "";
-
-    if (format === "bundle") {
-      const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
-        captureMode: options.captureMode,
-        debugLog: options.debugLog
-      });
-      filename = bundleResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("bundle.generated", {
-          filename,
-          rendererUrl: bundleResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          captureMode: normalizeCaptureMode(options.captureMode),
-          assetCount: bundleResult.assetCount || 0,
-          rendererTimings: bundleResult.rendererTimings || null
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        imagesEmbedded: bundleResult.imagesEmbedded || 0,
-        imagesFailed: bundleResult.imagesFailed || 0,
-        assetCount: bundleResult.assetCount || 0,
-        bundleFiles: bundleResult.bundleFiles || ""
-      };
-    }
-
-    if (format === "advanced-markdown") {
-      const markdownResult = await downloadAdvancedMarkdown(metadata, messages, exportedAt);
-      filename = markdownResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("advancedMarkdown.generated", {
-          engine: markdownResult.markdownEngine,
-          filename,
-          rendererUrl: markdownResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          captureWarning: markdownResult.captureWarning || ""
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.md$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        imagesEmbedded: messages.reduce((total, message) => total + message.imagesEmbedded, 0),
-        imagesFailed: messages.reduce((total, message) => total + message.imagesFailed, 0),
-        markdownEngine: markdownResult.markdownEngine,
-        captureWarning: markdownResult.captureWarning || ""
-      };
-    }
-
-    if (format === "advanced-pdf") {
-      const pdfResult = await downloadAdvancedPdf(metadata, messages, exportedAt);
-      filename = pdfResult.filename;
-
-      if (options.debugLog) {
-        options.debugLog.event?.("advancedPdf.generated", {
-          engine: pdfResult.pdfEngine,
-          filename,
-          rendererUrl: pdfResult.rendererUrl,
-          exporterVersion: EXPORTER_VERSION,
-          dataDir: pdfResult.dataDir || "",
-          dataFiles: pdfResult.dataFiles || "",
-          captureWarning: pdfResult.captureWarning || ""
-        });
-        downloadDebugLog(options.debugLog, filename.replace(/\.pdf$/i, "-debug.json"));
-      }
-
-      return {
-        ok: true,
-        format,
-        filename,
-        messageCount: messages.length,
-        pageCount: pdfResult.pageCount,
-        pdfEngine: pdfResult.pdfEngine,
-        imagesEmbedded: pdfResult.imagesEmbedded || 0,
-        imagesFailed: pdfResult.imagesFailed || 0,
-        imageLinks: messages.reduce((total, message) => total + (message.imageCount || 0), 0),
-        dataDir: pdfResult.dataDir || "",
-        dataFiles: pdfResult.dataFiles || "",
-        captureWarning: pdfResult.captureWarning || ""
-      };
-    }
-
-    const markdown = markdownBuilder.build(metadata, messages);
-    filename = markdownBuilder.filename(metadata.title, exportedAt, "md");
-    markdownBuilder.download(filename, markdown);
+    const bundleResult = await downloadExportBundle(metadata, messages, exportedAt, {
+      captureMode: options.captureMode,
+      debugLog: options.debugLog,
+      jobId: options.jobId,
+      onProgress: options.onProgress
+    });
+    const filename = bundleResult.filename;
 
     if (options.debugLog) {
-      downloadDebugLog(options.debugLog, filename.replace(/\.md$/i, "-debug.json"));
+      options.debugLog.event?.("bundle.generated", {
+        filename,
+        rendererUrl: bundleResult.rendererUrl,
+        exporterVersion: EXPORTER_VERSION,
+        captureMode: normalizeCaptureMode(options.captureMode),
+        assetCount: bundleResult.assetCount || 0,
+        assetStats: bundleResult.assetStats,
+        rendererTimings: bundleResult.rendererTimings || null
+      });
+      downloadDebugLog(options.debugLog, filename.replace(/\.zip$/i, "-debug.json"));
     }
 
     return {
       ok: true,
-      format,
+      format: "bundle",
       filename,
       messageCount: messages.length,
-      imagesEmbedded: messages.reduce((total, message) => total + message.imagesEmbedded, 0),
-      imagesFailed: messages.reduce((total, message) => total + message.imagesFailed, 0)
+      imagesEmbedded: bundleResult.imagesEmbedded || 0,
+      imagesFailed: bundleResult.imagesFailed || 0,
+      assetCount: bundleResult.assetCount || 0,
+      bundleFiles: bundleResult.bundleFiles || ""
     };
   }
+
 
   function formatCaptureCompletenessError(report) {
     const issueText = (report?.issues || [])
@@ -1357,30 +1289,6 @@
       imagesSkipped: 0
     };
 
-    if (options.embedImages) {
-      const embedStartedAt = Date.now();
-      const imageReferenceCount = countPortableMarkdownImages(portableMessages);
-      options.debugLog?.event?.("assetEmbed.start", {
-        captureMode,
-        imageReferenceCount,
-        concurrency: ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY,
-        limit: ADVANCED_PDF_IMAGE_EMBED_LIMIT
-      });
-      await embedImagesForPortableMessages(portableMessages, assetStats, {
-        captureMode,
-        debugLog: options.debugLog
-      });
-      portableMessages.forEach((message) => refreshPortableMessageImageStats(message, {
-        embedAttempted: true
-      }));
-      options.debugLog?.event?.("assetEmbed.done", {
-        captureMode,
-        imageReferenceCount,
-        durationMs: Date.now() - embedStartedAt,
-        ...assetStats
-      });
-    }
-
     return {
       schemaVersion: 1,
       exporterVersion: EXPORTER_VERSION,
@@ -1394,56 +1302,24 @@
     };
   }
 
-  async function getExporterSettings() {
-    if (typeof chrome === "undefined" || !chrome.storage?.local) {
-      return Promise.resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-    }
-
-    return new Promise((resolve) => {
-      try {
-        chrome.storage.local.get([SETTINGS_STORAGE_KEY], (result) => {
-          if (chrome.runtime?.lastError) {
-            resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-            return;
-          }
-          resolve(normalizeExporterSettings(result?.[SETTINGS_STORAGE_KEY]));
-        });
-      } catch (_) {
-        resolve({ ...DEFAULT_EXPORTER_SETTINGS });
-      }
-    });
-  }
-
-  function normalizeExporterSettings(settings = {}) {
-    return {
-      port: DEFAULT_EXPORTER_SETTINGS.port,
-      backendToken: String(settings.backendToken || "").trim()
-    };
-  }
-
-  function getAdvancedPdfRendererUrl(settings = DEFAULT_EXPORTER_SETTINGS) {
-    return settings.port === DEFAULT_EXPORTER_SETTINGS.port
-      ? DEFAULT_ADVANCED_PDF_RENDERER_URL
-      : `http://127.0.0.1:${settings.port}`;
-  }
-
-  function getLocalApiHeaders(settings = DEFAULT_EXPORTER_SETTINGS) {
-    return settings.backendToken
-      ? { "X-Convo-Vault-Token": settings.backendToken }
-      : {};
-  }
-
   async function downloadExportBundle(metadata, messages, exportedAt = new Date(), options = {}) {
     const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "zip");
     const payload = await createStructuredExportPayload(messages, exportedAt, {
-      embedImages: false,
-      captureMode: options.captureMode,
-      debugLog: options.debugLog
+      captureMode: options.captureMode
     });
 
+    const pageImageDownloads = await downloadChatGptFileImages(payload.messages, {
+      debugLog: options.debugLog,
+      onProgress: options.onProgress
+    });
+
+    options.onProgress?.("Rendering Markdown, PDF, and data files...");
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
-      fileName: defaultFileName
+      ...(options.jobId ? { jobId: options.jobId } : {}),
+      fileName: defaultFileName,
+      pageImages: pageImageDownloads.images,
+      pageImageFailures: pageImageDownloads.failures
     });
 
     if (!result?.ok) {
@@ -1457,8 +1333,154 @@
       rendererTimings: result.rendererTimings || null,
       assetCount: Number(result.assetCount) || 0,
       imagesEmbedded: result.assetStats?.imagesEmbedded ?? payload.assetStats?.imagesEmbedded ?? 0,
-      imagesFailed: result.assetStats?.imagesFailed ?? payload.assetStats?.imagesFailed ?? 0
+      imagesFailed: result.assetStats?.imagesFailed ?? payload.assetStats?.imagesFailed ?? 0,
+      assetStats: result.assetStats || null
     };
+  }
+
+  /**
+   * Downloads ChatGPT file images (file-service:// and sediment:// pointers)
+   * with the page's session. ChatGPT resolves a pointer through
+   * /backend-api/files/download/{id}, which returns a signed estuary URL that
+   * also needs the session cookies, so the extension service worker cannot
+   * fetch these images itself.
+   *
+   * @returns {Promise<{ images: Record<string, string>, failures: Record<string, string> }>}
+   *   data URIs and failure reasons keyed by the Markdown image source.
+   */
+  async function downloadChatGptFileImages(messages, options = {}) {
+    const sources = uniqueStrings(messages.flatMap((message) => [
+      ...extractMarkdownImageUrls(message?.markdown),
+      ...extractMarkdownImageUrls(message?.thinkingMarkdown)
+    ]).filter((source) => getChatGptFileImageId(source) || isChatGptSessionImageUrl(source)));
+    const images = {};
+    const failures = {};
+
+    if (!sources.length) {
+      return { images, failures };
+    }
+
+    const startedAt = Date.now();
+    const accessToken = await getChatGptAccessToken(options.debugLog || null);
+    const conversationId = getCurrentConversationId();
+    let cursor = 0;
+    let finished = 0;
+
+    async function worker() {
+      while (cursor < sources.length) {
+        const source = sources[cursor];
+        cursor += 1;
+
+        try {
+          const fileId = getChatGptFileImageId(source);
+          const blob = fileId
+            ? await fetchChatGptFileImage(fileId, { accessToken, conversationId })
+            : await fetchChatGptSessionImage(source);
+          images[source] = await blobToDataUri(blob);
+        } catch (error) {
+          failures[source] = error?.message || String(error);
+        }
+
+        finished += 1;
+        options.onProgress?.(`Downloading images ${finished}/${sources.length}...`);
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY, sources.length) }, () => worker()));
+    options.debugLog?.event?.("assetDownload.done", {
+      images: sources.length,
+      downloaded: Object.keys(images).length,
+      failed: Object.keys(failures).length,
+      durationMs: Date.now() - startedAt,
+      failureSamples: [...new Set(Object.values(failures))].slice(0, 5)
+    });
+    return { images, failures };
+  }
+
+  // Images the ChatGPT page shows from its own origin (estuary content and
+  // file downloads captured by Full mode) are signed for the page session.
+  function isChatGptSessionImageUrl(source) {
+    try {
+      const url = new URL(source);
+      return url.origin === location.origin && url.pathname.startsWith("/backend-api/");
+    } catch (error) {
+      // Relative or malformed references are not ChatGPT session URLs.
+      return false;
+    }
+  }
+
+  async function fetchChatGptSessionImage(source) {
+    const response = await fetchWithTimeout(source, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include"
+    });
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      throw new Error(`image download HTTP ${response.status}`);
+    }
+
+    if (!/^image\//i.test(contentType)) {
+      throw new Error(`image download returned ${contentType || "no content type"}`);
+    }
+
+    return response.blob();
+  }
+
+  function getChatGptFileImageId(source) {
+    return String(source || "").match(/^(?:file-service|sediment):\/\/([^/?#)\s]+)/i)?.[1] || "";
+  }
+
+  async function fetchChatGptFileImage(fileId, context) {
+    const headers = context.accessToken ? { authorization: `Bearer ${context.accessToken}` } : {};
+    const query = new URLSearchParams({ inline: "false" });
+
+    if (context.conversationId) {
+      query.set("conversation_id", context.conversationId);
+    }
+
+    const resolveUrl = new URL(`/backend-api/files/download/${encodeURIComponent(fileId)}?${query}`, location.origin);
+    const resolved = await fetchWithTimeout(resolveUrl.href, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include",
+      headers: { ...headers, accept: "application/json" }
+    });
+
+    if (!resolved.ok) {
+      throw new Error(`file download lookup HTTP ${resolved.status}`);
+    }
+
+    const details = await resolved.json();
+    const downloadUrl = String(details?.download_url || "");
+
+    if (!downloadUrl) {
+      throw new Error(`file download lookup returned no URL (${details?.status || "unknown status"})`);
+    }
+
+    const response = await fetchWithTimeout(new URL(downloadUrl, location.origin).href, {
+      timeoutMs: BUNDLE_IMAGE_DOWNLOAD_TIMEOUT_MS,
+      credentials: "include"
+    });
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      throw new Error(`image download HTTP ${response.status}`);
+    }
+
+    if (!/^image\//i.test(contentType)) {
+      throw new Error(`image download returned ${contentType || "no content type"}`);
+    }
+
+    return response.blob();
+  }
+
+  function blobToDataUri(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Could not read image bytes."));
+      reader.readAsDataURL(blob);
+    });
   }
 
   async function requestBackgroundBundleExport(body) {
@@ -1549,428 +1571,16 @@
     });
   }
 
-  async function downloadAdvancedMarkdown(metadata, messages, exportedAt = new Date()) {
-    const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "md");
-    const payload = await createStructuredExportPayload(messages, exportedAt);
-
-    const rendererSettings = await getExporterSettings();
-    const rendererUrl = getAdvancedPdfRendererUrl(rendererSettings);
-    let response;
-    try {
-      response = await fetch(`${rendererUrl}/render-markdown`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getLocalApiHeaders(rendererSettings)
-        },
-        body: JSON.stringify({
-          exportPayload: payload,
-          fileName: defaultFileName
-        })
-      });
-    } catch (error) {
-      throw new Error(`Local renderer is not running at ${rendererUrl}. Details: ${error.message || error}`);
-    }
-
-    if (!response.ok) {
-      await throwRendererResponseError(response, "Markdown renderer");
-    }
-
-    const blob = await response.blob();
-    const filename = getFilenameFromContentDisposition(response.headers.get("content-disposition")) || defaultFileName;
-    downloadBlob(filename, blob);
-
-    return {
-      filename,
-      rendererUrl,
-      markdownEngine: response.headers.get("x-markdown-engine") || "advanced-local",
-      captureWarning: response.headers.get("x-capture-warning") || ""
-    };
-  }
-
-  async function downloadAdvancedPdf(metadata, messages, exportedAt = new Date()) {
-    const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "pdf");
-    const payload = await createStructuredExportPayload(messages, exportedAt, {
-      embedImages: true
-    });
-
-    const rendererSettings = await getExporterSettings();
-    const rendererUrl = getAdvancedPdfRendererUrl(rendererSettings);
-    let response;
-    try {
-      response = await fetch(`${rendererUrl}/render-pdf`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getLocalApiHeaders(rendererSettings)
-        },
-        body: JSON.stringify({
-          exportPayload: payload,
-          fileName: defaultFileName
-        })
-      });
-    } catch (error) {
-      throw new Error(`Local renderer is not running at ${rendererUrl}. Details: ${error.message || error}`);
-    }
-
-    if (!response.ok) {
-      await throwRendererResponseError(response, "PDF renderer");
-    }
-
-    const blob = await response.blob();
-    const filename = getFilenameFromContentDisposition(response.headers.get("content-disposition")) || defaultFileName;
-    downloadBlob(filename, blob);
-
-    return {
-      filename,
-      rendererUrl,
-      pageCount: Number(response.headers.get("x-page-count")) || null,
-      pdfEngine: response.headers.get("x-pdf-engine") || "advanced-local-chrome",
-      captureWarning: response.headers.get("x-capture-warning") || "",
-      dataDir: decodeHeaderValue(response.headers.get("x-data-dir")),
-      dataFiles: decodeHeaderValue(response.headers.get("x-data-files")),
-      imagesEmbedded: payload.assetStats?.imagesEmbedded || 0,
-      imagesFailed: payload.assetStats?.imagesFailed || 0
-    };
-  }
-
-  async function throwRendererResponseError(response, label) {
-    const errorText = await response.text().catch(() => "");
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("Local renderer rejected the extension token. Copy a fresh start command from the popup and restart the local renderer.");
-    }
-
-    throw new Error(`${label} failed (${response.status}). ${errorText || response.statusText}`);
-  }
-
-  async function embedImagesForPortableMessages(messages, stats, options = {}) {
-    const domFallbackStats = await embedInternalAssetImagesFromMountedDom(messages, stats);
-
-    if (domFallbackStats.attempted || domFallbackStats.embedded || domFallbackStats.failed) {
-      options.debugLog?.event?.("assetEmbed.domFallback", {
-        captureMode: options.captureMode || "",
-        ...domFallbackStats
-      });
-    }
-
-    const plan = collectImageEmbeddingPlan(messages, ADVANCED_PDF_IMAGE_EMBED_LIMIT);
-    stats.imagesSkipped += plan.skipped;
-
-    if (!plan.urls.length) {
-      return;
-    }
-
-    const embeddedImagesByUrl = await fetchImageDataUrisForEmbedding(plan.urls, stats, options);
-
-    for (const message of messages) {
-      message.markdown = replaceEmbeddedMarkdownImages(message.markdown, embeddedImagesByUrl);
-      message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, embeddedImagesByUrl);
-    }
-  }
-
-  async function embedInternalAssetImagesFromMountedDom(messages, stats) {
-    const result = {
-      attempted: 0,
-      embedded: 0,
-      failed: 0,
-      missingNode: 0,
-      missingDomImage: 0
-    };
-
-    for (const message of messages) {
-      const refs = [
-        ...extractInternalAssetMarkdownImageRefs(message.markdown, "markdown"),
-        ...extractInternalAssetMarkdownImageRefs(message.thinkingMarkdown, "thinkingMarkdown")
-      ];
-
-      if (!refs.length) {
-        continue;
-      }
-
-      result.attempted += refs.length;
-      const node = resolveMountedMessageNodeForPortableMessage(message);
-
-      if (!node) {
-        const globalDomImages = Array.from(document.querySelectorAll("img"));
-        const replacements = new Map();
-        for (const ref of refs) {
-          const fileMatch = ref.url.match(/(file_[a-f0-9]{32}|file-[a-zA-Z0-9_-]+)/i);
-          const fileId = fileMatch ? fileMatch[1] : "";
-          if (!fileId) continue;
-          const match = globalDomImages.find((img) => {
-            const src = img.currentSrc || img.src || "";
-            return src && !isInternalAssetImageUrl(src) && (src.includes(fileId) || img.alt?.includes(fileId));
-          });
-          if (match) {
-            try {
-              const dataUri = await imageToDataUri(match, match.currentSrc || match.src);
-              replacements.set(ref.url, dataUri);
-              result.embedded += 1;
-              stats.imagesEmbedded += 1;
-            } catch (_) {}
-          }
-        }
-        if (replacements.size) {
-          message.markdown = replaceEmbeddedMarkdownImages(message.markdown, replacements);
-          message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, replacements);
-        }
-        result.missingNode += refs.length - replacements.size;
-        continue;
-      }
-
-      const candidates = getCandidateDomImagesForEmbedding(node);
-
-      if (!candidates.length) {
-        result.missingDomImage += refs.length;
-        continue;
-      }
-
-      const replacements = new Map();
-
-      for (let index = 0; index < refs.length; index += 1) {
-        const ref = refs[index];
-        const candidate = candidates[index] || candidates[candidates.length - 1];
-
-        try {
-          const dataUri = await imageToDataUri(candidate.image, candidate.src);
-          replacements.set(ref.url, dataUri);
-          result.embedded += 1;
-          stats.imagesEmbedded += 1;
-        } catch (_) {
-          result.failed += 1;
-        }
-      }
-
-      if (replacements.size) {
-        message.markdown = replaceEmbeddedMarkdownImages(message.markdown, replacements);
-        message.thinkingMarkdown = replaceEmbeddedMarkdownImages(message.thinkingMarkdown, replacements);
-      }
-    }
-
-    return result;
-  }
-
-  function extractInternalAssetMarkdownImageRefs(markdown, field) {
-    return extractEmbeddableMarkdownImageUrls(markdown)
-      .filter(isInternalAssetImageUrl)
-      .map((url) => ({ field, url }));
-  }
-
-  function resolveMountedMessageNodeForPortableMessage(message) {
-    const candidates = [
-      message?.sourceMessageId
-        ? document.querySelector(`[data-message-id="${cssString(message.sourceMessageId)}"]`)
-        : null,
-      message?.sourceTurnId
-        ? document.querySelector(`[data-turn-id="${cssString(message.sourceTurnId)}"]`)
-        : null,
-      message?.sourceTurnContainer
-        ? document.querySelector(`[data-turn-id-container="${cssString(message.sourceTurnContainer)}"], [data-turn-container="${cssString(message.sourceTurnContainer)}"]`)
-        : null,
-      findTurnNodeByConversationOrder(message?.order ?? message?.turnNumber)
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      const turn = candidate.closest?.("[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^='conversation-turn-'], [data-testid*='conversation-turn']");
-      if (turn) {
-        return turn;
-      }
-
-      return candidate;
-    }
-
-    return null;
-  }
-
-  function getCandidateDomImagesForEmbedding(root) {
-    return Array.from(root.querySelectorAll?.("img") || [])
-      .map((image) => ({
-        image,
-        src: image.currentSrc || image.src || image.getAttribute("src") || "",
-        width: getMediaWidth(image),
-        height: getMediaHeight(image)
-      }))
-      .filter((candidate) => {
-        if (!candidate.src || isLikelyDecorativeImage(candidate.image)) {
-          return false;
-        }
-
-        if (/google\.com\/s2\/favicons|favicon|avatar|openai/i.test(candidate.src)) {
-          return false;
-        }
-
-        return Math.max(candidate.width || 0, candidate.height || 0) >= 72;
-      });
-  }
-
-  function collectImageEmbeddingPlan(messages, limit) {
-    const urls = [];
-    const seen = new Set();
-    let skipped = 0;
-
-    for (const message of messages) {
-      for (const url of [
-        ...extractEmbeddableMarkdownImageUrls(message.markdown),
-        ...extractEmbeddableMarkdownImageUrls(message.thinkingMarkdown)
-      ]) {
-        if (seen.has(url)) {
-          continue;
-        }
-
-        seen.add(url);
-
-        if (urls.length >= limit) {
-          skipped += 1;
-          continue;
-        }
-
-        urls.push(url);
-      }
-    }
-
-    return { urls, skipped };
-  }
-
-  function extractEmbeddableMarkdownImageUrls(markdown) {
-    const urls = [];
-    const source = String(markdown || "");
-    const imagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    let match;
-
-    while ((match = imagePattern.exec(source))) {
-      const url = match[2] || "";
-      if (isEmbeddableImageUrl(url)) {
-        urls.push(url);
-      }
-    }
-
-    return urls;
-  }
-
-  async function fetchImageDataUrisForEmbedding(urls, stats, options = {}) {
-    const embeddedImagesByUrl = new Map();
-    const failures = [];
-    let cursor = 0;
-    const workerCount = Math.min(ADVANCED_PDF_IMAGE_EMBED_CONCURRENCY, urls.length);
-
-    async function worker() {
-      while (cursor < urls.length) {
-        const url = urls[cursor];
-        cursor += 1;
-
-        try {
-          const dataUri = await imageToDataUriFromSrc(url);
-          embeddedImagesByUrl.set(url, dataUri);
-          stats.imagesEmbedded += 1;
-        } catch (error) {
-          stats.imagesFailed += 1;
-          if (failures.length < 12) {
-            failures.push({
-              url: summarizeImageUrlForDebug(url),
-              error: error?.message || String(error)
-            });
-          }
-        }
-      }
-    }
-
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-
-    if (failures.length) {
-      options.debugLog?.event?.("assetEmbed.fetchFailures", {
-        captureMode: options.captureMode || "",
-        failureCount: stats.imagesFailed,
-        samples: failures
-      });
-    }
-
-    return embeddedImagesByUrl;
-  }
-
-  function summarizeImageUrlForDebug(url) {
-    const value = String(url || "");
-
-    if (/^data:/i.test(value)) {
-      return `${value.slice(0, 40)}...`;
-    }
-
-    return value.length > 240 ? `${value.slice(0, 220)}...` : value;
-  }
-
-  function replaceEmbeddedMarkdownImages(markdown, embeddedImagesByUrl) {
-    const source = String(markdown || "");
-    const imagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    return source.replace(imagePattern, (fullMatch, alt, url) => {
-      const embedded = embeddedImagesByUrl.get(url);
-      return embedded ? `![${alt || "image"}](${embedded})` : fullMatch;
-    });
-  }
-
-  function isEmbeddableImageUrl(url) {
-    return /^https?:\/\//i.test(url) || isInternalAssetImageUrl(url);
-  }
-
-  function isInternalAssetImageUrl(url) {
-    return /^(?:file-service|sediment):\/\//i.test(String(url || ""));
-  }
-
-  function countPortableMarkdownImages(messages) {
-    return messages.reduce((sum, message) => {
-      return sum + countMarkdownImages(message.markdown) + countMarkdownImages(message.thinkingMarkdown);
-    }, 0);
-  }
-
   function countMarkdownImages(markdown) {
     return (String(markdown || "").match(/!\[[^\]]*]\([^)]+\)/g) || []).length;
   }
 
-  function getFilenameFromContentDisposition(header) {
-    if (!header) {
-      return "";
-    }
-
-    const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
-    if (utf8Match) {
-      try {
-        return decodeURIComponent(utf8Match[1]);
-      } catch (_) {
-        return utf8Match[1];
-      }
-    }
-
-    const quotedMatch = header.match(/filename="([^"]+)"/i);
-    return quotedMatch ? quotedMatch[1] : "";
-  }
-
-  function decodeHeaderValue(value) {
-    if (!value) {
-      return "";
-    }
-
-    try {
-      return decodeURIComponent(value);
-    } catch (_) {
-      return value;
-    }
-  }
-
-  function parseEncodedJsonHeader(value) {
-    const decoded = decodeHeaderValue(value);
-
-    if (!decoded) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(decoded);
-    } catch (_) {
-      return null;
-    }
-  }
-
   function createDebugLog(options = {}) {
     const startedAt = new Date();
+    // ChatGPT is a single-page app: the user can open another conversation
+    // while a long export renders, so page identity is fixed at capture start.
+    const pageUrl = location.href;
+    const pageTitle = getConversationTitle();
     const events = [];
     const isDetailed = options.detailed ?? DETAILED_DEBUG_LOG;
     const maxEvents = options.maxEvents || DEBUG_EVENT_LIMIT;
@@ -2318,8 +1928,8 @@
             warningsCount: fidelityWarnings.length,
             warnings: fidelityWarnings
           },
-          pageUrl: location.href,
-          title: getConversationTitle(),
+          pageUrl,
+          title: pageTitle,
           startedAt: startedAt.toISOString(),
           finishedAt: new Date().toISOString(),
           pageTurnDiagnostics,
@@ -2335,8 +1945,8 @@
           exportPayload: {
             schemaVersion: 1,
             exporterVersion: EXPORTER_VERSION,
-            title: getConversationTitle(),
-            source: location.href,
+            title: pageTitle,
+            source: pageUrl,
             exportedAt: new Date().toISOString(),
             captureMode,
             messages: exportMessages
@@ -2419,6 +2029,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace: message?.agentTrace || null,
+      ...(Array.isArray(message?.dil) && message.dil.length ? { dil: message.dil } : {}),
       codeBlockCount: message?.codeBlockCount || 0,
       fileCount: message?.fileCount || 0,
       imageCount,
@@ -2429,21 +2040,6 @@
       hybridMarkdownSource: message?.hybridMarkdownSource || "",
       hybridThinkingSource: message?.hybridThinkingSource || ""
     };
-  }
-
-  function refreshPortableMessageImageStats(message, options = {}) {
-    const imageCount = countMarkdownImages(`${message?.markdown || ""}\n${message?.thinkingMarkdown || ""}`);
-    const embedded = countEmbeddedMarkdownImages(`${message?.markdown || ""}\n${message?.thinkingMarkdown || ""}`);
-    const priorFailures = Math.max(0, message.imagesFailed || 0);
-    message.imageCount = imageCount;
-    message.imagesEmbedded = embedded;
-    message.imagesFailed = options.embedAttempted
-      ? Math.max(0, imageCount - embedded) + Math.max(0, priorFailures - imageCount)
-      : priorFailures;
-    message.imagesDeferred = options.embedAttempted
-      ? 0
-      : Math.min(message.imagesDeferred || 0, Math.max(0, imageCount - embedded - message.imagesFailed));
-    return message;
   }
 
   function dedupeMarkdownImageReferences(markdown) {
@@ -3265,7 +2861,10 @@
           ? "Generating export bundle..."
           : "Exporting selected messages...";
         setPanelPhase("exporting", busyLabel);
-        const result = await api.exportMessages(selected, options);
+        const result = await api.exportMessages(selected, {
+          ...options,
+          onProgress: (message) => setPanelStatus(message)
+        });
         const snapshot = captureJobs.getLoadedSnapshot();
         setPanelPhase(snapshot?.completeness?.complete ? "ready" : "incomplete", formatExportResult(result));
       } catch (error) {
@@ -3275,22 +2874,13 @@
     }
 
     function formatExportResult(result) {
-      if (result.format === "bundle") {
-        const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) left as links` : "";
-        return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${failedSummary}.`;
-      }
-
-      if (result.format === "pdf" || result.format === "advanced-pdf") {
-        const pageSummary = result.pageCount ? `, ${result.pageCount} page(s)` : "";
-        const imageSummary = result.imageLinks ? `, ${result.imageLinks} image attachment(s)` : "";
-        const captureSummary = result.captureWarning ? ` Backend capture warning: ${result.captureWarning}` : "";
-        return `Saved ${result.filename}. ${result.messageCount} message(s)${pageSummary}${imageSummary}.${captureSummary}`;
-      }
-
-      const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) left as links` : "";
-      const captureSummary = result.captureWarning ? ` Backend capture warning: ${result.captureWarning}` : "";
-      return `Saved ${result.filename}. ${result.messageCount} message(s), ${result.imagesEmbedded} image(s) embedded${failedSummary}.${captureSummary}`;
+      const imageSummary = result.imagesEmbedded || result.imagesFailed
+        ? `, ${result.imagesEmbedded} image(s) embedded`
+        : "";
+      const failedSummary = result.imagesFailed ? `, ${result.imagesFailed} image(s) could not be downloaded and are left as links` : "";
+      return `Saved ${result.filename}. ${result.messageCount} message(s), Markdown + PDF + data files${imageSummary}${failedSummary}.`;
     }
+
 
     function updateExportButtonLabel() {
       const exportButton = shadow.querySelector("[data-action='export']");
@@ -3791,9 +3381,9 @@
               <label class="cgce-format">
                 <span>Mode</span>
                 <select class="cgce-select" data-option="capture-mode">
-                  <option value="full" selected>Full (Recommended)</option>
-                  <option value="hybrid">Hybrid (Experimental for ImageGen)</option>
-                  <option value="fast">Fast</option>
+                  <option value="fast" selected>Fast (Recommended)</option>
+                  <option value="hybrid">Hybrid (Fast + page details)</option>
+                  <option value="full">Full (page scan only)</option>
                 </select>
               </label>
               <label class="cgce-option">
@@ -3819,6 +3409,7 @@
   function createMessageCollector(debugLog = null) {
     const messagesByKey = new Map();
     const capturedStableKeys = new Set();
+    const unitOrder = createDomOrderRegistry();
     let sequence = 0;
 
     return {
@@ -3832,7 +3423,12 @@
           throwIfCaptureCancelled(signal);
         }
 
-        for (const node of options.nodes || getCandidateMessageNodes(debugLog)) {
+        const nodes = options.nodes || getCandidateMessageNodes(debugLog);
+        unitOrder.observe(nodes
+          .filter(isChatGptMessageUnit)
+          .map((node) => getChatGptMessageUnitInfo(node)?.messageIds[0] || ""));
+
+        for (const node of nodes) {
           throwIfCaptureCancelled(signal);
           const stableKey = getStableNodeKey(node);
           const existingByStableKey = stableKey && capturedStableKeys.has(stableKey) ? messagesByKey.get(stableKey) : null;
@@ -3898,7 +3494,19 @@
       },
 
       getMessages() {
-        return uniqueMessages([...messagesByKey.values()]).sort((a, b) => a.order - b.order);
+        const messages = uniqueMessages([...messagesByKey.values()]);
+
+        // Message units carry no global turn number, so their order comes from
+        // the id sequence observed across scroll batches.
+        for (const message of messages) {
+          const rank = isChatGptMessageUnit(message.sourceNode) ? unitOrder.rank(message.sourceMessageId) : NaN;
+
+          if (Number.isFinite(rank)) {
+            message.order = rank;
+          }
+        }
+
+        return messages.sort((a, b) => a.order - b.order);
       },
 
       getMessageCount() {
@@ -4789,10 +4397,6 @@
     return roleElement;
   }
 
-  function isPotentialMessageNode(node) {
-    return getPotentialMessageNodeResult(node).ok;
-  }
-
   function getPotentialMessageNodeResult(node) {
     const main = document.querySelector("main");
 
@@ -4877,11 +4481,12 @@
   }
 
   function isTurnNode(node) {
-    return Boolean(node?.matches?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]'));
+    return Boolean(node?.matches?.(TURN_NODE_SELECTOR));
   }
 
   function getAllTurnNodes() {
     return uniqueElements([
+      ...document.querySelectorAll(CHATGPT_MESSAGE_UNIT_SELECTOR),
       ...document.querySelectorAll("[data-turn-id]"),
       ...document.querySelectorAll("[data-turn-container]"),
       ...document.querySelectorAll("[data-turn-id-container]"),
@@ -5049,7 +4654,7 @@
   }
 
   function getClosestTurnNode(element) {
-    return element?.closest?.('[data-turn-id], [data-turn-container], [data-turn-id-container], [data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]') || null;
+    return element?.closest?.(TURN_NODE_SELECTOR) || null;
   }
 
   function getTurnRootNode(element) {
@@ -5057,7 +4662,8 @@
       return element || null;
     }
 
-    return element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
+    return element.closest(CHATGPT_MESSAGE_UNIT_SELECTOR)
+      || element.closest('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')
       || element.closest("[data-turn-id]")
       || element.closest("[data-turn-container]")
       || element.closest("[data-turn-id-container]")
@@ -5073,7 +4679,8 @@
   }
 
   function hasRoleOrMessageIdSignal(node) {
-    return Boolean(node?.matches?.("[data-message-author-role], [data-message-id]") || node?.querySelector?.("[data-message-author-role], [data-message-id]"));
+    const selector = "[data-message-author-role], [data-message-id], [data-chatgpt-search-unit-key]";
+    return Boolean(node?.matches?.(selector) || node?.querySelector?.(selector));
   }
 
   function isNonMessageNode(node) {
@@ -5278,8 +4885,18 @@
   }
 
   function detectRoleDetails(node, sequence) {
-    // The author-role attribute is the strongest signal. Test ids, body shape,
-    // and order are fallbacks for UI revisions where attributes move around.
+    // Message-unit keys and the author-role attribute are the strongest
+    // signals. Test ids, body shape, and order are fallbacks for UI revisions
+    // where attributes move around.
+    const unitRole = isChatGptMessageUnit(node) ? getChatGptMessageUnitInfo(node)?.role : "";
+
+    if (unitRole === "user" || unitRole === "assistant" || unitRole === "system" || unitRole === "tool") {
+      return {
+        role: unitRole,
+        reason: "data-chatgpt-search-unit-key"
+      };
+    }
+
     const roleElement = findRoleElement(node);
     const role = roleElement?.getAttribute("data-message-author-role")?.toLowerCase();
 
@@ -5432,6 +5049,12 @@
   }
 
   function findMessageBody(node, role, roleElement) {
+    const unitBody = getChatGptMessageUnitBody(node, role);
+
+    if (unitBody) {
+      return unitBody;
+    }
+
     const root = roleElement || node;
     const selectors = role === "assistant" ? ASSISTANT_BODY_SELECTORS : USER_BODY_SELECTORS;
     const candidates = [root, node];
@@ -5745,32 +5368,6 @@
     return THINKING_CUE_RE.test(`${attrs} ${text.slice(0, 700)}`);
   }
 
-  async function revealExpandableThinking(root = document) {
-    return revealExpandableContent(root);
-  }
-
-  async function revealExpandableContent(root = document, debugLog = null) {
-    const clickDisabled = true;
-    let expandableButtonCount = 0;
-
-    const buttons = uniqueElements([
-      ...root.querySelectorAll('main button[aria-expanded="false"], main button[aria-controls], main button'),
-      ...EXPANDABLE_BUTTON_SELECTORS.flatMap((selector) => [...root.querySelectorAll(`main ${selector}`)])
-    ]);
-    expandableButtonCount = buttons.filter((button) => isExpandableCueElement(button) || isExpandableContentButton(button)).length;
-
-    debugLog?.event("expandable.reveal", {
-      detailsOpened: 0,
-      expandableButtonCount,
-      clicked: 0,
-      clickDisabled
-    });
-  }
-
-  function isThinkingCueElement(element) {
-    return isExpandableCueElement(element) && THINKING_CUE_RE.test(getExpandableCueText(element));
-  }
-
   function isExpandableCueElement(element) {
     const text = getExpandableCueText(element);
 
@@ -5988,6 +5585,2048 @@
     return Boolean(time && time === text && TIMESTAMP_CUE_RE.test(text));
   }
 
+  // ============================================================================
+  // CHATGPT RESPONSE MARKUP
+  // ============================================================================
+  //
+  // ChatGPT stores two non-Markdown layers inside assistant text:
+  //
+  // 1. Inline reference tokens: U+E200 <name> U+E202 <arg> [U+E202 <arg>...] U+E201.
+  //    Known names are cite, entity, url, image_group, and navlist. They appear
+  //    in classic text messages and in the DIL fallback Markdown.
+  // 2. DIL (metadata.model_dil_v2): content.parts holds component source such as
+  //    <box>, <row>, <Cite/>, and {@body ...} state declarations. The same
+  //    metadata carries fallbackMarkdown, ChatGPT's static Markdown rendition of
+  //    that source, which is the export source of record for DIL messages.
+
+  const CHATGPT_TOKEN_START = "";
+  const CHATGPT_TOKEN_SEPARATOR = "";
+  const CHATGPT_TOKEN_END = "";
+  const CHATGPT_INLINE_TOKEN_RE = /([A-Za-z_][\w-]*)((?:[^]*)*)/g;
+  const CHATGPT_CITATION_REF_RE = /^turn\d+[a-z_]+\d+$/i;
+  const CHATGPT_WRITING_BLOCK_RE = /(^|\n):::writing(?:\{[^\n]*\})?[ \t]*\n([\s\S]*?)\n:::[ \t]*(?=\n|$)/g;
+  const DIL_COMPONENT_NAMES = new Set([
+    "AsyncImage",
+    "Cite",
+    "Entity",
+    "Link",
+    "MemoryCite",
+    "WritingBlock",
+    "badge",
+    "box",
+    "button",
+    "caption",
+    "divider",
+    "grid",
+    "grid-item",
+    "icon",
+    "pressable",
+    "radio",
+    "radio-group",
+    "row",
+    "spacer",
+    "text",
+    "title"
+  ]);
+
+  /**
+   * Returns the Markdown that ChatGPT itself shows for a message whose body is
+   * DIL component source, or "" when the message is not a DIL message.
+   */
+  function getDilFallbackMarkdown(message) {
+    const dil = message?.metadata?.model_dil_v2;
+    const fallback = dil && typeof dil === "object" ? dil.fallbackMarkdown : "";
+    return typeof fallback === "string" ? fallback.trim() : "";
+  }
+
+  /**
+   * Picks the Markdown for a DIL message. ChatGPT's fallbackMarkdown leaves
+   * out everything a {#each} loop generates (lists, score bars), so a message
+   * with loops is rendered from its source when every loop iterates over a
+   * literal array. Otherwise the fallback is used and the gap is reported.
+   *
+   * @returns {{ markdown: string, origin: "fallback" | "source", unexpandedLoops: number }}
+   */
+  function chooseDilMarkdown(source, fallbackMarkdown) {
+    const text = String(source || "");
+
+    if (!DIL_LOOP_OPEN_RE.test(text)) {
+      return {
+        markdown: normalizeDilFallbackMarkdown(fallbackMarkdown) || renderDilSourceAsMarkdown(text),
+        origin: fallbackMarkdown ? "fallback" : "source",
+        unexpandedLoops: 0
+      };
+    }
+
+    const expanded = expandDilTemplateBlocks(text);
+
+    if (!expanded.failed) {
+      return { markdown: renderDilSourceAsMarkdown(text), origin: "source", unexpandedLoops: 0 };
+    }
+
+    return {
+      markdown: normalizeDilFallbackMarkdown(fallbackMarkdown) || renderDilSourceAsMarkdown(text),
+      origin: fallbackMarkdown ? "fallback" : "source",
+      unexpandedLoops: expanded.failed
+    };
+  }
+
+  // The fallback writes AsyncImage as "[images: query]"; exports label image
+  // searches the same way everywhere.
+  function normalizeDilFallbackMarkdown(markdown) {
+    return String(markdown || "").replace(/^\[images:\s*(.+?)\]\s*$/gm, (match, query) => `*[Image search: ${escapeMarkdownLinkLabel(query)}]*`);
+  }
+
+  const DIL_LOOP_OPEN_RE = /\{#each\s/;
+
+  /**
+   * Expands {#each LITERAL as item[, index]}...{/each} and {#if ...}...{/if}
+   * blocks. Only literal data (arrays, objects, strings, numbers, booleans)
+   * is read and only {item.path} / {index} placeholders are substituted;
+   * nothing in the source is executed. A loop over anything else stays in
+   * place and is counted in `failed`.
+   */
+  function expandDilTemplateBlocks(text, scope = {}) {
+    let output = "";
+    let failed = 0;
+    let index = 0;
+
+    while (index < text.length) {
+      const open = text.indexOf("{#", index);
+
+      if (open < 0) {
+        output += substituteDilPlaceholders(text.slice(index), scope);
+        break;
+      }
+
+      output += substituteDilPlaceholders(text.slice(index, open), scope);
+      const headEnd = findBalancedBraceEnd(text, open);
+      const head = headEnd > open ? text.slice(open + 2, headEnd) : "";
+      const keyword = head.match(/^(each|if)\s/)?.[1];
+      const blockEnd = keyword ? findDilBlockEnd(text, headEnd + 1, keyword) : null;
+
+      if (!keyword || !blockEnd) {
+        output += text.slice(open, open + 2);
+        index = open + 2;
+        continue;
+      }
+
+      const body = text.slice(headEnd + 1, blockEnd.start);
+
+      if (keyword === "each") {
+        const match = head.match(/^each\s+([\s\S]+?)\s+as\s+([A-Za-z_$][\w$]*)(?:\s*,\s*([A-Za-z_$][\w$]*))?\s*$/);
+        const items = match ? parseDilLiteral(match[1]) : null;
+
+        if (!Array.isArray(items)) {
+          failed += 1;
+          output += text.slice(open, blockEnd.end);
+        } else {
+          const names = [match[2], match[3]].filter(Boolean);
+          items.forEach((item, itemIndex) => {
+            const inner = expandDilTemplateBlocks(body, { ...scope, [match[2]]: item, ...(match[3] ? { [match[3]]: itemIndex } : {}) });
+            failed += inner.failed + countUnresolvedDilPlaceholders(inner.text, names);
+            output += inner.text;
+          });
+        }
+      } else {
+        const [whenTrue, whenFalse = ""] = splitDilElse(body);
+        const condition = evaluateDilCondition(head.slice(3), scope);
+        const inner = expandDilTemplateBlocks(condition === false ? whenFalse : whenTrue, scope);
+        failed += inner.failed;
+        output += inner.text;
+      }
+
+      index = blockEnd.end;
+    }
+
+    return { text: output, failed };
+  }
+
+  // A loop body expression that still names the loop variable could not be
+  // resolved from literals (for example {tasks[t.id].name}). Attribute values
+  // (={...}) are ignored because attributes are dropped when rendering.
+  function countUnresolvedDilPlaceholders(text, names) {
+    let count = 0;
+
+    for (let index = text.indexOf("{"); index >= 0; index = text.indexOf("{", index + 1)) {
+      const close = findBalancedBraceEnd(text, index);
+
+      if (close < 0) {
+        break;
+      }
+
+      const expression = text.slice(index + 1, close);
+      const isAttribute = /=\s*$/.test(text.slice(Math.max(0, index - 3), index));
+
+      if (!isAttribute && names.some((name) => new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, "\\$")}\\b`).test(expression))) {
+        count += 1;
+      }
+
+      index = close;
+    }
+
+    return count;
+  }
+
+  function findDilBlockEnd(text, from, keyword) {
+    const pattern = new RegExp(`\\{(#${keyword}\\s|\\/${keyword}\\})`, "g");
+    pattern.lastIndex = from;
+    let depth = 1;
+    let match;
+
+    while ((match = pattern.exec(text))) {
+      depth += match[1].startsWith("#") ? 1 : -1;
+
+      if (depth === 0) {
+        return { start: match.index, end: match.index + match[0].length };
+      }
+    }
+
+    return null;
+  }
+
+  function splitDilElse(body) {
+    const marker = body.search(/\{:else\}/);
+    return marker < 0 ? [body] : [body.slice(0, marker), body.slice(marker + "{:else}".length)];
+  }
+
+  function substituteDilPlaceholders(text, scope) {
+    if (!Object.keys(scope).length) {
+      return text;
+    }
+
+    return text.replace(/\{\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}/g, (match, path, offset) => {
+      const value = resolveDilPath(path, scope);
+
+      if (value === undefined || (value !== null && typeof value === "object")) {
+        return match;
+      }
+
+      // An attribute value (name={item.icon}) must stay a quoted string.
+      return /=\s*$/.test(text.slice(Math.max(0, offset - 3), offset)) ? JSON.stringify(String(value ?? "")) : String(value ?? "");
+    });
+  }
+
+  function resolveDilPath(path, scope) {
+    const [head, ...rest] = path.split(".");
+
+    if (!Object.prototype.hasOwnProperty.call(scope, head)) {
+      return undefined;
+    }
+
+    return rest.reduce((value, key) => (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined), scope[head]);
+  }
+
+  // Supports `path OP literal` with <, <=, >, >=, ==, ===, !=, !== and a bare
+  // path; anything else is unknown (null) and keeps the {#if} branch.
+  function evaluateDilCondition(expression, scope) {
+    const match = String(expression).trim().match(/^([A-Za-z_$][\w$.]*)\s*(?:(<=|>=|===|!==|==|!=|<|>)\s*(.+))?$/);
+
+    if (!match) {
+      return null;
+    }
+
+    const left = resolveDilPath(match[1], scope);
+
+    if (left === undefined) {
+      return null;
+    }
+
+    if (!match[2]) {
+      return Boolean(left);
+    }
+
+    const right = parseDilLiteral(match[3]);
+
+    switch (match[2]) {
+      case "<": return left < right;
+      case "<=": return left <= right;
+      case ">": return left > right;
+      case ">=": return left >= right;
+      case "==":
+      case "===": return left === right;
+      default: return left !== right;
+    }
+  }
+
+  /**
+   * Parses a JavaScript literal (arrays, objects with bare or quoted keys,
+   * strings without interpolation, numbers, true/false/null). Returns null
+   * for anything else, including identifiers and calls.
+   */
+  function parseDilLiteral(source) {
+    const text = String(source ?? "");
+    let index = 0;
+    const fail = {};
+
+    const skip = () => {
+      while (/\s/.test(text[index] || "")) index += 1;
+    };
+
+    const value = () => {
+      skip();
+      const char = text[index];
+
+      if (char === "[") {
+        index += 1;
+        const items = [];
+        skip();
+        while (text[index] !== "]") {
+          const item = value();
+          if (item === fail) return fail;
+          items.push(item);
+          skip();
+          if (text[index] === ",") { index += 1; skip(); continue; }
+          if (text[index] !== "]") return fail;
+        }
+        index += 1;
+        return items;
+      }
+
+      if (char === "{") {
+        index += 1;
+        const object = {};
+        skip();
+        while (text[index] !== "}") {
+          let key;
+          if (text[index] === "\"" || text[index] === "'") {
+            key = value();
+            if (typeof key !== "string") return fail;
+          } else {
+            const match = text.slice(index).match(/^[A-Za-z_$][\w$]*/);
+            if (!match) return fail;
+            key = match[0];
+            index += key.length;
+          }
+          skip();
+          if (text[index] !== ":") return fail;
+          index += 1;
+          const item = value();
+          if (item === fail) return fail;
+          object[key] = item;
+          skip();
+          if (text[index] === ",") { index += 1; skip(); continue; }
+          if (text[index] !== "}") return fail;
+        }
+        index += 1;
+        return object;
+      }
+
+      if (char === "\"" || char === "'" || char === "`") {
+        let result = "";
+        index += 1;
+        while (index < text.length && text[index] !== char) {
+          if (char === "`" && text.startsWith("${", index)) return fail;
+          if (text[index] === "\\") {
+            const next = text[index + 1];
+            result += { n: "\n", t: "\t", r: "\r" }[next] ?? next;
+            index += 2;
+            continue;
+          }
+          result += text[index];
+          index += 1;
+        }
+        if (text[index] !== char) return fail;
+        index += 1;
+        return result;
+      }
+
+      const literal = text.slice(index).match(/^(?:-?\d+(?:\.\d+)?(?:e[+-]?\d+)?|true|false|null)/i);
+      if (!literal) return fail;
+      index += literal[0].length;
+      return literal[0] === "true" ? true : literal[0] === "false" ? false : literal[0] === "null" ? null : Number(literal[0]);
+    };
+
+    const result = value();
+    skip();
+    return result === fail || index !== text.length ? null : result;
+  }
+
+  /**
+   * Packs what the PDF renderer needs to draw a DIL message the way ChatGPT
+   * does: the compiled UI program, its constants and resolved component
+   * results, the client-defined widgets it embeds (by invocation id), and the
+   * pages its citations point to. Returns null when there is no program.
+   */
+  function buildDilRenderBlock(message, citationSources) {
+    const dil = message?.metadata?.model_dil_v2;
+
+    if (!dil || typeof dil.code !== "string" || !dil.code.trim()) {
+      return null;
+    }
+
+    const widgetReferences = (Array.isArray(message.metadata?.content_references) ? message.metadata.content_references : [])
+      .filter((reference) => reference?.type === "client_defined_widget");
+    const widgets = {};
+
+    for (const [invocationId, widget] of Object.entries(dil.clientDefinedWidgets || {})) {
+      const reference = widgetReferences[Number(widget?.refIndex)];
+      if (reference) {
+        widgets[invocationId] = { category: reference.category || "", data: reference.data || {} };
+      }
+    }
+
+    const citations = {};
+    const searchable = `${dil.code}\n${JSON.stringify(dil.constants || {})}`;
+
+    for (const ref of new Set(searchable.match(/turn\d+[a-z_]+\d+/gi) || [])) {
+      const source = citationSources?.get(ref);
+      if (source) {
+        citations[ref] = { url: source.url, title: source.title, label: getCitationLabel(source) };
+      }
+    }
+
+    return {
+      version: 2,
+      code: dil.code,
+      constants: dil.constants || {},
+      appData: dil.appData || {},
+      widgets,
+      citations
+    };
+  }
+
+  function getCitationLabel(source) {
+    try {
+      return new URL(source.url).hostname.replace(/^www\./, "");
+    } catch (error) {
+      // A non-URL citation keeps its title as the chip label.
+      return source.title;
+    }
+  }
+
+  function isDilMessage(message) {
+    const dil = message?.metadata?.model_dil_v2;
+    return Boolean(dil && typeof dil === "object");
+  }
+
+  /**
+   * Maps citation ref ids (turn<index><type><index>) to their source pages.
+   * Ref ids restart in every exchange, so pass the messages of one response.
+   * Two API layouts carry the mapping:
+   * - search_result_groups[].entries[].ref_id on search tool messages (2026);
+   * - content_references[type=grouped_webpages].items[].refs on the answer.
+   */
+  function buildCitationSourceIndex(messages) {
+    const sources = new Map();
+    const addSource = (refId, url, title) => {
+      const ref = formatCitationRefId(refId);
+      const href = String(url || "").trim();
+
+      if (ref && href && !sources.has(ref)) {
+        sources.set(ref, { url: href, title: String(title || href).trim() });
+      }
+    };
+
+    for (const message of messages) {
+      const metadata = message?.metadata || {};
+
+      for (const group of Array.isArray(metadata.search_result_groups) ? metadata.search_result_groups : []) {
+        for (const entry of Array.isArray(group?.entries) ? group.entries : []) {
+          addSource(entry?.ref_id, entry?.url, entry?.title || group?.domain);
+        }
+      }
+
+      for (const reference of Array.isArray(metadata.content_references) ? metadata.content_references : []) {
+        if (reference?.type !== "grouped_webpages") {
+          continue;
+        }
+
+        for (const item of Array.isArray(reference.items) ? reference.items : []) {
+          for (const refId of Array.isArray(item?.refs) ? item.refs : []) {
+            addSource(refId, item?.url, item?.title || item?.attribution);
+          }
+        }
+      }
+    }
+
+    return sources;
+  }
+
+  function formatCitationRefId(refId) {
+    if (!refId || typeof refId !== "object") {
+      return "";
+    }
+
+    const turnIndex = refId.turn_index ?? refId.turnIndex;
+    const refType = refId.ref_type ?? refId.refType;
+    const refIndex = refId.ref_index ?? refId.refIndex;
+
+    if (turnIndex == null || !refType || refIndex == null) {
+      return "";
+    }
+
+    return `turn${turnIndex}${refType}${refIndex}`;
+  }
+
+  /**
+   * Creates the per-response state shared by every text part of one assistant
+   * turn, so footnote numbers stay unique across the whole response.
+   */
+  function createChatGptMarkupContext(options = {}) {
+    return {
+      citationSources: options.citationSources || new Map(),
+      footnoteOffset: Math.max(0, Number(options.footnoteOffset) || 0),
+      footnotes: [],
+      footnoteIndexByRef: new Map(),
+      tokenCounts: {},
+      unknownTokenCounts: {},
+      unresolvedCitationRefs: []
+    };
+  }
+
+  /**
+   * Replaces ChatGPT inline reference tokens with portable Markdown. Citations
+   * become numbered footnote references; call formatChatGptFootnotes() with the
+   * same context once all parts of the response are rendered.
+   */
+  function renderChatGptInlineTokens(markdown, context = createChatGptMarkupContext()) {
+    const text = String(markdown || "");
+
+    if (!text.includes(CHATGPT_TOKEN_START)) {
+      return text;
+    }
+
+    return text.replace(CHATGPT_INLINE_TOKEN_RE, (match, rawName, rawArgs) => {
+      const name = rawName.toLowerCase();
+      const args = rawArgs ? rawArgs.split(CHATGPT_TOKEN_SEPARATOR).slice(1) : [];
+      context.tokenCounts[name] = (context.tokenCounts[name] || 0) + 1;
+
+      switch (name) {
+        case "cite":
+          return renderCitationToken(args, context);
+        case "entity":
+          return renderEntityToken(args);
+        case "url":
+          return renderUrlToken(args);
+        case "image_group":
+          return renderImageGroupToken(args);
+        case "navlist":
+          return renderNavlistToken(args, context);
+        default:
+          context.unknownTokenCounts[name] = (context.unknownTokenCounts[name] || 0) + 1;
+          return args.filter(isReadableTokenArgument).join(" ");
+      }
+    });
+  }
+
+  function renderCitationToken(args, context) {
+    const references = [];
+
+    for (const arg of args) {
+      const ref = String(arg || "").trim();
+
+      if (!CHATGPT_CITATION_REF_RE.test(ref)) {
+        continue;
+      }
+
+      const footnote = resolveCitationFootnote(ref, context);
+
+      if (footnote && !references.includes(footnote)) {
+        references.push(footnote);
+      }
+    }
+
+    return references.map((index) => `[^${index}]`).join("");
+  }
+
+  function resolveCitationFootnote(ref, context) {
+    if (context.footnoteIndexByRef.has(ref)) {
+      return context.footnoteIndexByRef.get(ref);
+    }
+
+    const source = context.citationSources.get(ref);
+
+    if (!source) {
+      if (!context.unresolvedCitationRefs.includes(ref)) {
+        context.unresolvedCitationRefs.push(ref);
+      }
+      return 0;
+    }
+
+    // Search results often repeat one page under several ref ids.
+    const samePage = context.footnotes.find((footnote) => footnote.url === source.url);
+
+    if (samePage) {
+      context.footnoteIndexByRef.set(ref, samePage.index);
+      return samePage.index;
+    }
+
+    const index = context.footnoteOffset + context.footnotes.length + 1;
+    context.footnotes.push({ index, ref, ...source });
+    context.footnoteIndexByRef.set(ref, index);
+    return index;
+  }
+
+  function renderEntityToken(args) {
+    const parsed = parseJsonTokenArgument(args[0]);
+
+    if (Array.isArray(parsed)) {
+      return String(parsed[1] ?? parsed[0] ?? "").trim();
+    }
+
+    return String(args[1] ?? args[0] ?? "").trim();
+  }
+
+  function renderUrlToken(args) {
+    const values = args.map((arg) => String(arg || "").trim()).filter(Boolean);
+    const url = values.find((value) => /^https?:\/\//i.test(value)) || "";
+    const title = values.find((value) => value !== url) || url;
+
+    if (!url) {
+      return title;
+    }
+
+    return `[${escapeMarkdownLinkLabel(title)}](${url})`;
+  }
+
+  function renderImageGroupToken(args) {
+    const parsed = parseJsonTokenArgument(args[0]);
+    const queries = Array.isArray(parsed?.query)
+      ? parsed.query
+      : (typeof parsed?.query === "string" ? [parsed.query] : []);
+    const label = queries.map((query) => String(query || "").trim()).filter(Boolean).join("; ");
+    return label ? `*[Image search: ${escapeMarkdownLinkLabel(label)}]*` : "";
+  }
+
+  function renderNavlistToken(args, context) {
+    const [title = "", ...refs] = args.map((arg) => String(arg || "").trim());
+    const links = refs
+      .filter((ref) => CHATGPT_CITATION_REF_RE.test(ref))
+      .map((ref) => context.citationSources.get(ref))
+      .filter(Boolean)
+      .map((source) => `- [${escapeMarkdownLinkLabel(source.title)}](${source.url})`);
+
+    return [title ? `**${title}**` : "", ...links].filter(Boolean).join("\n");
+  }
+
+  function parseJsonTokenArgument(value) {
+    try {
+      return JSON.parse(String(value || ""));
+    } catch (error) {
+      // Token arguments are model output; a malformed payload degrades to text.
+      return null;
+    }
+  }
+
+  function isReadableTokenArgument(value) {
+    const text = String(value || "").trim();
+    return Boolean(text)
+      && !CHATGPT_CITATION_REF_RE.test(text)
+      && !/^[{[]/.test(text);
+  }
+
+  function formatChatGptFootnotes(context) {
+    return context.footnotes
+      .map((footnote) => `[^${footnote.index}]: [${escapeMarkdownLinkLabel(footnote.title)}](${footnote.url})`)
+      .join("\n");
+  }
+
+  /**
+   * Converts :::writing directives (ChatGPT's copyable writing blocks) into
+   * ```writing fences: Markdown readers keep the text verbatim and copyable,
+   * and the PDF renderer shows the fence as a formatted writing card.
+   */
+  function renderChatGptWritingBlocks(markdown) {
+    return String(markdown || "").replace(CHATGPT_WRITING_BLOCK_RE, (match, prefix, body) => {
+      const fence = makeFence(body);
+      return `${prefix}${fence}writing\n${body}\n${fence}`;
+    });
+  }
+
+  /**
+   * Degrades DIL component source to static Markdown. It is used only when a
+   * DIL message lacks fallbackMarkdown; code fences are left untouched.
+   */
+  function renderDilSourceAsMarkdown(source) {
+    return mapOutsideCodeFences(expandDilTemplateBlocks(String(source || "")).text, (segment) => {
+      const withoutStatements = stripDilExpressionBlocks(segment);
+      // Component nesting indents source lines; four spaces would turn them
+      // into Markdown code blocks, so only list items keep their indentation.
+      return joinDilRows(renderDilComponents(withoutStatements))
+        .replace(/^[ \t]+(?![-*+][ \t]|\d+[.)][ \t])/gm, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n");
+    });
+  }
+
+  const DIL_ROW_OPEN = "\u0001DILROW<";
+  const DIL_ROW_CLOSE = "\u0001DILROW>";
+
+  // A <row> lays its children out horizontally; in Markdown its text parts
+  // become one line joined with " · ". Inner rows are joined first.
+  function joinDilRows(text) {
+    const innermost = new RegExp(`${DIL_ROW_OPEN}((?:(?!${DIL_ROW_OPEN})[\\s\\S])*?)${DIL_ROW_CLOSE}`);
+    let output = text;
+    let match;
+
+    while ((match = output.match(innermost))) {
+      const parts = match[1].split("\n").map((line) => line.trim()).filter(Boolean);
+      output = output.slice(0, match.index) + `\n\n${parts.join(" · ")}\n\n` + output.slice(match.index + match[0].length);
+    }
+
+    return output.split(DIL_ROW_OPEN).join("").split(DIL_ROW_CLOSE).join("");
+  }
+
+  function mapOutsideCodeFences(text, transform) {
+    const lines = text.split("\n");
+    const output = [];
+    let buffer = [];
+    let fence = null;
+
+    const flush = () => {
+      if (buffer.length) {
+        output.push(transform(buffer.join("\n")));
+        buffer = [];
+      }
+    };
+
+    for (const line of lines) {
+      const match = line.match(/^\s*(`{3,}|~{3,})/);
+
+      if (!fence && match) {
+        flush();
+        fence = match[1];
+        output.push(line);
+        continue;
+      }
+
+      if (fence) {
+        output.push(line);
+
+        if (line.trim().startsWith(fence[0].repeat(fence.length)) && line.trim().replace(/[`~]/g, "") === "") {
+          fence = null;
+        }
+        continue;
+      }
+
+      buffer.push(line);
+    }
+
+    flush();
+    return output.join("\n");
+  }
+
+  function stripDilExpressionBlocks(text) {
+    let output = "";
+    let index = 0;
+
+    while (index < text.length) {
+      const open = text.indexOf("{", index);
+
+      if (open < 0) {
+        output += text.slice(index);
+        break;
+      }
+
+      const close = findBalancedBraceEnd(text, open);
+      const block = close > open ? text.slice(open, close + 1) : "";
+      const isStatement = /^\{\s*@/.test(block);
+      const isExpression = /=>|\bDIL\.|\bGenUI\./.test(block);
+
+      if (block && (isStatement || isExpression) && !isInsideDilTag(text, open)) {
+        output += text.slice(index, open);
+        index = close + 1;
+        continue;
+      }
+
+      output += text.slice(index, open + 1);
+      index = open + 1;
+    }
+
+    return output;
+  }
+
+  function isInsideDilTag(text, position) {
+    const tagStart = text.lastIndexOf("<", position);
+    const tagEnd = text.lastIndexOf(">", position);
+    return tagStart > tagEnd && /^<\/?[A-Za-z]/.test(text.slice(tagStart, tagStart + 2));
+  }
+
+  function findBalancedBraceEnd(text, start) {
+    let depth = 0;
+    let quote = "";
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (quote) {
+        if (char === "\\") {
+          index += 1;
+        } else if (char === quote) {
+          quote = "";
+        }
+        continue;
+      }
+
+      if (char === "\"" || char === "'" || char === "`") {
+        quote = char;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  function renderDilComponents(text) {
+    let output = "";
+    let index = 0;
+
+    while (index < text.length) {
+      const tag = readDilTag(text, index);
+
+      if (!tag) {
+        output += text[index];
+        index += 1;
+        continue;
+      }
+
+      output += renderDilTag(tag);
+      index = tag.end;
+    }
+
+    return output;
+  }
+
+  function readDilTag(text, start) {
+    if (text[start] !== "<") {
+      return null;
+    }
+
+    const nameMatch = text.slice(start).match(/^<(\/?)([A-Za-z][\w-]*)/);
+
+    if (!nameMatch || !DIL_COMPONENT_NAMES.has(nameMatch[2])) {
+      return null;
+    }
+
+    const closing = nameMatch[1] === "/";
+    const name = nameMatch[2];
+    const attributes = {};
+    let index = start + nameMatch[0].length;
+
+    while (index < text.length) {
+      while (/\s/.test(text[index] || "")) {
+        index += 1;
+      }
+
+      if (text.startsWith("/>", index)) {
+        return { name, closing, selfClosing: true, attributes, end: index + 2 };
+      }
+
+      if (text[index] === ">") {
+        return { name, closing, selfClosing: false, attributes, end: index + 1 };
+      }
+
+      const attributeMatch = text.slice(index).match(/^([A-Za-z_][\w-]*)/);
+
+      if (!attributeMatch) {
+        return null;
+      }
+
+      const attributeName = attributeMatch[1];
+      index += attributeName.length;
+
+      if (text[index] !== "=") {
+        attributes[attributeName] = true;
+        continue;
+      }
+
+      index += 1;
+      const valueStart = index;
+
+      if (text[index] === "\"" || text[index] === "'") {
+        const quote = text[index];
+        let cursor = index + 1;
+
+        while (cursor < text.length && text[cursor] !== quote) {
+          cursor += text[cursor] === "\\" ? 2 : 1;
+        }
+
+        attributes[attributeName] = text.slice(valueStart + 1, cursor);
+        index = cursor + 1;
+      } else if (text[index] === "{") {
+        const close = findBalancedBraceEnd(text, index);
+
+        if (close < 0) {
+          return null;
+        }
+
+        attributes[attributeName] = { expression: text.slice(index + 1, close) };
+        index = close + 1;
+      } else {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function renderDilTag(tag) {
+    const attributes = tag.attributes;
+    const text = (name) => (typeof attributes[name] === "string" ? attributes[name] : "");
+
+    if (tag.closing) {
+      switch (tag.name) {
+        case "title":
+          return "**";
+        case "badge":
+          return ")";
+        case "button":
+          return "]";
+        case "WritingBlock":
+          return "\n```\n";
+        case "row":
+          return DIL_ROW_CLOSE;
+        case "box":
+        case "grid":
+        case "grid-item":
+        case "pressable":
+        case "radio-group":
+        case "caption":
+        case "radio":
+        case "text":
+          return "\n";
+        default:
+          return "";
+      }
+    }
+
+    switch (tag.name) {
+      case "Link": {
+        const url = text("url");
+        const title = text("title") || url;
+        return url ? `[${escapeMarkdownLinkLabel(title)}](${url})` : title;
+      }
+      case "Entity":
+        return text("value");
+      case "AsyncImage":
+        return text("query") ? `*[Image search: ${escapeMarkdownLinkLabel(text("query"))}]*` : "";
+      case "Cite": {
+        const refs = typeof attributes.ref === "string"
+          ? [attributes.ref]
+          : (parseDilLiteral(attributes.refs?.expression ?? attributes.refs) || []);
+        const valid = (Array.isArray(refs) ? refs : []).filter((ref) => typeof ref === "string" && CHATGPT_CITATION_REF_RE.test(ref));
+        return valid.length
+          ? `${CHATGPT_TOKEN_START}cite${valid.map((ref) => `${CHATGPT_TOKEN_SEPARATOR}${ref}`).join("")}${CHATGPT_TOKEN_END}`
+          : "";
+      }
+      case "MemoryCite":
+      case "spacer":
+        return "";
+      case "icon":
+        return renderDilIcon(text("name"));
+      case "divider":
+        return "\n\n---\n\n";
+      case "title":
+        return tag.selfClosing ? "" : "**";
+      case "badge":
+        return tag.selfClosing ? "" : " (";
+      case "button":
+        return tag.selfClosing ? "" : "[";
+      case "radio":
+        return tag.selfClosing ? "" : "\n- ";
+      case "WritingBlock":
+        return tag.selfClosing ? "" : "\n```writing\n";
+      case "row":
+        return tag.selfClosing ? "" : DIL_ROW_OPEN;
+      default:
+        return tag.selfClosing ? "" : "\n";
+    }
+  }
+
+  function renderDilIcon(name) {
+    const glyphs = {
+      "arrow-down": "↓",
+      "arrow-right": "→",
+      "arrow-left": "←",
+      "arrow-up": "↑",
+      "check": "✓",
+      "check-circle-2": "✓",
+      "circle": "○"
+    };
+    return glyphs[String(name || "").toLowerCase()] || "";
+  }
+  // ============================================================================
+  // CHATGPT DOM SCHEMA: MESSAGE UNITS (2026-10)
+  // ============================================================================
+  //
+  // Current ChatGPT pages render one [data-turn-key] container per exchange.
+  // Each message inside it is a unit:
+  //
+  //   [data-turn-key="<user message id>"]
+  //     [data-chatgpt-search-unit-key="<turn>:<index>:user"]
+  //        data-chatgpt-search-message-ids="<message id>"
+  //       [data-user-message-bubble]                       user body
+  //     [data-chatgpt-search-unit-key="<turn>:<index>:assistant"]
+  //        data-chatgpt-search-message-ids="<message id> ..."
+  //       [data-markdown-text-style="assistant-message"]   assistant body
+  //
+  // The unit key carries the role, and the message ids match the conversation
+  // API, so units are the message nodes for Full capture. The <turn> prefix is
+  // a render-window key (for example "fallback-turn-3"), not a global order.
+  // Legacy pages ([data-message-author-role], conversation-turn-N) keep using
+  // the selectors in index.js.
+
+  const CHATGPT_MESSAGE_UNIT_SELECTOR = "[data-chatgpt-search-unit-key]";
+  const CHATGPT_UNIT_BODY_SELECTORS = {
+    assistant: [
+      "[data-markdown-text-style='assistant-message']",
+      "[data-markdown-copy='contents']"
+    ],
+    user: [
+      "[data-user-message-bubble]"
+    ]
+  };
+  const CHATGPT_WRITING_BLOCK_SELECTOR = "[data-testid='chatgpt-writing-block']";
+  const CHATGPT_COPY_EXCLUDED_SELECTOR = "[data-markdown-copy='exclude']";
+
+  function isChatGptMessageUnit(node) {
+    return Boolean(node?.matches?.(CHATGPT_MESSAGE_UNIT_SELECTOR));
+  }
+
+  function hasChatGptMessageUnits(root = document) {
+    return Boolean(root?.querySelector?.(CHATGPT_MESSAGE_UNIT_SELECTOR));
+  }
+
+  /**
+   * Reads role and ChatGPT message ids from a message unit.
+   *
+   * @returns {{ role: string, messageIds: string[], unitKey: string, turnKey: string } | null}
+   */
+  function getChatGptMessageUnitInfo(node) {
+    const unit = isChatGptMessageUnit(node) ? node : node?.closest?.(CHATGPT_MESSAGE_UNIT_SELECTOR);
+
+    if (!unit) {
+      return null;
+    }
+
+    const unitKey = unit.getAttribute("data-chatgpt-search-unit-key") || "";
+    const keyRole = (unitKey.match(/:(user|assistant|system|tool)$/i)?.[1] || "").toLowerCase();
+    const headingRole = String(unit.querySelector("[data-conversation-role]")?.getAttribute("data-conversation-role") || "").toLowerCase();
+    const messageIds = uniqueStrings([
+      ...String(unit.getAttribute("data-chatgpt-search-message-ids") || "").split(/\s+/),
+      ...[...unit.querySelectorAll("[data-chatgpt-selection-message-id]")]
+        .map((element) => element.getAttribute("data-chatgpt-selection-message-id") || "")
+    ].map((id) => id.trim()).filter(Boolean));
+
+    return {
+      role: keyRole || headingRole,
+      messageIds,
+      unitKey,
+      turnKey: unit.closest("[data-turn-key]")?.getAttribute("data-turn-key") || ""
+    };
+  }
+
+  function getChatGptMessageUnitBody(node, role) {
+    if (!isChatGptMessageUnit(node)) {
+      return null;
+    }
+
+    for (const selector of CHATGPT_UNIT_BODY_SELECTORS[role] || []) {
+      const body = node.querySelector(selector);
+
+      if (body) {
+        return body;
+      }
+    }
+
+    return null;
+  }
+
+  // DIL responses render through [data-dil-message-id] with data-d-component
+  // markers. Citation chips are popover triggers that wrap a pill badge and no
+  // link; Link components are popover triggers that wrap a plain <a href>.
+  const CHATGPT_DIL_ROOT_SELECTOR = "[data-dil-message-id]";
+
+  function isChatGptDilCitationChip(element) {
+    return Boolean(
+      element?.matches?.("[data-d-component='popover-trigger']")
+      && element.querySelector("[data-d-component='badge'][data-pill]")
+      && !element.querySelector("a[href]")
+    );
+  }
+
+  function formatChatGptDilCitationChip(element) {
+    const label = String(element.textContent || "").replace(/\s+/g, " ").trim();
+    return label ? ` (${label})` : "";
+  }
+
+  function isChatGptDilWebLink(element, href) {
+    return Boolean(element?.closest?.(CHATGPT_DIL_ROOT_SELECTOR))
+      && /^https?:\/\//i.test(String(href || ""))
+      && !/\/backend-api\/|oaiusercontent\.com/i.test(String(href || ""));
+  }
+
+  function isChatGptDilDivider(element) {
+    return Boolean(element?.matches?.("[data-d-component='divider']"));
+  }
+
+  function hasChatGptDilStrongMarker(element) {
+    return Boolean(element?.hasAttribute?.("data-d-default-strong"));
+  }
+
+  function isChatGptCopyExcludedElement(element) {
+    return Boolean(element?.matches?.(CHATGPT_COPY_EXCLUDED_SELECTOR));
+  }
+
+  function isChatGptWritingBlockElement(element) {
+    return Boolean(element?.matches?.(CHATGPT_WRITING_BLOCK_SELECTOR));
+  }
+
+  /**
+   * Writing blocks render through an editor surface; ChatGPT keeps the block's
+   * Markdown source in data-markdown-copy-text for its own copy action.
+   */
+  function formatChatGptWritingBlock(element) {
+    const text = String(element.getAttribute("data-markdown-copy-text") || element.innerText || "").replace(/\s+$/g, "");
+
+    if (!text.trim()) {
+      return "";
+    }
+
+    const fence = makeFence(text);
+    return `${fence}writing\n${text}\n${fence}`;
+  }
+
+  /**
+   * Keeps the discovery order of message ids across virtualized scroll
+   * batches. Each batch is in document order; ids not seen before are placed
+   * after the nearest earlier id of the same batch that is already known.
+   */
+  function createDomOrderRegistry() {
+    const order = [];
+
+    return {
+      observe(ids) {
+        let anchor = -1;
+
+        for (const id of ids) {
+          if (!id) {
+            continue;
+          }
+
+          const known = order.indexOf(id);
+
+          if (known >= 0) {
+            anchor = known;
+            continue;
+          }
+
+          order.splice(anchor + 1, 0, id);
+          anchor += 1;
+        }
+      },
+
+      rank(id) {
+        const index = order.indexOf(id);
+        return index >= 0 ? index + 1 : NaN;
+      },
+
+      size() {
+        return order.length;
+      }
+    };
+  }
+
+  /**
+   * Orders captured messages by the conversation manifest when one is
+   * available and assigns contiguous order numbers. Messages the manifest
+   * does not know keep their position relative to their neighbours.
+   */
+  function applyManifestOrder(messages, manifest, debugLog = null) {
+    if (!manifest?.entries?.length) {
+      return messages;
+    }
+
+    const positionByIdentity = new Map(manifest.entries.map((entry, index) => [entry.identity, index]));
+    let lastPosition = -1;
+    const keyed = messages.map((message, index) => {
+      const position = positionByIdentity.get(resolveManifestIdentity(manifest, message));
+
+      if (position != null) {
+        lastPosition = position;
+        return { message, key: position, tie: index };
+      }
+
+      return { message, key: lastPosition + 0.5, tie: index };
+    });
+
+    keyed.sort((a, b) => (a.key - b.key) || (a.tie - b.tie));
+    const ordered = keyed.map((entry, index) => {
+      entry.message.order = index + 1;
+      entry.message.conversationOrder = index + 1;
+      return entry.message;
+    });
+
+    debugLog?.event("fullCapture.manifestOrder", {
+      messages: ordered.length,
+      matched: keyed.filter((entry) => Number.isInteger(entry.key)).length
+    });
+
+    return ordered;
+  }
+  // ============================================================================
+  // CONVERSATION MANIFEST (expected structure from the raw conversation API)
+  // ============================================================================
+  //
+  // The manifest states which messages an export must contain. It is derived
+  // from raw API nodes with its own visibility rules and never from exporter
+  // output, so the completeness gate compares two independent results:
+  //
+  //   raw API nodes --buildConversationManifest--> expected entries
+  //   raw API nodes --Fast builder / DOM capture--> exported messages
+  //
+  // Entries are matched by ChatGPT message id, not by position, so a dropped
+  // or duplicated message cannot shift every later comparison.
+
+  const MANIFEST_REPLY_STATUS = Object.freeze({
+    ANSWER: "answer",
+    THINKING_ONLY: "thinking-only",
+    INTERRUPTED: "interrupted",
+    EMPTY: "empty",
+    NO_REPLY: "no-reply"
+  });
+
+  /**
+   * Builds the expected export structure of the current conversation branch.
+   *
+   * @returns {{
+   *   entries: Array<{ identity: string, role: "user" | "assistant", nodeIds: string[], status: string }>,
+   *   gaps: Array<{ userIdentity: string, userNodeId: string, status: string, reason: string, createTime: number | null }>,
+   *   nodeIdentity: Map<string, string>,
+   *   counts: { pathNodes: number, hiddenNodes: number, user: number, assistant: number }
+   * }}
+   */
+  function buildConversationManifest(data) {
+    const pathNodes = getConversationApiCurrentPath(data);
+    const entries = [];
+    const gaps = [];
+    const nodeIdentity = new Map();
+    let hiddenNodes = 0;
+    let pendingUser = null;
+    let pendingReplyNodes = [];
+
+    const closeExchange = () => {
+      if (!pendingUser) {
+        pendingReplyNodes = [];
+        return;
+      }
+
+      const reply = classifyManifestReply(pendingReplyNodes);
+
+      if (reply.status === MANIFEST_REPLY_STATUS.ANSWER || reply.status === MANIFEST_REPLY_STATUS.THINKING_ONLY) {
+        const identity = `reply:${reply.nodeIds[0]}`;
+        entries.push({ identity, role: "assistant", nodeIds: reply.nodeIds, status: reply.status });
+        reply.nodeIds.forEach((nodeId) => nodeIdentity.set(nodeId, identity));
+      } else {
+        gaps.push({
+          userIdentity: pendingUser.identity,
+          userNodeId: pendingUser.nodeId,
+          status: reply.status,
+          reason: reply.reason,
+          createTime: pendingUser.createTime
+        });
+      }
+
+      pendingUser = null;
+      pendingReplyNodes = [];
+    };
+
+    for (const node of pathNodes) {
+      const message = node?.message;
+
+      if (!message) {
+        continue;
+      }
+
+      if (isManifestHiddenMessage(message)) {
+        hiddenNodes += 1;
+        continue;
+      }
+
+      const role = String(message.author?.role || "").toLowerCase();
+      const nodeId = String(message.id || node.id || "");
+
+      if (role === "user") {
+        closeExchange();
+        const identity = `message:${nodeId}`;
+        entries.push({ identity, role: "user", nodeIds: [nodeId], status: "prompt" });
+        nodeIdentity.set(nodeId, identity);
+        pendingUser = {
+          identity,
+          nodeId,
+          createTime: Number.isFinite(Number(message.create_time)) ? Number(message.create_time) : null
+        };
+        continue;
+      }
+
+      if (role === "assistant" || role === "tool") {
+        if (!pendingUser) {
+          // A reply without a visible prompt (for example a greeting) still
+          // belongs in the export when it shows content.
+          pendingUser = { identity: "", nodeId: "", createTime: null, synthetic: true };
+        }
+        pendingReplyNodes.push({ nodeId, message });
+      }
+    }
+
+    closeExchange();
+
+    // Drop gaps recorded for synthetic prompt placeholders.
+    const visibleGaps = gaps.filter((gap) => gap.userIdentity);
+
+    return {
+      entries,
+      gaps: visibleGaps,
+      nodeIdentity,
+      counts: {
+        pathNodes: pathNodes.length,
+        hiddenNodes,
+        user: entries.filter((entry) => entry.role === "user").length,
+        assistant: entries.filter((entry) => entry.role === "assistant").length
+      }
+    };
+  }
+
+  function isManifestHiddenMessage(message) {
+    const metadata = message?.metadata || {};
+    const authorMetadata = message?.author?.metadata || {};
+    return [
+      metadata.is_visually_hidden_from_conversation,
+      metadata.is_hidden,
+      metadata.hidden,
+      authorMetadata.is_visually_hidden_from_conversation,
+      authorMetadata.is_hidden,
+      authorMetadata.hidden
+    ].some((value) => value === true || String(value || "").toLowerCase() === "true");
+  }
+
+  function classifyManifestReply(replyNodes) {
+    const nodeIds = replyNodes.map((entry) => entry.nodeId).filter(Boolean);
+
+    if (!replyNodes.length) {
+      return {
+        status: MANIFEST_REPLY_STATUS.NO_REPLY,
+        // The tree API omits replies stopped before any content; only the
+        // paginated API keeps them, which classifies them as "interrupted".
+        reason: "ChatGPT stored no reply after this prompt (stopped before any content, or never generated).",
+        nodeIds
+      };
+    }
+
+    const messages = replyNodes.map((entry) => entry.message);
+
+    if (messages.some(hasManifestAnswerContent)) {
+      return { status: MANIFEST_REPLY_STATUS.ANSWER, reason: "", nodeIds };
+    }
+
+    if (messages.some(hasManifestThinkingContent)) {
+      return { status: MANIFEST_REPLY_STATUS.THINKING_ONLY, reason: "", nodeIds };
+    }
+
+    const interrupted = messages.find((message) => {
+      const finish = message?.metadata?.finish_details || {};
+      return String(finish.type || "").toLowerCase() === "interrupted";
+    });
+
+    if (interrupted) {
+      const finishReason = String(interrupted.metadata.finish_details.reason || "interrupted");
+      return {
+        status: MANIFEST_REPLY_STATUS.INTERRUPTED,
+        reason: `The response was stopped before it produced content (${finishReason}).`,
+        nodeIds
+      };
+    }
+
+    return {
+      status: MANIFEST_REPLY_STATUS.EMPTY,
+      reason: "The stored response has no visible content.",
+      nodeIds
+    };
+  }
+
+  /**
+   * A reply shows an answer when an assistant message addressed to the user
+   * (not a tool call or reasoning channel) carries text, DIL fallback Markdown,
+   * or media; or when any reply node carries an image or generated file.
+   */
+  function hasManifestAnswerContent(message) {
+    if (!message) {
+      return false;
+    }
+
+    const role = String(message.author?.role || "").toLowerCase();
+    const parts = Array.isArray(message.content?.parts) ? message.content.parts : [];
+    // Document-reading tools attach page images for the model only.
+    const isDocumentReader = role === "tool" && /^(?:file_search|myfiles_browser)(?:\.|$)/.test(String(message.author?.name || "").toLowerCase());
+
+    if (!isDocumentReader && parts.some(isManifestMediaPart)) {
+      return true;
+    }
+
+    if (role !== "assistant") {
+      return false;
+    }
+
+    const recipient = String(message.recipient || "").toLowerCase();
+    const channel = String(message.channel || "").toLowerCase();
+    const contentType = String(message.content?.content_type || "").toLowerCase();
+
+    if (recipient && recipient !== "all") {
+      return false;
+    }
+
+    if (channel && channel !== "final") {
+      return false;
+    }
+
+    if (!["text", "multimodal_text"].includes(contentType)) {
+      return false;
+    }
+
+    const dilFallback = message.metadata?.model_dil_v2?.fallbackMarkdown;
+
+    if (typeof dilFallback === "string" && dilFallback.trim()) {
+      return true;
+    }
+
+    return parts.some((part) => typeof part === "string" && part.trim());
+  }
+
+  function isManifestMediaPart(part) {
+    if (!part || typeof part !== "object") {
+      return false;
+    }
+
+    const pointer = String(part.asset_pointer || part.assetPointer || "");
+    return Boolean(pointer) && /image|file-service|sediment/i.test(`${part.content_type || ""} ${pointer}`);
+  }
+
+  function hasManifestThinkingContent(message) {
+    const content = message?.content || {};
+    const contentType = String(content.content_type || "").toLowerCase();
+
+    if (contentType === "thoughts") {
+      return Array.isArray(content.thoughts)
+        && content.thoughts.some((thought) => String(thought?.summary || thought?.content || "").trim());
+    }
+
+    if (contentType === "reasoning_recap") {
+      return typeof content.content === "string" && Boolean(content.content.trim());
+    }
+
+    // Commentary preambles appear in ChatGPT's activity timeline.
+    if (String(message?.channel || "").toLowerCase() === "commentary") {
+      const parts = Array.isArray(content.parts) ? content.parts : [];
+      return parts.some((part) => typeof part === "string" && part.trim());
+    }
+
+    return false;
+  }
+
+  /**
+   * Resolves the manifest identity of an exported message from any ChatGPT
+   * message id it carries. Returns "" when the message is not in the manifest.
+   */
+  function resolveManifestIdentity(manifest, message) {
+    for (const id of getCapturedSourceMessageIds(message)) {
+      const identity = manifest.nodeIdentity.get(id);
+
+      if (identity) {
+        return identity;
+      }
+    }
+
+    return "";
+  }
+
+  function getCapturedSourceMessageIds(message) {
+    return [
+      message?.sourceMessageId,
+      ...(Array.isArray(message?.sourceMessageIds) ? message.sourceMessageIds : []),
+      message?.sourceTurnId
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Compares exported messages with the manifest. The returned report has the
+   * same fields as buildCaptureCompletenessReport so the selector UI, the
+   * export gate, and the debug log treat both sources alike.
+   */
+  function buildManifestCompletenessReport(messages, manifest, options = {}) {
+    const captureMode = normalizeCaptureMode(options.captureMode);
+    const expectedIdentities = manifest.entries.map((entry) => entry.identity);
+    const expectedIdentitySet = new Set(expectedIdentities);
+    const capturedIdentities = [];
+    const unmatchedMessages = [];
+    const duplicateIdentities = [];
+
+    messages.forEach((message, index) => {
+      const identity = resolveManifestIdentity(manifest, message);
+
+      if (!identity) {
+        unmatchedMessages.push({
+          index,
+          role: message?.role || "",
+          preview: truncatePreview(String(message?.preview || message?.markdown || ""), 120)
+        });
+        return;
+      }
+
+      if (capturedIdentities.includes(identity)) {
+        duplicateIdentities.push(identity);
+        return;
+      }
+
+      capturedIdentities.push(identity);
+    });
+
+    const capturedIdentitySet = new Set(capturedIdentities);
+    const missingEntries = manifest.entries.filter((entry) => !capturedIdentitySet.has(entry.identity));
+    const roleSequence = getRoleSequenceDiagnostics(messages);
+    const imageStats = getCaptureImageCompletenessStats(messages);
+    const reconciliationReport = options.reconciliationReport || {};
+    const substantiveFullOnlyMessages = Number(reconciliationReport.substantiveFullOnlyMessages || 0);
+    const expectedUser = manifest.counts.user;
+    const expectedAssistant = manifest.counts.assistant;
+    const issues = [];
+    const warnings = [];
+
+    if (missingEntries.length) {
+      const missingUser = missingEntries.filter((entry) => entry.role === "user").length;
+      const missingAssistant = missingEntries.length - missingUser;
+      issues.push({
+        code: "missing-identities",
+        message: `Missing ${missingEntries.length} expected message(s): ${missingUser} user, ${missingAssistant} assistant.`,
+        missing: missingEntries.slice(0, 50).map((entry) => ({
+          identity: entry.identity,
+          role: entry.role,
+          position: expectedIdentities.indexOf(entry.identity) + 1
+        }))
+      });
+    }
+
+    if (roleSequence.userMessages < expectedUser) {
+      issues.push({
+        code: "missing-user-messages",
+        message: `Captured ${roleSequence.userMessages}/${expectedUser} expected user messages.`
+      });
+    }
+
+    if (roleSequence.assistantMessages < expectedAssistant) {
+      issues.push({
+        code: "missing-assistant-messages",
+        message: `Captured ${roleSequence.assistantMessages}/${expectedAssistant} expected assistant messages.`
+      });
+    }
+
+    if (!isManifestOrderPreserved(messages, manifest)) {
+      issues.push({
+        code: "order-mismatch",
+        message: "Captured messages are not in conversation order."
+      });
+    }
+
+    if (imageStats.failures > 0) {
+      issues.push({
+        code: "image-failures",
+        message: `${imageStats.failures} image reference(s) failed during capture.`
+      });
+    }
+
+    if (captureMode === "hybrid" && substantiveFullOnlyMessages > 0) {
+      issues.push({
+        code: "hybrid-full-only-messages",
+        message: `Hybrid found ${substantiveFullOnlyMessages} substantive Full-only message(s); use Full to retain them.`
+      });
+    }
+
+    if (unmatchedMessages.length) {
+      warnings.push({
+        code: "unmatched-messages",
+        message: `${unmatchedMessages.length} captured message(s) have no ChatGPT message id in the conversation branch.`,
+        samples: unmatchedMessages.slice(0, 12)
+      });
+    }
+
+    if (duplicateIdentities.length) {
+      warnings.push({
+        code: "duplicate-identities",
+        message: `${duplicateIdentities.length} captured message(s) repeat an earlier message.`,
+        identities: duplicateIdentities.slice(0, 20)
+      });
+    }
+
+    if (roleSequence.sameRolePairs.length) {
+      warnings.push({
+        code: "same-role-adjacency",
+        message: formatSameRoleAdjacencyWarning(roleSequence.sameRolePairs.length, manifest.gaps),
+        pairs: roleSequence.sameRolePairs,
+        explainedBy: manifest.gaps
+      });
+    }
+
+    const complete = issues.length === 0;
+    return {
+      complete,
+      requiresOverride: !complete,
+      captureMode,
+      coverageKnown: true,
+      expectedSource: "conversation-api-manifest",
+      expected: {
+        uniqueIdentities: expectedIdentities.length,
+        conversationOrders: [],
+        userMessages: expectedUser,
+        assistantMessages: expectedAssistant,
+        startRole: manifest.entries[0]?.role || "",
+        endRole: manifest.entries[manifest.entries.length - 1]?.role || "",
+        sameRoleAdjacencies: manifest.gaps.length,
+        replyGaps: manifest.gaps
+      },
+      captured: {
+        messages: messages.length,
+        uniqueIdentities: capturedIdentities.filter((identity) => expectedIdentitySet.has(identity)).length,
+        conversationOrders: [],
+        userMessages: roleSequence.userMessages,
+        assistantMessages: roleSequence.assistantMessages,
+        startRole: messages[0]?.role || "",
+        endRole: messages[messages.length - 1]?.role || "",
+        sameRoleAdjacencies: roleSequence.sameRolePairs
+      },
+      missingConversationOrders: missingEntries.map((entry) => expectedIdentities.indexOf(entry.identity) + 1),
+      missingIdentities: missingEntries.map((entry) => entry.identity),
+      images: imageStats,
+      hybrid: {
+        substantiveFullOnlyMessages,
+        substantiveFullOnlyAssistantMessages: Number(reconciliationReport.substantiveFullOnlyAssistantMessages || 0),
+        substantiveSamples: reconciliationReport.substantiveSamples || []
+      },
+      issues,
+      warnings
+    };
+  }
+
+  function isManifestOrderPreserved(messages, manifest) {
+    const positionByIdentity = new Map(manifest.entries.map((entry, index) => [entry.identity, index]));
+    let previous = -1;
+
+    for (const message of messages) {
+      const position = positionByIdentity.get(resolveManifestIdentity(manifest, message));
+
+      if (position == null) {
+        continue;
+      }
+
+      if (position < previous) {
+        return false;
+      }
+
+      previous = position;
+    }
+
+    return true;
+  }
+
+  function formatSameRoleAdjacencyWarning(pairCount, gaps) {
+    const byStatus = gaps.reduce((counts, gap) => {
+      counts[gap.status] = (counts[gap.status] || 0) + 1;
+      return counts;
+    }, {});
+    const reasons = [
+      byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED] ? `${byStatus[MANIFEST_REPLY_STATUS.INTERRUPTED]} stopped before any content` : "",
+      byStatus[MANIFEST_REPLY_STATUS.NO_REPLY] ? `${byStatus[MANIFEST_REPLY_STATUS.NO_REPLY]} with no stored reply` : "",
+      byStatus[MANIFEST_REPLY_STATUS.EMPTY] ? `${byStatus[MANIFEST_REPLY_STATUS.EMPTY]} answered with no visible content` : ""
+    ].filter(Boolean);
+
+    if (!reasons.length) {
+      return `${pairCount} same-role adjacency pair(s) detected.`;
+    }
+
+    return `${pairCount} same-role adjacency pair(s): ChatGPT has no reply for ${gaps.length} prompt(s) (${reasons.join(", ")}).`;
+  }
+
+  // Agent trace: every node ChatGPT stores between a prompt and its answer, in
+  // tree order, as typed events with full content. The PDF thinking timeline
+  // and the bundle's agent-trace files are both built from it.
+  //
+  // Event kinds: thought (summarized reasoning step), note (the model's own
+  // commentary), tool_call, tool_result, recap, answer, other. ChatGPT stores
+  // web.run and functions.* calls with empty text; those calls carry
+  // inputHidden: true instead of invented content.
+  const AGENT_TRACE_VERSION = 2;
+
+  function buildTurnAgentTrace(nodes, options = {}) {
+    const messages = (Array.isArray(nodes) ? nodes : []).map((node) => node?.message).filter(Boolean);
+    const events = [];
+    const sources = new Map();
+    const calls = createTraceCallQueue();
+    let model = null;
+    let durationSeconds = 0;
+    let firstTime = null;
+    let lastTime = null;
+
+    const push = (msg, time, kind, fields) => {
+      const event = {
+        seq: events.length + 1,
+        nodeId: msg.id || "",
+        at: formatTraceTime(time),
+        offsetSeconds: time != null && firstTime != null ? Math.round((time - firstTime) * 10) / 10 : null,
+        kind,
+        ...fields
+      };
+      events.push(event);
+      return event;
+    };
+
+    for (const msg of messages) {
+      const role = String(msg.author?.role || "").toLowerCase();
+      const recipient = String(msg.recipient || "").toLowerCase();
+      const channel = String(msg.channel || msg.metadata?.channel || "").toLowerCase();
+      const contentType = String(msg.content?.content_type || "").toLowerCase();
+      const metadata = msg.metadata || {};
+      const time = Number(msg.create_time) || null;
+
+      if (time != null) {
+        firstTime ??= time;
+        lastTime = time;
+      }
+      if (!model && role === "assistant" && (metadata.model_slug || metadata.resolved_model_slug)) {
+        model = {
+          slug: metadata.model_slug || "",
+          resolvedSlug: metadata.resolved_model_slug || "",
+          thinkingEffort: metadata.thinking_effort || "",
+          cotVersion: metadata.cot_version || ""
+        };
+      }
+      durationSeconds = Math.max(durationSeconds, Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0));
+
+      if (contentType === "reasoning_recap") {
+        push(msg, time, "recap", {
+          text: typeof msg.content?.content === "string" ? msg.content.content.trim() : "",
+          durationSeconds: Number(metadata.finished_duration_sec || 0) || null
+        });
+        continue;
+      }
+
+      if (Array.isArray(msg.content?.thoughts)) {
+        for (const thought of msg.content.thoughts) {
+          const summary = String(thought?.summary || "").trim();
+          const content = String(thought?.content || "").trim();
+          if (summary || content) {
+            push(msg, time, "thought", { summary, content, finished: thought?.finished !== false });
+          }
+        }
+        continue;
+      }
+
+      const text = getTraceText(msg.content);
+
+      // Older conversations keep a reasoning string in the message metadata,
+      // sometimes on the final answer itself.
+      if (role === "assistant") {
+        for (const legacy of [metadata.reasoning, metadata.reasoning_content, metadata.thinking, metadata.thoughts]) {
+          if (typeof legacy === "string" && legacy.trim()) push(msg, time, "thought", { summary: "", content: legacy.trim(), finished: true });
+        }
+      }
+
+      if (role === "assistant" && isApiFinalAnswerMessage(msg)) {
+        push(msg, time, "answer", { messageId: msg.id || "", chars: text.length });
+        continue;
+      }
+
+      if (role === "assistant" && isTraceToolCall(msg, recipient)) {
+        const tool = recipient && recipient !== "all" ? recipient : "web.run";
+        const parsed = parseTraceJson(text);
+        const event = push(msg, time, "tool_call", {
+          tool,
+          title: getTraceTitle(metadata),
+          input: text,
+          ...(parsed !== undefined ? { arguments: parsed } : {}),
+          ...(Array.isArray(metadata.search_queries) && metadata.search_queries.length ? { queries: uniqueStrings(metadata.search_queries) } : {}),
+          ...(msg.content?.language && msg.content.language !== "unknown" ? { language: msg.content.language } : {}),
+          inputHidden: !text
+        });
+        calls.add(event);
+        continue;
+      }
+
+      if (role === "tool") {
+        const call = calls.match(String(msg.author?.name || "").toLowerCase(), contentType === "code" && !text);
+        const tool = String(msg.author?.name || "").toLowerCase() || call?.tool || "";
+        const found = collectTraceSources(metadata, sources, events.length + 1);
+        const images = (Array.isArray(msg.content?.parts) ? msg.content.parts : [])
+          .map((part) => part?.asset_pointer)
+          .filter(Boolean);
+        push(msg, time, "tool_result", {
+          tool,
+          ...(call ? { callSeq: call.seq } : {}),
+          title: getTraceTitle(metadata),
+          contentType,
+          output: text,
+          ...(found.length ? { sources: found } : {}),
+          ...(found.some((source) => source.query) ? { queries: uniqueStrings(found.map((source) => source.query)) } : {}),
+          ...(images.length ? { images } : {}),
+          ...(metadata.aggregate_result?.status ? { status: metadata.aggregate_result.status } : {}),
+          ...(metadata.invoked_resource?.resource_uri ? { resource: metadata.invoked_resource.resource_uri } : {})
+        });
+        continue;
+      }
+
+      if (role === "assistant") {
+        if (text) {
+          push(msg, time, "note", { channel: channel || "", text });
+        } else {
+          for (const title of Array.isArray(metadata.reasoning_titles) ? metadata.reasoning_titles : []) {
+            if (String(title || "").trim()) push(msg, time, "thought", { summary: String(title).trim(), content: "", finished: true });
+          }
+        }
+        continue;
+      }
+
+      if (text) {
+        push(msg, time, "other", { role, recipient, channel, contentType, text });
+      }
+    }
+
+    markCitedTraceSources(sources, messages, options.citations || []);
+    const sourceList = [...sources.values()];
+    const count = (kind) => events.filter((event) => event.kind === kind).length;
+
+    return {
+      version: AGENT_TRACE_VERSION,
+      model,
+      startedAt: formatTraceTime(firstTime),
+      finishedAt: formatTraceTime(lastTime),
+      durationSeconds: durationSeconds || null,
+      stats: {
+        events: events.length,
+        thoughts: count("thought"),
+        notes: count("note"),
+        toolCalls: count("tool_call"),
+        toolResults: count("tool_result"),
+        hiddenInputs: events.filter((event) => event.inputHidden).length,
+        sources: sourceList.length,
+        citedSources: sourceList.filter((source) => source.cited).length
+      },
+      events,
+      sources: sourceList,
+      citations: options.citations || [],
+      memories: options.memories || []
+    };
+  }
+
+  // Pairs results with calls. Parallel calls are answered in call order, and
+  // nodes carry no call id. Tools that open each answer with an empty `code`
+  // node (api_tool.*) start a new answer only at that marker; other tools
+  // answer each call with one result node.
+  function createTraceCallQueue() {
+    const pending = [];
+    const current = new Map();
+    const markerTools = new Set();
+    const take = (tool) => {
+      const index = pending.findIndex((call) => !tool || call.tool === tool);
+      return index >= 0 ? pending.splice(index, 1)[0] : null;
+    };
+    return {
+      add(call) {
+        pending.push(call);
+      },
+      match(tool, isMarker) {
+        if (isMarker) markerTools.add(tool);
+        const startsAnswer = isMarker || !markerTools.has(tool) || !current.has(tool);
+        const call = (startsAnswer && take(tool)) || current.get(tool) || null;
+        if (call) current.set(tool || call.tool, call);
+        return call;
+      }
+    };
+  }
+
+  function isTraceToolCall(msg, recipient) {
+    if (recipient && recipient !== "all") {
+      return true;
+    }
+    const metadata = msg.metadata || {};
+    return metadata.reasoning_status === "is_reasoning" && String(msg.content?.content_type || "") === "code";
+  }
+
+  function getTraceText(content) {
+    if (!content || typeof content !== "object") return "";
+    if (typeof content.text === "string") return content.text.trim();
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    return parts.filter((part) => typeof part === "string").join("\n").trim();
+  }
+
+  function getTraceTitle(metadata) {
+    return String(metadata.reasoning_title || (Array.isArray(metadata.reasoning_titles) ? metadata.reasoning_titles[0] : "") || "").trim();
+  }
+
+  function parseTraceJson(text) {
+    if (!/^[[{]/.test(text)) return undefined;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      // Tool input that only looks like JSON stays as plain text in `input`.
+      return undefined;
+    }
+  }
+
+  function formatTraceTime(seconds) {
+    return seconds ? new Date(seconds * 1000).toISOString() : "";
+  }
+
+  function collectTraceSources(metadata, sources, seq) {
+    const found = [];
+    for (const group of Array.isArray(metadata.search_result_groups) ? metadata.search_result_groups : []) {
+      for (const entry of Array.isArray(group?.entries) ? group.entries : []) {
+        if (!entry?.url) continue;
+        const refId = entry.ref_id ? formatCitationRefId(entry.ref_id) : "";
+        const source = {
+          url: entry.url,
+          title: entry.title || "",
+          domain: group.domain || entry.attribution || "",
+          snippet: entry.snippet || "",
+          ...(entry.pub_date ? { pubDate: entry.pub_date } : {}),
+          ...(refId ? { refId } : {}),
+          ...(group.search_query ? { query: group.search_query } : {})
+        };
+        found.push(source);
+        const known = sources.get(entry.url);
+        if (known) {
+          known.seenAt.push(seq);
+          if (refId && !known.refIds.includes(refId)) known.refIds.push(refId);
+        } else {
+          sources.set(entry.url, { url: source.url, title: source.title, domain: source.domain, snippet: source.snippet, refIds: refId ? [refId] : [], seenAt: [seq], cited: false });
+        }
+      }
+    }
+    return found;
+  }
+
+  function markCitedTraceSources(sources, messages, citations) {
+    const citedUrls = new Set(citations.map((citation) => citation?.metadata?.url || citation?.url).filter(Boolean));
+    const answerText = messages.filter((msg) => isApiFinalAnswerMessage(msg)).map((msg) => getTraceText(msg.content)).join("\n");
+    const citedRefs = new Set(answerText.match(/turn\d+[a-z_]+\d+/gi) || []);
+    for (const source of sources.values()) {
+      source.cited = citedUrls.has(source.url) || source.refIds.some((refId) => citedRefs.has(refId));
+    }
+  }
+
+  function recordAgentTraceDiagnostics(trace, debugLog, turnNumber) {
+    if (!debugLog) return;
+    const thoughts = trace.events.filter((event) => event.kind === "thought");
+    for (const thought of thoughts) {
+      if (thought.summary && !thought.content) {
+        debugLog.fidelityWarning?.({
+          turnNumber,
+          severity: "info",
+          code: "EMPTY_THOUGHT_CONTENT",
+          message: `Thought step "${thought.summary}" has no descriptive body in API payload`,
+          details: { summary: thought.summary, nodeId: thought.nodeId }
+        });
+      }
+    }
+    debugLog.recordThinkingDiagnostic?.({
+      turnNumber,
+      totalSteps: thoughts.length,
+      stepsWithFullContent: thoughts.filter((thought) => thought.summary && thought.content).length,
+      stepsWithSummaryOnly: thoughts.filter((thought) => thought.summary && !thought.content).length,
+      durationSec: trace.durationSeconds || 0,
+      searchQueriesCount: trace.events.reduce((sum, event) => sum + (event.kind === "tool_call" ? (event.queries?.length || 0) : 0), 0),
+      toolCallsCount: trace.stats.toolCalls,
+      hasRecap: trace.events.some((event) => event.kind === "recap")
+    });
+  }
+
+  // The PDF thinking timeline, in the order ChatGPT's thinking panel shows it.
+  // Search steps list every source not already listed in this turn; tool
+  // outputs stay in the agent-trace files.
+  function renderAgentTraceThinkingMarkdown(trace) {
+    const lines = [];
+    const shownUrls = new Set();
+    const seen = new Set();
+    const add = (icon, label, content) => {
+      const clean = String(content || "").trim();
+      if (!clean || seen.has(`${label}:${clean}`)) return;
+      seen.add(`${label}:${clean}`);
+      const [first, ...rest] = clean.split("\n").map((line) => line.trim()).filter(Boolean);
+      lines.push(`- ${icon} **${label}**: ${first}`, ...rest.map((line) => `  ${line}`));
+    };
+    const calls = new Map(trace.events.filter((event) => event.kind === "tool_call").map((event) => [event.seq, event]));
+    const answeredCalls = new Set(trace.events.map((event) => event.callSeq).filter(Boolean));
+
+    for (const event of trace.events) {
+      if (event.kind === "thought") {
+        add("🧠", "推理思考", event.summary && event.content && event.summary !== event.content ? `**${event.summary}**\n${event.content}` : event.summary || event.content);
+      } else if (event.kind === "note") {
+        add("💬", "分析计划", event.text);
+      } else if (event.kind === "recap") {
+        add("⏱️", "思考总结", event.text);
+      } else if (event.kind === "tool_result" && event.sources?.length) {
+        const call = calls.get(event.callSeq);
+        const queries = uniqueStrings([...(call?.queries || []), ...(event.queries || [])]);
+        const links = event.sources.filter((source) => !shownUrls.has(source.url));
+        links.forEach((source) => shownUrls.add(source.url));
+        add("🔍", "网页搜索", [
+          event.title || call?.title || "联网检索",
+          queries.length ? `检索 \`${queries.slice(0, 3).join("`, `")}\`` : "",
+          links.length ? `查阅 ${links.map((source) => `[${escapeMarkdownLinkLabel(source.title || source.domain || source.url)}](${source.url})`).join(" · ")}` : ""
+        ].filter(Boolean).join(" · "));
+      } else if (event.kind === "tool_call" && !isTraceSearchTool(event.tool) && (event.title || !event.inputHidden)) {
+        add(...describeTraceToolCall(event));
+      } else if (event.kind === "tool_call" && !answeredCalls.has(event.seq) && (event.title || event.queries?.length)) {
+        add("🔍", "网页搜索", [event.title || "联网检索", event.queries?.length ? `检索 \`${event.queries.slice(0, 3).join("`, `")}\`` : ""].filter(Boolean).join(" · "));
+      }
+    }
+
+    const cited = trace.citations
+      .map((citation, index) => {
+        const title = citation?.metadata?.title || citation?.title || citation?.metadata?.name || `来源 [${index + 1}]`;
+        const url = citation?.metadata?.url || citation?.url || citation?.metadata?.extra?.url || citation?.metadata?.cloud_doc_url || "";
+        return url ? `[${escapeMarkdownLinkLabel(title)}](${url})` : `📄 ${title}`;
+      });
+    if (cited.length) {
+      add("🌐", "引用来源", uniqueStrings(cited).join(" · "));
+    }
+
+    const duration = trace.durationSeconds || 0;
+    if (!lines.length && !duration) {
+      return "";
+    }
+    const header = duration
+      ? `> 💭 **Thinking Process (Worked for ${duration >= 60 ? `${Math.floor(duration / 60)}m ${duration % 60}s` : `${duration}s`})**`
+      : "> 💭 **Thinking Process**";
+    return lines.length ? `${header}\n>\n${lines.map((line) => `> ${line}`).join("\n")}` : header;
+  }
+
+  function isTraceSearchTool(tool) {
+    return tool === "web.run" || tool === "browser" || tool === "search" || tool.startsWith("web.");
+  }
+
+  function describeTraceToolCall(event) {
+    const tool = event.tool;
+    if (tool === "container.exec" || tool === "python") {
+      const firstLine = String(event.input || "").split("\n").find((line) => line.trim()) || "";
+      return ["⚙️", "执行代码", [event.title, firstLine ? `\`${truncatePreview(firstLine.replace(/`/g, "'"), 120)}\`` : ""].filter(Boolean).join(" · ")];
+    }
+    if (tool.includes("image") || tool.startsWith("dalle")) {
+      return ["🖼️", "生成图像", event.title || "生成图像"];
+    }
+    if (tool.includes("myfiles") || tool.includes("file_search")) {
+      return ["📄", "读取文件", event.title || "读取上传的文件"];
+    }
+    const action = String(event.arguments?.path || "").split("/").filter(Boolean).pop() || tool;
+    const args = event.arguments?.args ? truncatePreview(JSON.stringify(event.arguments.args), 160) : "";
+    return ["🔧", "调用工具", [event.title, `\`${action}\``, args ? `\`${args.replace(/`/g, "'")}\`` : ""].filter(Boolean).join(" · ")];
+  }
   const FAST_CONVERSATION_API_PAGE_SIZE = 100;
   const FAST_CONVERSATION_API_MAX_PAGES = 200;
 
@@ -6003,10 +7642,12 @@
     const data = await fetchConversationData(conversationId, {
       timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
       debugLog,
-      signal
+      signal,
+      onProgress: options.onProgress
     });
     throwIfCaptureCancelled(signal);
     const messages = buildMessagesFromConversationApi(data, debugLog);
+    const manifest = buildConversationManifest(data);
 
     debugLog?.event("fastCapture.loaded", {
       conversationId,
@@ -6015,14 +7656,51 @@
       linearMessageCount: getConversationApiLinearMessages(data).length,
       messageCount: messages.length
     });
+    logConversationManifest(manifest, debugLog);
 
-    return messages;
+    return { messages, manifest };
+  }
+
+  /**
+   * Loads only the expected conversation structure. Full capture uses it to
+   * order DOM messages and to check completeness; a failure is reported to the
+   * caller, which falls back to DOM-only checks.
+   */
+  async function fetchConversationManifest(debugLog = null, options = {}) {
+    const conversationId = getCurrentConversationId();
+
+    if (!conversationId) {
+      throw new Error("No conversation id was found in the current URL.");
+    }
+
+    const data = await fetchConversationData(conversationId, {
+      timeoutMs: CONVERSATION_API_FETCH_TIMEOUT_MS,
+      debugLog,
+      signal: options.signal || null
+    });
+    const manifest = buildConversationManifest(data);
+    logConversationManifest(manifest, debugLog);
+    return manifest;
+  }
+
+  function logConversationManifest(manifest, debugLog) {
+    debugLog?.event("conversationManifest.built", {
+      ...manifest.counts,
+      expectedMessages: manifest.entries.length,
+      replyGaps: manifest.gaps.map((gap) => ({
+        userNodeId: gap.userNodeId,
+        status: gap.status,
+        reason: gap.reason,
+        createTime: gap.createTime
+      }))
+    });
   }
 
   function buildMessagesFromConversationApi(data, debugLog = null) {
     const pathNodes = getConversationApiCurrentPath(data);
     const messages = [];
     const filterStats = {};
+    const markupStats = createMarkupStats();
     let pendingAssistantNodes = [];
     let directThinkingMessageCount = 0;
 
@@ -6031,7 +7709,7 @@
         return;
       }
 
-      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog);
+      const synthesized = synthesizeAssistantTurn(pendingAssistantNodes, messages.length + 1, "", null, debugLog, markupStats);
       pendingAssistantNodes = [];
 
       if (!synthesized) {
@@ -6074,7 +7752,7 @@
         const turnNumber = messages.length + 1;
         const id = message.id || node.id || `api-message-${turnNumber}`;
         const markdown = cleanApiMarkdown([
-          extractApiContentMarkdown(message.content),
+          renderChatGptInlineTokens(extractApiContentMarkdown(message.content)),
           extractApiAttachmentMarkdown(message)
         ].filter(Boolean).join("\n\n"));
 
@@ -6125,6 +7803,10 @@
       });
     }
 
+    if (markupStats.dilMessages || Object.keys(markupStats.tokens).length) {
+      debugLog?.event("fastCapture.markup", markupStats);
+    }
+
     if (directThinkingMessageCount) {
       debugLog?.event("fastCapture.thinkingMerged", {
         applied: directThinkingMessageCount
@@ -6134,7 +7816,7 @@
     return messages;
   }
 
-  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null) {
+  function synthesizeAssistantTurn(nodes, turnNumber, turnId = "", primaryNode = null, debugLog = null, markupStats = null) {
     if (!nodes.length) {
       return null;
     }
@@ -6172,12 +7854,17 @@
       }
     }
 
-    // 1. Cognitive reasoning extraction (single source of truth for timeline and agentTrace)
-    const parsedReasoning = FastThinkingEngine.parseTurnReasoning(nodes, citations, debugLog, turnNumber);
-    const thinkingMarkdown = cleanApiMarkdown(FastThinkingEngine.buildTurnThinkingTimeline(parsedReasoning, citations));
-    const agentTrace = FastThinkingEngine.extractTurnAgentTrace(parsedReasoning, citations, memories);
+    // 1. The ordered agent trace is the single source of the thinking timeline.
+    const agentTrace = buildTurnAgentTrace(nodes, { citations, memories });
+    recordAgentTraceDiagnostics(agentTrace, debugLog, turnNumber);
+    const thinkingMarkdown = cleanApiMarkdown(renderAgentTraceThinkingMarkdown(agentTrace));
 
     // 2. Aggregate prose text, image pointers, generated files and attachments
+    const markupContext = createChatGptMarkupContext({
+      citationSources: buildCitationSourceIndex(nodes.map((node) => node?.message).filter(Boolean)),
+      footnoteOffset: Array.isArray(primaryMessage?.metadata?.citations) ? primaryMessage.metadata.citations.length : 0
+    });
+
     for (const node of nodes) {
       const msg = node?.message;
       if (!msg) continue;
@@ -6196,25 +7883,42 @@
 
       const isThinking = isApiThinkingNode(msg);
       const isInternalTool = isApiInternalToolCallNode(msg);
+      const isDil = isDilMessage(msg);
+      const isFileReader = isApiFileReaderNode(msg);
 
       // Collect text and image parts
       const content = msg.content;
+      if (isDil && !isThinking && !isInternalTool) {
+        const fallbackMarkdown = getDilFallbackMarkdown(msg);
+        const dil = chooseDilMarkdown(getApiStringParts(content).join("\n\n"), fallbackMarkdown);
+        if (markupStats) {
+          markupStats.dilMessages += 1;
+          if (!fallbackMarkdown) markupStats.dilWithoutFallback += 1;
+          if (dil.origin === "source" && fallbackMarkdown) markupStats.dilRenderedFromSource += 1;
+          markupStats.dilUnexpandedLoops += dil.unexpandedLoops;
+        }
+        if (dil.markdown.trim()) {
+          textParts.push(renderApiResponseMarkup(dil.markdown, markupContext));
+        }
+      }
+
       if (content && typeof content === "object") {
         const parts = Array.isArray(content.parts) ? content.parts : [];
         for (const part of parts) {
           if (typeof part === "string" && part.trim()) {
             if (
-              !isThinking
+              !isDil
+              && !isThinking
               && !isInternalTool
               && !isApiInternalFileIngestionText(part)
               && !looksLikeInternalApiToolCall(part)
-              && !looksLikeApiJsonPayload(part)
+              && !(looksLikeApiJsonPayload(part) && !isApiFinalAnswerMessage(msg))
             ) {
-              textParts.push(part.trim());
+              textParts.push(renderApiResponseMarkup(part, markupContext));
             }
           } else if (part && typeof part === "object") {
             const ptr = part.asset_pointer || part.assetPointer || part.url || "";
-            if (ptr && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
+            if (ptr && !isFileReader && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
               const label = sanitizeApiMarkdownLabel(part.name || part.filename || part.title || "Image");
               const imgMd = `![${label}](${ptr})`;
               if (!imagePointers.includes(imgMd)) {
@@ -6230,9 +7934,9 @@
             && !isInternalTool
             && !isApiInternalFileIngestionText(content.text)
             && !looksLikeInternalApiToolCall(content.text)
-            && !looksLikeApiJsonPayload(content.text)
+            && !(looksLikeApiJsonPayload(content.text) && !isApiFinalAnswerMessage(msg))
           ) {
-            textParts.push(content.text.trim());
+            textParts.push(renderApiResponseMarkup(content.text, markupContext));
           }
         }
       }
@@ -6242,6 +7946,12 @@
     const combinedProse = uniqueStrings(textParts).join("\n\n");
     const combinedImages = imagePointers.join("\n\n");
     const combinedFiles = uniqueStrings(fileEntries).join("\n\n");
+
+    const dilBlocks = nodes
+      .map((node) => node?.message)
+      .filter((msg) => msg && isDilMessage(msg) && !isApiThinkingNode(msg) && !isApiInternalToolCallNode(msg))
+      .map((msg) => buildDilRenderBlock(msg, markupContext.citationSources))
+      .filter(Boolean);
 
     let markdown = cleanApiMarkdown([
       combinedProse,
@@ -6256,6 +7966,12 @@
       markdown = enrichApiMarkdownWithCitations(markdown, { metadata: { citations } });
       markdown = enrichApiMarkdownWithMemories(markdown, { metadata: { conversation_context_citation_metadata: memories } });
     }
+
+    const tokenFootnotes = formatChatGptFootnotes(markupContext);
+    if (tokenFootnotes) {
+      markdown = `${markdown.trim()}\n\n${tokenFootnotes}`;
+    }
+    mergeMarkupStats(markupStats, markupContext);
 
     if (!markdown && !thinkingMarkdown) {
       return null;
@@ -6273,6 +7989,7 @@
       markdown,
       thinkingMarkdown,
       agentTrace,
+      ...(dilBlocks.length ? { dil: dilBlocks } : {}),
       preview: truncatePreview(cleanMarkdown(`${markdown}\n${thinkingMarkdown}`), 180),
       sourceMessageId: primaryMessage?.id || id,
       sourceTurnId: id,
@@ -6285,6 +8002,57 @@
       imagesFailed: 0,
       captureMode: "fast"
     };
+  }
+
+  // A JSON-shaped text is dropped as a leaked tool payload unless ChatGPT marks
+  // the message as the user-facing final answer.
+  function isApiFinalAnswerMessage(msg) {
+    const channel = String(msg?.channel || "").toLowerCase();
+    const recipient = String(msg?.recipient || "").toLowerCase();
+    return (channel === "final" || msg?.end_turn === true) && (!recipient || recipient === "all");
+  }
+
+  function renderApiResponseMarkup(text, markupContext) {
+    return renderChatGptInlineTokens(renderChatGptWritingBlocks(String(text || "").trim()), markupContext);
+  }
+
+  function getApiStringParts(content) {
+    if (!content || typeof content !== "object") {
+      return [];
+    }
+
+    const parts = Array.isArray(content.parts) ? content.parts : [content.text];
+    return parts.filter((part) => typeof part === "string" && part.trim());
+  }
+
+  function createMarkupStats() {
+    return {
+      dilMessages: 0,
+      dilWithoutFallback: 0,
+      dilRenderedFromSource: 0,
+      dilUnexpandedLoops: 0,
+      tokens: {},
+      unknownTokens: {},
+      citationFootnotes: 0,
+      unresolvedCitationRefs: 0
+    };
+  }
+
+  function mergeMarkupStats(stats, markupContext) {
+    if (!stats) {
+      return;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.tokenCounts)) {
+      stats.tokens[name] = (stats.tokens[name] || 0) + count;
+    }
+
+    for (const [name, count] of Object.entries(markupContext.unknownTokenCounts)) {
+      stats.unknownTokens[name] = (stats.unknownTokens[name] || 0) + count;
+    }
+
+    stats.citationFootnotes += markupContext.footnotes.length;
+    stats.unresolvedCitationRefs += markupContext.unresolvedCitationRefs.length;
   }
 
   function isApiThinkingNode(msg) {
@@ -6300,6 +8068,17 @@
       || contentType === "reasoning_recap"
       || msg.metadata?.is_thinking_preamble_message === true
     );
+  }
+
+  /**
+   * File-reading tools (file_search, myfiles_browser) return each page of an
+   * uploaded document as text plus a page image (sediment://...#p_N.jpg) for
+   * the model. ChatGPT never shows those pages in the answer.
+   */
+  function isApiFileReaderNode(msg) {
+    const role = String(msg?.author?.role || "").toLowerCase();
+    const name = String(msg?.author?.name || "").toLowerCase();
+    return role === "tool" && /^(?:file_search|myfiles_browser)(?:\.|$)/.test(name);
   }
 
   function isApiInternalFileIngestionText(text) {
@@ -6353,112 +8132,8 @@
     return false;
   }
 
-  function getApiMessageStructuralSkipReason(message, role) {
-    if (!message) {
-      return "missing-message";
-    }
-
-    if (!role) {
-      return "unsupported-role";
-    }
-
-    const metadata = message.metadata || {};
-    const authorMetadata = message.author?.metadata || {};
-    const contentType = normalizeApiField(message.content?.content_type || message.content?.contentType);
-    const recipient = normalizeApiField(
-      message.recipient
-      || metadata.recipient
-      || authorMetadata.recipient
-    );
-    const channel = normalizeApiField(
-      message.channel
-      || metadata.channel
-      || authorMetadata.channel
-    );
-    const messageType = normalizeApiField(metadata.message_type || metadata.messageType || authorMetadata.message_type);
-
-    if (
-      isTruthyApiFlag(metadata.is_visually_hidden_from_conversation)
-      || isTruthyApiFlag(metadata.is_hidden)
-      || isTruthyApiFlag(metadata.hidden)
-      || isTruthyApiFlag(authorMetadata.is_visually_hidden_from_conversation)
-      || isTruthyApiFlag(authorMetadata.is_hidden)
-      || isTruthyApiFlag(authorMetadata.hidden)
-    ) {
-      return "hidden";
-    }
-
-    if (role === "assistant" && message.end_turn === false) {
-      return "assistant-not-final";
-    }
-
-    if (role === "assistant" && recipient && !isFinalAssistantRecipient(recipient)) {
-      return `recipient:${recipient}`;
-    }
-
-    if (role === "assistant" && channel && !isFinalAssistantChannel(channel)) {
-      return `channel:${channel}`;
-    }
-
-    if (messageType && isInternalApiMessageType(messageType)) {
-      return `message-type:${messageType}`;
-    }
-
-    if (contentType && !isExportableApiContentType(contentType)) {
-      return `content-type:${contentType}`;
-    }
-
-    return "";
-  }
-
-  function getApiMessageContentSkipReason(message, role, markdown) {
-    if (role !== "assistant") {
-      return "";
-    }
-
-    if (message?.end_turn === true) {
-      return "";
-    }
-
-    return looksLikeInternalApiToolCall(markdown) ? "tool-call-text" : "";
-  }
-
-  function normalizeApiField(value) {
-    return String(value || "").trim().toLowerCase();
-  }
-
   function isTruthyApiFlag(value) {
     return value === true || String(value || "").toLowerCase() === "true";
-  }
-
-  function isFinalAssistantRecipient(recipient) {
-    return ["", "all", "assistant", "user"].includes(recipient);
-  }
-
-  function isFinalAssistantChannel(channel) {
-    return ["", "all", "final"].includes(channel);
-  }
-
-  function isInternalApiMessageType(messageType) {
-    return [
-      "browser_result",
-      "code",
-      "execution",
-      "execution_output",
-      "search_query",
-      "search_result",
-      "system",
-      "tool",
-      "tool_call",
-      "tool_result"
-    ].includes(messageType);
-  }
-
-  function isExportableApiContentType(contentType) {
-    return [
-      "multimodal_text",
-      "text"
-    ].includes(contentType);
   }
 
   function looksLikeInternalApiToolCall(markdown) {
@@ -6467,32 +8142,6 @@
     return /^search\(/i.test(text)
       || /^\{\s*"search_query"\s*:/i.test(text)
       || /^\{\s*"queries"\s*:/i.test(text);
-  }
-
-  function extractSkippedApiThinkingMarkdown(message, role, skipReason) {
-    if (role !== "assistant" || !isPotentialApiThinkingSkipReason(skipReason)) {
-      return "";
-    }
-
-    const explicitThinking = cleanApiMarkdown(extractApiThinkingMarkdown(message));
-    if (explicitThinking) {
-      return explicitThinking;
-    }
-
-    const markdown = cleanApiMarkdown(extractApiContentMarkdown(message?.content));
-    if (!markdown || looksLikeInternalApiToolCall(markdown) || looksLikeApiJsonPayload(markdown)) {
-      return "";
-    }
-
-    return markdown;
-  }
-
-  function isPotentialApiThinkingSkipReason(reason) {
-    return reason === "assistant-not-final"
-      || reason === "channel:analysis"
-      || reason === "channel:reasoning"
-      || reason === "content-type:thoughts"
-      || reason === "content-type:reasoning";
   }
 
   function looksLikeApiJsonPayload(markdown) {
@@ -6565,16 +8214,6 @@
     return getConversationApiRawMessages(data)
       ?.map((item) => item?.message || item)
       .filter((message) => message && typeof message === "object") || [];
-  }
-
-  function normalizeApiRole(role) {
-    const normalized = String(role || "").toLowerCase();
-
-    if (normalized === "user" || normalized === "assistant") {
-      return normalized;
-    }
-
-    return "";
   }
 
   function cleanApiMarkdown(value) {
@@ -6766,574 +8405,6 @@
       || "Image";
   }
 
-  // ============================================================================
-  // FAST THINKING & COGNITIVE REASONING ENGINE
-  // ============================================================================
-
-  const FastThinkingEngine = {
-    parseTurnReasoning(nodes, citations = [], debugLog = null, turnNumber = null) {
-      const thinkingSteps = [];
-      const searchSteps = [];
-      const toolInvocations = [];
-      const fileIngestions = [];
-      const internalToolCalls = [];
-      let maxDurationSec = 0;
-      let recapText = "";
-      const seenStepKeys = new Set();
-
-      const safeNodes = Array.isArray(nodes) ? nodes : (nodes ? [nodes] : []);
-      const consumedNodeIndices = new Set();
-
-      for (let i = 0; i < safeNodes.length; i++) {
-        if (consumedNodeIndices.has(i)) continue;
-        const node = safeNodes[i];
-        const msg = node?.message;
-        if (!msg) continue;
-
-        const role = String(msg.author?.role || "").toLowerCase();
-        const recipient = String(msg.recipient || msg.metadata?.recipient || "").toLowerCase();
-        const channel = String(msg.channel || msg.metadata?.channel || "").toLowerCase();
-        const contentType = String(msg.content?.content_type || "").toLowerCase();
-        const metadata = msg.metadata || {};
-
-        const duration = Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0);
-        if (duration > maxDurationSec) {
-          maxDurationSec = duration;
-        }
-
-        // 1. Content Type: reasoning_recap
-        if (contentType === "reasoning_recap") {
-          const recapContent = typeof msg.content?.content === "string" ? msg.content.content.trim() : "";
-          if (recapContent) {
-            recapText = recapContent;
-          }
-          continue;
-        }
-
-        // 2. Multi-step Thoughts (msg.content.thoughts array)
-        if (Array.isArray(msg.content?.thoughts) && msg.content.thoughts.length) {
-          for (const t of msg.content.thoughts) {
-            const summary = String(t?.summary || "").trim();
-            const content = String(t?.content || "").trim();
-            if (!summary && !content) continue;
-
-            const key = `thought:${summary}:${content}`;
-            if (seenStepKeys.has(key)) continue;
-            seenStepKeys.add(key);
-
-            thinkingSteps.push({
-              type: "thinking",
-              nodeId: node.id,
-              channel: channel || "reasoning",
-              summary,
-              content,
-              duration
-            });
-
-            if (summary && !content) {
-              debugLog?.fidelityWarning?.({
-                turnNumber,
-                severity: "info",
-                code: "EMPTY_THOUGHT_CONTENT",
-                message: `Thought step "${summary}" has no descriptive body in API payload`,
-                details: { summary, nodeId: node.id }
-              });
-            }
-          }
-          continue;
-        }
-
-        // 3. Web Search during Reasoning (is_reasoning or reasoning_title)
-        if (
-          metadata.reasoning_status === "is_reasoning"
-          || (role === "assistant" && contentType === "code" && metadata.reasoning_title)
-        ) {
-          const title = String(metadata.reasoning_title || "").trim();
-          let queries = Array.isArray(metadata.search_queries) ? [...metadata.search_queries] : [];
-          const results = [];
-
-          // Scan forward for tool message with search_result_groups
-          for (let k = i + 1; k < safeNodes.length; k++) {
-            const nextMsg = safeNodes[k]?.message;
-            if (!nextMsg) continue;
-            if (nextMsg.author?.role !== "tool") break;
-            const nextMeta = nextMsg.metadata || {};
-            if (Array.isArray(nextMeta.search_result_groups)) {
-              consumedNodeIndices.add(k);
-              for (const grp of nextMeta.search_result_groups) {
-                if (grp?.search_query) queries.push(grp.search_query);
-                if (Array.isArray(grp?.entries)) {
-                  for (const entry of grp.entries) {
-                    if (entry?.url || entry?.title) {
-                      results.push({
-                        title: entry.title || grp.domain || entry.url || "",
-                        url: entry.url || "",
-                        snippet: entry.snippet || ""
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          queries = uniqueStrings(queries);
-          if (title || queries.length || results.length) {
-            searchSteps.push({
-              type: "searching",
-              nodeId: node.id,
-              title: title || "联网检索",
-              queries,
-              results
-            });
-          }
-          continue;
-        }
-
-        // 4. Standard Web Searches (recipient === "web.run" / "browser" or metadata search results)
-        if (recipient === "web.run" || recipient === "browser" || metadata.search_result_groups || metadata.search_results) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          let queries = [];
-          for (const p of parts) {
-            if (typeof p === "string") {
-              const match = p.match(/"q(?:uery)?"\s*:\s*"([^"]+)"/g);
-              if (match) {
-                queries.push(...match.map((m) => m.replace(/.*"([^"]+)"$/, "$1")));
-              }
-            }
-          }
-          if (Array.isArray(metadata.search_result_groups)) {
-            for (const grp of metadata.search_result_groups) {
-              if (grp?.search_query) queries.push(grp.search_query);
-            }
-          }
-          queries = uniqueStrings(queries);
-
-          const results = [];
-          if (Array.isArray(metadata.search_results)) {
-            for (const r of metadata.search_results) {
-              if (r?.url || r?.title) {
-                results.push({ title: r.title || "", url: r.url || "", snippet: r.snippet || "" });
-              }
-            }
-          }
-          if (Array.isArray(metadata.search_result_groups)) {
-            for (const grp of metadata.search_result_groups) {
-              if (Array.isArray(grp?.entries)) {
-                for (const entry of grp.entries) {
-                  if (entry?.url || entry?.title) {
-                    results.push({ title: entry.title || grp.domain || entry.url || "", url: entry.url || "", snippet: entry.snippet || "" });
-                  }
-                }
-              }
-            }
-          }
-
-          if (queries.length || results.length) {
-            searchSteps.push({
-              type: "searching",
-              nodeId: node.id,
-              title: "联网检索",
-              queries,
-              results
-            });
-          }
-        }
-
-        // 5. Commentary / Analysis / General Thinking Nodes
-        const isCommentary = channel === "commentary" || msg.metadata?.is_thinking_preamble_message === true;
-        if (isCommentary || channel === "analysis" || channel === "reasoning" || contentType === "thoughts" || isApiThinkingNode(msg)) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const text = parts.filter((p) => typeof p === "string" && p.trim()).join("\n");
-          if (text && !looksLikeInternalApiToolCall(text) && !looksLikeApiJsonPayload(text)) {
-            const key = `text:${channel}:${text}`;
-            if (!seenStepKeys.has(key)) {
-              seenStepKeys.add(key);
-              thinkingSteps.push({
-                type: isCommentary ? "commentary" : "thinking",
-                nodeId: node.id,
-                channel: channel || (isCommentary ? "commentary" : "reasoning"),
-                summary: "",
-                content: text,
-                duration
-              });
-            }
-          }
-        }
-
-        // 6. Reasoning Titles metadata fallback
-        if (Array.isArray(metadata.reasoning_titles)) {
-          for (const title of metadata.reasoning_titles) {
-            const cleanTitle = String(title || "").trim();
-            if (cleanTitle && !seenStepKeys.has(`title:${cleanTitle}`)) {
-              seenStepKeys.add(`title:${cleanTitle}`);
-              thinkingSteps.push({
-                type: "thinking",
-                nodeId: node.id,
-                channel: "reasoning",
-                summary: cleanTitle,
-                content: "",
-                duration
-              });
-            }
-          }
-        }
-
-        // 7. Fallback simple string thoughts (metadata.reasoning, metadata.thinking, etc.)
-        const simpleThoughts = [metadata.reasoning, metadata.reasoning_content, metadata.thinking, metadata.thoughts]
-          .filter((v) => typeof v === "string" && v.trim());
-        for (const thought of simpleThoughts) {
-          if (!looksLikeInternalApiToolCall(thought) && !looksLikeApiJsonPayload(thought)) {
-            const key = `simple:${thought}`;
-            if (!seenStepKeys.has(key)) {
-              seenStepKeys.add(key);
-              thinkingSteps.push({
-                type: "thinking",
-                nodeId: node.id,
-                channel: "reasoning",
-                summary: "",
-                content: thought,
-                duration
-              });
-            }
-          }
-        }
-
-        // 8. Tool Invocations & Skill Integrations
-        if (recipient.includes("google_drive") || recipient.includes("api_tool")) {
-          const docCitation = citations.find((c) => c?.metadata?.title || c?.title);
-          const docTitle = docCitation?.metadata?.title || docCitation?.title || "";
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: "调用工具",
-            icon: "🔌",
-            description: `**Google Drive** · ${docTitle ? `读取文档《${docTitle}》` : "查询相关文档"}`
-          });
-        } else if (recipient === "container.exec" || recipient === "python") {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const codeText = parts.filter((p) => typeof p === "string").join(" ");
-          const isSlide = /slides|pptx/i.test(codeText);
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: isSlide ? "调用技能" : "执行代码",
-            icon: isSlide ? "🎨" : "⚙️",
-            description: isSlide ? "**Slide Generator** · 生成 PPTX 幻灯片演示文稿" : "**Python Sandbox** · 执行数据与资产处理",
-            preview: codeText.slice(0, 500)
-          });
-        } else if (recipient === "dalle.text2im" || recipient.includes("image")) {
-          toolInvocations.push({
-            nodeId: node.id,
-            role,
-            recipient,
-            label: "生成图像",
-            icon: "🖼️",
-            description: "**DALL-E** · 渲染多模态视觉设计与图标",
-            preview: "image generation"
-          });
-        }
-
-        // 9. File Ingestion Slices & Internal Tool Execution
-        if (role === "tool" || isApiInternalToolCallNode(msg)) {
-          const parts = Array.isArray(msg.content?.parts) ? msg.content.parts : [msg.content?.text];
-          const rawText = parts.filter((p) => typeof p === "string").join("\n");
-          const isFileIngest = isApiInternalFileIngestionText(rawText);
-
-          if (isFileIngest) {
-            fileIngestions.push({
-              nodeId: node.id,
-              recipient,
-              sizeBytes: rawText.length,
-              rawText
-            });
-          } else if (rawText) {
-            internalToolCalls.push({
-              nodeId: node.id,
-              role,
-              recipient,
-              rawContent: rawText,
-              preview: rawText.slice(0, 500)
-            });
-          }
-        }
-      }
-
-      // Record Turn Diagnostic to debugLog if available
-      if (debugLog?.recordThinkingDiagnostic) {
-        const stepsWithFullContent = thinkingSteps.filter((s) => s.content && s.summary).length;
-        const stepsWithSummaryOnly = thinkingSteps.filter((s) => !s.content && s.summary).length;
-        const searchQueriesCount = searchSteps.reduce((sum, s) => sum + s.queries.length, 0);
-
-        debugLog.recordThinkingDiagnostic({
-          turnNumber,
-          totalSteps: thinkingSteps.length,
-          stepsWithFullContent,
-          stepsWithSummaryOnly,
-          durationSec: maxDurationSec,
-          searchQueriesCount,
-          toolCallsCount: toolInvocations.length + internalToolCalls.length,
-          hasRecap: Boolean(recapText)
-        });
-      }
-
-      return {
-        thinkingSteps,
-        searchSteps,
-        toolInvocations,
-        fileIngestions,
-        internalToolCalls,
-        maxDurationSec,
-        recapText
-      };
-    },
-
-    buildTurnThinkingTimeline(parsedReasoning, citations = []) {
-      const steps = [];
-      const seenStepText = new Set();
-
-      function addStep(icon, label, content) {
-        const cleanContent = String(content || "").trim();
-        if (!cleanContent) return;
-        const key = `${label}:${cleanContent}`;
-        if (seenStepText.has(key)) return;
-        seenStepText.add(key);
-
-        const lines = cleanContent.split("\n").map((l) => l.trim()).filter(Boolean);
-        if (lines.length > 1) {
-          steps.push(`- ${icon} **${label}**: ${lines[0]}`);
-          for (let i = 1; i < lines.length; i++) {
-            steps.push(`  ${lines[i]}`);
-          }
-        } else {
-          steps.push(`- ${icon} **${label}**: ${cleanContent}`);
-        }
-      }
-
-      // 1. Thinking Steps (Formatting both summary title and detailed prose)
-      for (const step of parsedReasoning.thinkingSteps || []) {
-        const summary = step.summary;
-        const content = step.content;
-        const icon = step.type === "commentary" ? "💬" : "🧠";
-        const label = step.type === "commentary" ? "分析计划" : "推理思考";
-
-        if (summary && content && summary !== content) {
-          addStep(icon, label, `**${summary}**\n${content}`);
-        } else if (summary || content) {
-          addStep(icon, label, summary || content);
-        }
-      }
-
-      // 2. Searches during and outside reasoning
-      for (const search of parsedReasoning.searchSteps || []) {
-        const title = search.title || "联网检索";
-        const queriesText = search.queries?.length ? ` · 检索 \`${search.queries.slice(0, 3).join("`, `")}\`` : "";
-        const foundLinks = (search.results || [])
-          .filter((r) => r.url)
-          .slice(0, 4)
-          .map((r) => `[${r.title || r.url}](${r.url})`);
-        const linksText = foundLinks.length ? ` · 查阅 ${foundLinks.join(" · ")}` : "";
-        addStep("🔍", "网页搜索", `${title}${queriesText}${linksText}`);
-      }
-
-      // 3. Tool Invocations
-      for (const tool of parsedReasoning.toolInvocations || []) {
-        addStep(tool.icon || "🔧", tool.label || "执行工具", tool.description);
-      }
-
-      // 4. Recap
-      if (parsedReasoning.recapText) {
-        addStep("⏱️", "思考总结", parsedReasoning.recapText);
-      }
-
-      // 5. Source Citations
-      const activeCitations = (citations || [])
-        .map((c, i) => {
-          const title = c?.metadata?.title || c?.title || c?.metadata?.name || `来源 [${i + 1}]`;
-          const url = c?.metadata?.url || c?.url || c?.metadata?.extra?.url || c?.metadata?.cloud_doc_url || "";
-          return url ? `[${title}](${url})` : `📄 ${title}`;
-        })
-        .filter(Boolean);
-      if (activeCitations.length) {
-        addStep("🌐", "引用来源", activeCitations.slice(0, 6).join(" · "));
-      }
-
-      if (!steps.length && (!parsedReasoning.maxDurationSec || parsedReasoning.maxDurationSec === 0)) {
-        return "";
-      }
-
-      const durationPrefix = parsedReasoning.maxDurationSec > 0
-        ? `Worked for ${parsedReasoning.maxDurationSec >= 60 ? `${Math.floor(parsedReasoning.maxDurationSec / 60)}m ${parsedReasoning.maxDurationSec % 60}s` : `${parsedReasoning.maxDurationSec}s`}`
-        : "";
-
-      const header = durationPrefix ? `> 💭 **Thinking Process (${durationPrefix})**` : "> 💭 **Thinking Process**";
-
-      if (!steps.length) {
-        return header;
-      }
-
-      return `${header}\n>\n` + steps.map((s) => `> ${s}`).join("\n");
-    },
-
-    extractTurnAgentTrace(parsedReasoning, citations = [], memories = []) {
-      const activities = [];
-      const thinkingNodes = [];
-      const searches = [];
-
-      for (const step of parsedReasoning.thinkingSteps || []) {
-        const summary = step.summary;
-        const content = step.content;
-        const fullSnippet = content || summary;
-        thinkingNodes.push({
-          nodeId: step.nodeId,
-          channel: step.channel,
-          contentType: "thoughts",
-          durationSeconds: step.duration || parsedReasoning.maxDurationSec,
-          summary,
-          content: content || summary
-        });
-        activities.push({
-          type: "reasoning",
-          channel: step.channel,
-          durationSeconds: step.duration || parsedReasoning.maxDurationSec,
-          summary,
-          snippet: fullSnippet.slice(0, 600)
-        });
-      }
-
-      for (const search of parsedReasoning.searchSteps || []) {
-        searches.push({
-          nodeId: search.nodeId,
-          recipient: "web.run",
-          queries: search.queries,
-          results: search.results
-        });
-        activities.push({
-          type: "web_search",
-          queries: search.queries,
-          title: search.title,
-          resultCount: search.results?.length || 0
-        });
-      }
-
-      for (const file of parsedReasoning.fileIngestions || []) {
-        activities.push({
-          type: "file_ingestion",
-          recipient: file.recipient,
-          sizeBytes: file.sizeBytes,
-          preview: file.rawText.slice(0, 300)
-        });
-      }
-
-      for (const tool of parsedReasoning.internalToolCalls || []) {
-        activities.push({
-          type: "tool_execution",
-          role: tool.role,
-          recipient: tool.recipient,
-          preview: (tool.preview || "").slice(0, 300)
-        });
-      }
-
-      for (const tool of parsedReasoning.toolInvocations || []) {
-        activities.push({
-          type: "tool_execution",
-          role: tool.role,
-          recipient: tool.recipient,
-          preview: (tool.preview || tool.description || "").slice(0, 300)
-        });
-      }
-
-      return {
-        activityCount: activities.length,
-        activities,
-        thinkingNodes,
-        searches,
-        internalToolCalls: parsedReasoning.internalToolCalls || [],
-        fileIngestions: parsedReasoning.fileIngestions || [],
-        citations: citations || [],
-        memories: memories || []
-      };
-    },
-
-    extractApiThinkingMarkdown(message) {
-      const metadata = message?.metadata || {};
-      const durationSec = Number(metadata.finished_duration_sec || metadata.thinking_duration_seconds || 0);
-      const durationPrefix = durationSec > 0
-        ? `Worked for ${durationSec >= 60 ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s` : `${durationSec}s`}`
-        : "";
-
-      const thoughtItems = [];
-
-      // Multi-step thoughts: extract BOTH summary and content
-      if (Array.isArray(message?.content?.thoughts)) {
-        for (const t of message.content.thoughts) {
-          const summary = String(t?.summary || "").trim();
-          const content = String(t?.content || "").trim();
-          if (summary && content && summary !== content) {
-            thoughtItems.push(`**${summary}**\n\n${content}`);
-          } else if (content || summary) {
-            thoughtItems.push(content || summary);
-          }
-        }
-      }
-
-      // String thoughts fallback
-      const candidates = [
-        metadata.reasoning,
-        metadata.reasoning_content,
-        metadata.thinking,
-        metadata.thinking_text,
-        metadata.thoughts
-      ];
-      for (const c of candidates) {
-        if (typeof c === "string" && c.trim() && !thoughtItems.includes(c.trim())) {
-          thoughtItems.push(c.trim());
-        }
-      }
-
-      if (Array.isArray(metadata.reasoning_titles)) {
-        for (const title of metadata.reasoning_titles) {
-          if (title && !thoughtItems.some((item) => item.includes(title))) {
-            thoughtItems.push(title);
-          }
-        }
-      }
-
-      let thinkingText = thoughtItems.join("\n\n").trim();
-      if (durationPrefix && thinkingText) {
-        thinkingText = `> 💭 **Thinking Process (${durationPrefix})**\n>\n` + thinkingText.split("\n").map((line) => `> ${line}`).join("\n");
-      } else if (durationPrefix && !thinkingText) {
-        thinkingText = `> 💭 **Thinking Process (${durationPrefix})**`;
-      }
-
-      return thinkingText;
-    }
-  };
-
-  function buildTurnThinkingTimeline(nodesOrParsed, citations = []) {
-    if (nodesOrParsed && Array.isArray(nodesOrParsed.thinkingSteps)) {
-      return FastThinkingEngine.buildTurnThinkingTimeline(nodesOrParsed, citations);
-    }
-    const nodes = Array.isArray(nodesOrParsed) ? nodesOrParsed : (nodesOrParsed ? [nodesOrParsed] : []);
-    const parsed = FastThinkingEngine.parseTurnReasoning(nodes, citations);
-    return FastThinkingEngine.buildTurnThinkingTimeline(parsed, citations);
-  }
-
-  function extractTurnAgentTrace(nodesOrParsed, citations = [], memories = []) {
-    if (nodesOrParsed && Array.isArray(nodesOrParsed.thinkingSteps)) {
-      return FastThinkingEngine.extractTurnAgentTrace(nodesOrParsed, citations, memories);
-    }
-    const nodes = Array.isArray(nodesOrParsed) ? nodesOrParsed : (nodesOrParsed ? [nodesOrParsed] : []);
-    const parsed = FastThinkingEngine.parseTurnReasoning(nodes, citations);
-    return FastThinkingEngine.extractTurnAgentTrace(parsed, citations, memories);
-  }
-
-  function extractApiThinkingMarkdown(message) {
-    return FastThinkingEngine.extractApiThinkingMarkdown(message);
-  }
-
   function extractApiGeneratedFilesMarkdown(message) {
     const metadata = message?.metadata || {};
     const files = [];
@@ -7347,8 +8418,11 @@
       }
     }
 
-    // Check sandbox files in parts
-    const parts = Array.isArray(message?.content?.parts) ? message.content.parts : [];
+    // Check sandbox files in the displayed text; DIL parts hold component
+    // source, so DIL messages are read from their fallback Markdown.
+    const parts = isDilMessage(message)
+      ? [getDilFallbackMarkdown(message)]
+      : (Array.isArray(message?.content?.parts) ? message.content.parts : []);
     for (const part of parts) {
       if (typeof part === "string") {
         const sandboxMatches = [...part.matchAll(/\[([^\]]+)\]\((sandbox:[^)]+)\)/g)];
@@ -7375,14 +8449,16 @@
 
     let enriched = markdown;
     const footnotes = [];
+    // One uploaded document is often cited once per passage; it gets one
+    // footnote line however many citation records point at it.
+    const footnoteIndexByLine = new Map();
 
     citations.forEach((citation, index) => {
-      const footnoteIndex = index + 1;
       const title = citation?.metadata?.title
         || citation?.title
         || citation?.metadata?.name
         || citation?.name
-        || `Source ${footnoteIndex}`;
+        || `Source ${index + 1}`;
       const url = citation?.metadata?.url
         || citation?.url
         || citation?.metadata?.cloud_doc_url
@@ -7392,10 +8468,13 @@
         || citation?.link
         || "";
 
-      if (url) {
-        footnotes.push(`[^${footnoteIndex}]: [${title}](${url})`);
-      } else {
-        footnotes.push(`[^${footnoteIndex}]: 📄 **Document**: ${title}`);
+      const source = url ? `[${title}](${url})` : `📄 **Document**: ${title}`;
+      let footnoteIndex = footnoteIndexByLine.get(source);
+
+      if (!footnoteIndex) {
+        footnoteIndex = footnotes.length + 1;
+        footnoteIndexByLine.set(source, footnoteIndex);
+        footnotes.push(`[^${footnoteIndex}]: ${source}`);
       }
 
       // Replace matching citation tokens if present
@@ -7522,7 +8601,7 @@
     const debugLog = options.debugLog || null;
     const signal = options.signal || null;
     throwIfCaptureCancelled(signal);
-    const timeoutMs = Number(options.timeoutMs || CONVERSATION_TIMESTAMP_FETCH_TIMEOUT_MS);
+    const timeoutMs = Number(options.timeoutMs || CONVERSATION_API_FETCH_TIMEOUT_MS);
     const attemptTimeoutMs = Math.min(timeoutMs, CONVERSATION_API_ATTEMPT_TIMEOUT_MS);
     const accessToken = await getChatGptAccessToken(debugLog, attemptTimeoutMs, signal);
     throwIfCaptureCancelled(signal);
@@ -7542,7 +8621,8 @@
         data = await fetchRemainingConversationApiPages(data, attempt, {
           timeoutMs: attemptTimeoutMs,
           signal,
-          debugLog
+          debugLog,
+          onProgress: options.onProgress
         });
         throwIfCaptureCancelled(signal);
         const mapping = getConversationApiMapping(data);
@@ -7602,12 +8682,14 @@
 
   function buildConversationApiAttempts(conversationId, accessToken = "") {
     const encodedId = encodeURIComponent(conversationId);
+    // The full tree arrives in one request (about 10 s for 2,700 nodes); the
+    // paginated route costs 5-8 s per page regardless of page size, so it is
+    // the fallback, and only with the largest page size.
     const paths = uniqueStrings([
+      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=${FAST_CONVERSATION_API_PAGE_SIZE}`,
-      `/backend-api/conversations/${encodedId}?include_has_versions=true&num_turns=10`,
       `/backend-api/conversations/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=true`,
-      `/backend-api/conversation/${encodedId}`,
       `/backend-api/conversation/${encodedId}?tree_format=false`,
       `/backend-api/conversation/${encodedId}?include_system_messages=true`,
       `/backend-api/conversation/${encodedId}?tree_format=true&include_system_messages=true`,
@@ -7685,6 +8767,7 @@
       mergedData = mergeConversationApiPages(pageData, mergedData);
       pageCount += 1;
       totalRawMessages = getConversationApiRawMessages(mergedData).length;
+      options.onProgress?.(`Loading conversation data: page ${pageCount}, ${totalRawMessages} messages...`);
       debugLog?.event("conversationApi.pagination.page", {
         label: attempt.label,
         pageCount,
@@ -8959,14 +10042,6 @@
     return sources;
   }
 
-  function isThinkingFlyoutNoiseLine(line) {
-    return THINKING_FLYOUT_TITLE_RE.test(line)
-      || /^activity\s*[·:]/i.test(line)
-      || /^\u6d3b\u52a8\s*[·:]/.test(line)
-      || /^close$/i.test(line)
-      || /^\u5173\u95ed$/.test(line);
-  }
-
   function isThinkingFlyoutNoiseLineSafe(line) {
     return THINKING_FLYOUT_TITLE_RE.test(line)
       || /^activity\s*(?:[\u00b7:])?/i.test(line)
@@ -9111,14 +10186,6 @@
     }
 
     return `- ${value}`;
-  }
-
-  function isLikelyThinkingFlyoutHeading(line, nextLine) {
-    return line.length <= 38
-      && nextLine.length >= 24
-      && !/[.?!。？！:：]$/.test(line)
-      && !THINKING_STATUS_RE.test(line)
-      && !THINKING_FLYOUT_DONE_RE.test(line);
   }
 
   function isLikelyThinkingFlyoutHeadingSafe(line, nextLine) {
@@ -9290,6 +10357,10 @@
   }
 
   function getMessageIdFromNode(node) {
+    if (isChatGptMessageUnit(node)) {
+      return getChatGptMessageUnitInfo(node)?.messageIds[0] || "";
+    }
+
     return node?.querySelector?.("[data-message-id]")?.getAttribute("data-message-id") || node?.getAttribute?.("data-message-id") || "";
   }
 
@@ -9348,6 +10419,7 @@
       sourceTurnContainer: node.getAttribute("data-turn-id-container") || node.getAttribute("data-turn-container") || "",
       sourceTestId: node.getAttribute("data-testid") || "",
       sourceMessageId: getMessageIdFromNode(node),
+      sourceMessageIds: getChatGptMessageUnitInfo(node)?.messageIds || [],
       order: getOrderHint(node, order),
       timestamp: parts.timestamp || "",
       markdown,
@@ -9582,7 +10654,8 @@
 
     const className = ` ${String(element.getAttribute("class") || "")} `;
     const styleAttr = String(element.getAttribute("style") || "");
-    let bold = /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
+    let bold = hasChatGptDilStrongMarker(element)
+      || /\sfont-(?:semibold|bold|extrabold|black)\s/.test(className)
       || /font-\[(?:[6-9]\d{2}|[1-9]\d{3})\]/.test(className)
       || /font-weight\s*:\s*(?:bold|bolder|[6-9]\d{2}|[1-9]\d{3})/i.test(styleAttr);
     let italic = /\sitalic\s/.test(className) || /font-style\s*:\s*(?:italic|oblique)/i.test(styleAttr);
@@ -9676,6 +10749,11 @@
     const element = node;
     const tag = element.tagName.toLowerCase();
 
+    // Citation chips use role="button", which the generic skip rules drop.
+    if (isChatGptDilCitationChip(element) && !state?.skipElements?.has(element)) {
+      return formatChatGptDilCitationChip(element);
+    }
+
     if (shouldSkipElement(element, state)) {
       return "";
     }
@@ -9699,6 +10777,15 @@
       return fileMarkdown ? `\n\n${fileMarkdown}\n\n` : "";
     }
 
+    if (isChatGptDilDivider(element)) {
+      return "\n\n---\n\n";
+    }
+
+    if (isChatGptWritingBlockElement(element)) {
+      const block = formatChatGptWritingBlock(element);
+      return block ? `\n\n${block}\n\n` : "";
+    }
+
     if (hasChatGptRangeMarker(element) && !isSemanticMarkdownElementTag(tag)) {
       const text = cleanMarkdown(await serializeNodeChildren(element, state));
       return text ? `\n\n${text}\n\n` : "";
@@ -9717,14 +10804,6 @@
     if (tag === "canvas") {
       const imageMarkdown = canvasElementToMarkdown(element, state);
       return imageMarkdown ? `\n\n${imageMarkdown}\n\n` : "";
-    }
-
-    if (false && hasUsefulBackgroundImage(element)) {
-      const imageMarkdown = await backgroundImageElementToMarkdown(element, state);
-
-      if (imageMarkdown) {
-        return `\n\n${imageMarkdown}\n\n${await serializeNodeChildren(element, state)}`;
-      }
     }
 
     if (tag === "code" && element.closest("pre") === null && isStandaloneCodeBlock(element)) {
@@ -9856,6 +10935,10 @@
       return true;
     }
 
+    if (isChatGptCopyExcludedElement(element)) {
+      return true;
+    }
+
     if (tag === "button" && !isExpandableContentButton(element) && !hasUsefulImageContent(element) && !hasUsefulFileContent(element)) {
       return true;
     }
@@ -9946,6 +11029,11 @@
 
     const text = getElementText(element);
     const href = getAttachmentHref(element);
+
+    if (isChatGptDilWebLink(element, href)) {
+      return false;
+    }
+
     const signal = [
       text,
       href,
@@ -10061,11 +11149,6 @@
     return String(name || "").replace(/\s+/g, " ").trim().slice(0, 160);
   }
 
-  function getFileAttachmentExtension(name) {
-    const match = String(name || "").match(/\.([a-z0-9]{1,6})$/i);
-    return (match?.[1] || "FILE").toUpperCase();
-  }
-
   async function serializeList(listElement, state, ordered) {
     const items = [...listElement.children].filter((child) => child.tagName?.toLowerCase() === "li");
     let number = Number(listElement.getAttribute("start") || 1);
@@ -10145,69 +11228,6 @@
     return `![${escapeMarkdownLinkLabel(alt)}](${src})\n\n<!-- Image base64 embedding is deferred until export to avoid page side effects. -->`;
   }
 
-  async function backgroundImageElementToMarkdown(element, state) {
-    const src = getBackgroundImageUrl(element);
-
-    if (!src) {
-      return "";
-    }
-
-    const alt = sanitizeAltText(element.getAttribute("aria-label") || element.getAttribute("title") || "background-image");
-    state.imageCount += 1;
-
-    try {
-      const dataUri = await imageToDataUriFromSrc(src);
-      state.imagesEmbedded += 1;
-      state.imageEvents?.push({
-        type: "background-image",
-        src,
-        ok: true
-      });
-      return `![${escapeMarkdownLinkLabel(alt)}](${dataUri})`;
-    } catch (error) {
-      state.imagesFailed += 1;
-      state.imageEvents?.push({
-        type: "background-image",
-        src,
-        ok: false,
-        error: error.message || String(error)
-      });
-      return `![${escapeMarkdownLinkLabel(alt)}](${src})\n\n<!-- Background image could not be converted to base64: ${escapeHtmlComment(error.message || String(error))} -->`;
-    }
-  }
-
-  function hasUsefulBackgroundImage(element) {
-    if (element.closest("button:not(.group__menu-item):not(.hoverable), [role='button']:not(.group__menu-item):not(.hoverable), nav, aside, header, footer")) {
-      return false;
-    }
-
-    const src = getBackgroundImageUrl(element);
-
-    if (!src) {
-      return false;
-    }
-
-    const width = element.clientWidth || Number(element.getAttribute("width")) || 0;
-    const height = element.clientHeight || Number(element.getAttribute("height")) || 0;
-
-    return width >= 40 && height >= 40;
-  }
-
-  function getBackgroundImageUrl(element) {
-    const backgroundImage = window.getComputedStyle(element).backgroundImage || "";
-    const match = backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-
-    if (!match?.[1] || match[1].startsWith("data:image/svg")) {
-      return "";
-    }
-
-    try {
-      return new URL(match[1], location.href).href;
-    } catch {
-      return match[1];
-    }
-  }
-
   function canvasElementToMarkdown(canvas, state) {
     const width = canvas.width || canvas.clientWidth;
     const height = canvas.height || canvas.clientHeight;
@@ -10276,92 +11296,6 @@
 
   function getMediaHeight(element) {
     return Number(element.getAttribute?.("height")) || element.naturalHeight || element.height || element.clientHeight || 0;
-  }
-
-  async function imageToDataUri(image, src) {
-    if (src.startsWith("data:")) {
-      return src;
-    }
-
-    try {
-      return await imageToDataUriFromSrc(src);
-    } catch (backgroundError) {
-      return imageToDataUriWithCanvas(image);
-    }
-  }
-
-  async function imageToDataUriFromSrc(src) {
-    if (src.startsWith("data:")) {
-      return src;
-    }
-
-    if (IMAGE_DATA_URI_CACHE.has(src)) {
-      const cached = IMAGE_DATA_URI_CACHE.get(src);
-
-      if (cached.ok) {
-        return cached.dataUri;
-      }
-
-      throw new Error(cached.error);
-    }
-
-    try {
-      const dataUri = await requestImageFromBackground(src);
-      IMAGE_DATA_URI_CACHE.set(src, {
-        ok: true,
-        dataUri
-      });
-      return dataUri;
-    } catch (error) {
-      IMAGE_DATA_URI_CACHE.set(src, {
-        ok: false,
-        error: error.message || String(error)
-      });
-      throw error;
-    }
-  }
-
-  function requestImageFromBackground(src) {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        {
-          type: "FETCH_IMAGE_AS_DATA_URI",
-          src,
-          pageUrl: location.href
-        },
-        (response) => {
-          const runtimeError = chrome.runtime.lastError;
-
-          if (runtimeError) {
-            reject(new Error(runtimeError.message));
-            return;
-          }
-
-          if (!response?.ok) {
-            reject(new Error(response?.error || "Background image fetch failed."));
-            return;
-          }
-
-          resolve(response.dataUri);
-        }
-      );
-    });
-  }
-
-  function imageToDataUriWithCanvas(image) {
-    const canvas = document.createElement("canvas");
-    const width = image.naturalWidth || image.width;
-    const height = image.naturalHeight || image.height;
-
-    if (!width || !height) {
-      throw new Error("Image dimensions are not available.");
-    }
-
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    context.drawImage(image, 0, 0);
-    return canvas.toDataURL("image/png");
   }
 
   function formatCodeBlock(pre) {
@@ -10477,60 +11411,6 @@
 
     const fence = trimmed.includes("`") ? "``" : "`";
     return `${fence}${trimmed}${fence}`;
-  }
-
-  function buildMarkdown(metadata, messages) {
-    const lines = [
-      "---",
-      `title: "${escapeYaml(metadata.title)}"`,
-      `source: "${escapeYaml(metadata.source)}"`,
-      `exported_at: "${metadata.exportedAt.toISOString()}"`,
-      `exporter: "Convo Vault ${metadata.exporterVersion}"`,
-      `message_count: ${metadata.messageCount}`,
-      "---",
-      "",
-      `# ${metadata.title}`,
-      "",
-      `Exported: ${metadata.exportedAt.toLocaleString()}`,
-      "",
-      `Source: ${metadata.source}`,
-      ""
-    ];
-
-    messages.forEach((message, index) => {
-      lines.push(`## ${index + 1}. ${formatRole(message.role)}`, "");
-
-      if (message.timestamp) {
-        lines.push(`_Time: ${message.timestamp}_`, "");
-      }
-
-      if (message.thinkingMarkdown) {
-        lines.push("### Thinking", "", message.thinkingMarkdown, "", "### Message", "");
-      }
-
-      lines.push(message.markdown || "_No text content found._", "");
-    });
-
-    return `${lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trim()}\n`;
-  }
-
-  function downloadMarkdown(filename, markdown) {
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-    downloadBlob(filename, blob);
-  }
-
-  function downloadBlob(filename, blob) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = filename;
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-
-    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
   function getConversationTitle() {
@@ -10948,10 +11828,6 @@
     return String(text || "").replace(/--/g, "- -").replace(/[<>]/g, "");
   }
 
-  function escapeYaml(text) {
-    return String(text || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
-
   function escapeRegExp(text) {
     return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -10996,4 +11872,105 @@
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
+
+  // Automatic export. A local program (the CLI or an agent skill) creates a job on
+  // the local renderer and opens this conversation with #convo-vault-job=<id>. The
+  // page then scans, validates and exports on its own and reports back, so nobody
+  // has to open the selector or press a button. The integrity gate still applies.
+  const AUTO_EXPORT_HASH_KEY = "convo-vault-job";
+  const AUTO_EXPORT_STATUS_INTERVAL_MS = 1000;
+  const startedAutoExportJobs = new Set();
+
+  function readAutoExportJobId() {
+    const hash = location.hash.replace(/^#/, "");
+    const jobId = new URLSearchParams(hash).get(AUTO_EXPORT_HASH_KEY) || "";
+    return /^[a-f0-9]{48}$/.test(jobId) ? jobId : "";
+  }
+
+  function removeAutoExportHash() {
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    hash.delete(AUTO_EXPORT_HASH_KEY);
+    const rest = hash.toString();
+    history.replaceState(history.state, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+  }
+
+  function sendAutoExportMessage(payload) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: "CONVO_VAULT_JOB", ...payload }, (response) => {
+          resolve(chrome.runtime.lastError ? { ok: false, error: chrome.runtime.lastError.message } : response);
+        });
+      } catch (error) {
+        resolve({ ok: false, error: error?.message || String(error) });
+      }
+    });
+  }
+
+  async function runAutoExportFromLocation() {
+    const jobId = readAutoExportJobId();
+
+    if (!jobId || startedAutoExportJobs.has(jobId)) {
+      return;
+    }
+
+    startedAutoExportJobs.add(jobId);
+    removeAutoExportHash();
+
+    const claim = await sendAutoExportMessage({ action: "claim", jobId });
+
+    if (!claim?.ok) {
+      // Another browser already took the job, or the renderer is not running.
+      console.warn(`[Convo Vault] Export job not started: ${claim?.error || "unknown error"}`);
+      return;
+    }
+
+    if (claim.options?.ping) {
+      await sendAutoExportMessage({ action: "status", jobId, state: "working", message: "Extension is installed and responding." });
+      await sendAutoExportMessage({ action: "close-tab", jobId });
+      return;
+    }
+
+    const captureMode = normalizeCaptureMode(claim.options?.captureMode);
+    let lastStatusAt = 0;
+    const report = (message, state = "working", options = {}) => {
+      const now = Date.now();
+
+      if (!options.force && now - lastStatusAt < AUTO_EXPORT_STATUS_INTERVAL_MS) {
+        return Promise.resolve();
+      }
+
+      lastStatusAt = now;
+      return sendAutoExportMessage({ action: "status", jobId, state, message });
+    };
+
+    try {
+      await report(`Scanning with ${formatCaptureMode(captureMode)} capture...`, "working", { force: true });
+      const capture = await messageExtractor.collect({ captureMode, onProgress: (message) => report(message) });
+      const messages = capture?.messages || [];
+
+      if (!messages.length) {
+        throw new Error("The conversation has no messages to export.");
+      }
+
+      await report(`Captured ${messages.length} messages. Rendering the bundle...`, "working", { force: true });
+      await exportSelectedMessages(messages, {
+        captureMode: capture.captureMode,
+        completeness: capture.completeness,
+        allowIncomplete: claim.options?.allowIncomplete === true,
+        jobId,
+        onProgress: (message) => report(message)
+      });
+
+      if (claim.options?.closeTab !== false) {
+        await sendAutoExportMessage({ action: "close-tab", jobId });
+      }
+    } catch (error) {
+      await report(error?.message || String(error), "error", { force: true });
+    }
+  }
+
+  window.addEventListener("hashchange", () => {
+    void runAutoExportFromLocation();
+  });
+  void runAutoExportFromLocation();
 })();
