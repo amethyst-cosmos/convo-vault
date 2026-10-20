@@ -1,0 +1,129 @@
+# 更新日志
+
+[English](CHANGELOG.md)
+
+## 0.11.0
+
+由 Agent 来跑导出。从这个版本起不用再点面板：对 Claude 或 Codex 说“把这个对话导出来”，或者发一张截图，剩下的它来做。
+
+- **Agent skill、命令行和 MCP 服务**：Claude 和 Codex 的 `convo-vault` skill，`convo-vault export <链接|id>`，以及给聊天类应用用的 MCP 服务（`export_conversation`、`export_status`、`check_setup`）。命令行另有 `setup`、`verify`、`doctor`、`update`、`skill install`、`mcp install`、`backend`
+- **自动导出任务**：命令行在本地渲染服务里创建任务，并用带任务 id 的网址打开对话；扩展认领任务后自动抓取、过完整性闸门、渲染、交回 zip 并关闭标签页。任务只能由本机程序创建、只能由扩展认领；抓取不完整时任务失败并说明原因
+- **一句话安装**：`INSTALL.md` 是写给 Agent 的安装步骤，把仓库链接发给 Agent 说“帮我安装”即可
+- **渲染服务自动退出**：最后一次使用两分钟后自己退出（处理请求时不会退出）；扩展弹窗的 Copy Start 启动的服务保持常驻
+- **只导出数据**：`--no-pdf`（MCP 参数 `pdf: false`）跳过 PDF，不依赖无头 Chrome
+- **修复**：`--no-extract` 和 `setup --no-open` 之前不生效
+- **修复（首次在 Chrome 真实导出时发现）**：Markdown 里出现了 ChatGPT 生成式界面的 fallback 遗留的布局标签（`<box ...>`、`<row ...>`、`<checkbox .../>`），现已去掉，复选框改为 `- [ ]` / `- [x]`；PDF 本来就是对的
+- **项目规范**：英文成为 README、CHANGELOG、INSTALL 的默认语言（中文版为 `*.zh-CN.md`）；新增 MIT 许可证、`SECURITY.md`、`CONTRIBUTING.md`、Issue 和 PR 模板、更完整的 `package.json` 元数据、PDF 效果样张，以及 `npm run package` 生成的发布包
+
+## 0.10.1
+
+文档与 CI：
+
+- **README 重写**：新增横幅和“对 Agent 说话”的演示图，安装步骤改为三步，补上各环境能否使用的对照表，面板截图收进折叠区
+- **CI**：修复 Windows 上 CLI 端到端测试失败；测试改用 `CONVO_VAULT_HOME` 指定配置目录，不再改写用户主目录环境变量
+- **仓库整理**：删除已合并的旧分支，合并后自动删除分支
+
+## 0.10.0
+
+让 Agent 直接导出，不用再点面板：
+
+- **Agent Skill**：新增 `convo-vault` skill，可装进 Claude 和 Codex。对 Agent 说“把这个对话导出来”并给出链接，或直接发对话截图，它会自己读出链接、调用命令行、打开页面、导出并把文件夹位置告诉你；不再需要选 Fast / Hybrid / Full、点 Start Scan 或 Export
+- **命令行 `convo-vault`**：`export <链接|对话 id>` 一条命令完成导出，默认 Fast，结果解压到 `~/Downloads/convo-vault/`。另有 `setup`（装依赖、构建扩展、安装 skill）、`doctor`（自检）、`skill install`、`backend start|stop|status`
+- **自动导出任务**：命令行在本地渲染服务里创建任务，用 `#convo-vault-job=<id>` 打开对话页；扩展认领任务后自动扫描、过完整性闸门、渲染并交回 zip，然后关闭标签页。任务只能由本机程序创建、只能由扩展认领，网页脚本调不了。完整性闸门照常生效：抓取不完整时任务失败并说明原因，不会静默导出残缺内容
+- **一键发布包**：`npm run package` 生成 `dist/convo-vault-<版本>.zip`（扩展、命令行、渲染服务、skill 一起），推送 `v*` 标签时 GitHub Actions 自动发布到 Releases
+- **一句话安装**：新增 `INSTALL.md`（写给 Agent 的安装步骤）。把仓库链接发给 Claude Code 或 Codex，说“帮我安装”，它会克隆、装依赖、构建扩展、装 skill 并验证；`verify` 用一个 ping 任务确认浏览器里的扩展有响应，`update` 拉取新版本并重新安装
+- **MCP 服务**：新增 `scripts/mcp-server.mjs`（无依赖，stdio），提供 `export_conversation`、`export_status`、`check_setup`；`mcp install` 写入 Claude 桌面版配置，`mcp config` 打印 Claude Code、Codex 等客户端的配置。Claude 桌面版的普通聊天因此也能用链接或截图导出
+- **文档**：README 重写；历史更新说明移到本文件
+
+## 0.9.5
+
+完整记录思考过程：
+
+- **按时间顺序记录每一步**：Fast 导出时，把每个回答从提问到作答之间 ChatGPT 保存的所有步骤按原顺序记下来：思考摘要、模型写给你的说明、工具调用（网页搜索、GitHub 等应用、代码执行）及其返回内容、思考总结。每步带时间戳和相对秒数，并发调用的结果按调用顺序配对
+- **完整内容只放在 `*.agent-trace.json`**：工具返回的原文（打开的网页、应用数据、代码输出）不再截断成 300–500 字；`*.agent-trace.md` 是可读版，长输出截断并指明 JSON 位置。`data.json` 和 `messages.jsonl` 里只留统计数，不再重复三份
+- **来源索引**：每个回答和整段对话都列出思考时看过的全部网页，标明出现在哪几轮、回答是否引用
+- **PDF 里的思考过程改为时间顺序**，和 ChatGPT 的思考面板一致；每次搜索列出全部新来源（同一回答里已列过的不重复），应用调用显示调用了什么和参数
+- **ChatGPT 本身不保存的内容如实标注**：网页搜索的检索词和 `functions.*` 调用的参数在 ChatGPT 的数据里是空的，记录里标为 `inputHidden`，不会编造
+
+## 0.9.4
+
+PDF 分页与思考过程：
+
+- **分页按 Chrome 实际排版计算**：以前按高度估算分页，遇到不能拆开的卡片、引用块会越估越偏，出现回答标题单独留在页底、半页空白等问题。现在先把对话按一页高的分栏排一遍，读出每个元素真实落在哪一页，再决定在哪里另起一页；超过 40% 页高的“不拆分”块允许跨页。实测《整理聊天记录》从 180 页减到 157 页，低于六成满的页面从 31 页降到 2 页
+- **思考过程不再混入工具原始输出**：联网工具打开网页后返回的原始内容（例如整段 GitHub API JSON）和模型的分析说明走同一个通道，以前被误当成“分析计划”写进思考过程。现在只保留模型自己的说明，与 ChatGPT 页面显示一致
+- **生成式界面里的文件链接**显示 ChatGPT 给的链接文字（如“下载人工验收评分表 v0.4”），不再显示文件名
+
+## 0.9.3
+
+生成式界面按网页样式绘制：
+
+- **生成式界面在本地画出来**：ChatGPT 的生成式回答（卡片、流程图、工作台界面、P0–P4 阶段列表、评分条、文件下载卡片、写作块）以前只能导出文字版。现在导出包保存 ChatGPT 自己的界面程序，本地渲染器在离线的 PDF 页面里执行它，画出接近网页的静态界面；按钮和选择不可交互，图片搜索结果显示为带标题的占位框。某个界面画不出来时，自动改用原来的文字版
+- **Markdown 不变**：`.md` 和数据文件仍是文字版，界面程序只保存在 payload JSON 里，供以后重新渲染
+- **代码整理**：内容脚本 `src/content/index.js` 从 7200 行拆成按职责划分的模块（选择面板、消息识别、思考过程、DOM 转 Markdown、导出），生成的 `content.js` 与拆分前逐字节相同
+
+## 0.9.2
+
+生成式界面里的列表与评分图：
+
+- **循环内容不再丢失**：ChatGPT 自带的 `fallbackMarkdown` 会整段省略 `{#each}` 循环生成的内容（例如阶段列表、评分条）。当循环数据是写在回答里的字面量时，导出改为从组件源码展开，每行合并为一行（如“意图理解 · 25%”）；只解析字面量，不执行任何代码。数据来自外部变量时保留 fallback，并在 debug log 计数
+- **图片搜索占位**统一显示为 `*[Image search: …]*`
+
+## 0.9.1
+
+图片打包、PDF 阅读版式与超长对话：
+
+- **Fast 成为默认推荐模式**：面板默认选中 `Fast (Recommended)`，未指定模式的导出也走 Fast
+- **图片打包**：ChatGPT 上传的截图改由页面用当前登录状态下载后打包进 zip，失败时在面板上说明原因；读取上传文档时生成的逐页图片（只给模型看，ChatGPT 页面不显示）不再混入回答
+- **PDF 阅读版式**：接近 ChatGPT 页面的单栏排版，提问为右侧气泡、截图完整不裁切，回答通栏显示；头像与编号、时间放在每条消息的小字行；目录只列提问；脚注可点击并合并相同来源；中文标点旁的粗体正常显示
+- **超长对话加载**：Fast 先一次取回完整对话树（约 2700 个节点的对话约 10 秒），分页接口作为后备；单次请求超时放宽到 45 秒，翻页时面板显示页数和已载入消息数
+- **重复来源**：回答多次引用同一份上传文档时，脚注只列一次
+
+## 0.9.0
+
+适配 ChatGPT 2026 年 10 月的页面与回复格式：
+
+- **完整性检查以接口为准**：三种模式都从 ChatGPT conversation API 的原始节点生成"应有消息清单"，按 ChatGPT 消息 id 逐条核对导出结果；不再依赖页面上已经消失的 `conversation-turn-N` 编号，也不再拿导出结果和它自己比较
+- **同角色相邻有原因**：用户连续两条消息之间没有回复时，报告会说明是"回复在产生内容前被停止"（`client_stopped`）还是"ChatGPT 没有存储任何回复"
+- **新页面结构（消息单元）**：Full 和 Hybrid 识别 `data-chatgpt-search-unit-key` 消息单元，从单元读取角色和消息 id；虚拟滚动下按消息 id 保持顺序；Hybrid 按消息 id 合并 Fast 与 Full 的同一条消息
+- **生成式界面回复（DIL）**：带卡片、流程框、按钮、单选组的新式回复，导出 ChatGPT 自带的 `fallbackMarkdown`，不再把 `<box>`、`<row>`、`{@body ...}` 等组件源码写进 Markdown
+- **内联标记**：`cite` 引用解析成带链接的脚注（同时支持新的 `search_result_groups` 和旧的 `grouped_webpages`），`entity` 输出实体名，`url` 输出 Markdown 链接，写作块（`:::writing`）输出为可复制的 ```` ```writing ```` 代码块
+- **Debug log 页面信息**：页面地址和标题在开始抓取时记录，导出期间切换对话不再写错
+
+## 0.8.5
+
+深度强化思考链（Thinking Trace）与文献引用可点击性：
+
+- **高保真深度思考捕获**：支持长达数分钟的复杂多步思考链（Multi-Step Chain-of-Thought）全量提取，耗时与推理标题规范化折叠
+- **点击直达的文献引用**：搜索引用与云端文档切片全面转换为标准 Markdown 格式，引用角标点击直达目标源
+- **架构解耦与纯净知识包**：彻底解除对下游特定笔记软件（如 Obsidian）的强制绑定，回归通用 Agent 知识资产原语
+
+## 0.8.3
+
+强化图像素材完整性与离线账本：
+
+- **图像素材完整归档**：多模态对话中的关键图片本地 SHA-256 缓存归档，远端引用与占位卡片标准化
+- **Assets Manifest 账本**：详细记录全部 100+ 媒体资产的来源、存储策略、降级原因与引用位置
+
+## 0.8.2
+
+迁移 ChatGPT 复数分页接口（Plural API Pagination）：
+
+- **Fast API 分页自动穿越**：全面适配 `/backend-api/conversations/{id}` 最新长对话分页流，自动向前分页至对话起点
+- **会话 Token 凭证自愈**：当 `/api/auth/session` 受限时，自动无缝提取网页端 Bootstrap Session，无需用户重新登录
+
+## 0.8.1
+
+推出 Agent 认知与工具调用执行链路 Sidecars（`*.agent-trace.json` & `*.agent-trace.md`）：
+
+- **执行追踪隔离归档**：将 ChatGPT 内部的文档切片（`[L1]...`）、Python 沙盒代码与 Web 搜索操作单独提取为 Agent 报告，避免污染干净的 Markdown/PDF 答复正文
+- **思考活动时间线**：计划 (`💬`)、工具 (`🔌`)、搜索 (`🔍`)、执行 (`⚙️`)、推理 (`🧠`) 结构化分类呈现
+
+## 0.7.26
+
+重磅推出 Fast 2.0 轮次聚合引擎（Turn-Chain Synthesizer）与全维度元数据提取：
+
+- **Turn-Chain 轮次链路聚合**：彻底解决多步工具调用（DALL-E 绘图、代码沙盒、Drive 插件）导致的 11 条助手回复漏抓与图片丢失问题；保证每个用户提问严格对称对应一个高保真助手大卡片（100% 轮次召回）
+- **DALL-E 与多模态图像资产全量保留**：自动提取 DALL-E 绘图节点生成的全部高清图片指针与沙盒工件，消灭 Same-Role Adjacency 断层
+- **思考链与精准耗时（Thinking Process & Duration）**：自动提取思考摘要、推理标题与真实思考秒数（如 `Worked for 11s`、`Worked for 9m 38s`），格式化为折叠思考块
+- **文献引用与标准角标（Sources & Citations Footnotes）**：自动解析 Google Docs / 网页调研引用，将内部标记替换为标准 Markdown 文献脚注 `[^1]: [标题](URL)`
+- **长期记忆与历史对话（Memory & Context）**：自动提取记忆引用与前置历史对话关联卡片

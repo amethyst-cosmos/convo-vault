@@ -18,8 +18,14 @@ const packageName = `convo-vault-${version}`;
 // Paths copied as-is; directories skip dependency and scratch folders.
 const include = [
   "README.md",
+  "README.zh-CN.md",
   "CHANGELOG.md",
+  "CHANGELOG.zh-CN.md",
   "INSTALL.md",
+  "INSTALL.zh-CN.md",
+  "LICENSE",
+  "SECURITY.md",
+  "CONTRIBUTING.md",
   "package.json",
   "manifest.json",
   "background.js",

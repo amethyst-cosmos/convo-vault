@@ -1,8 +1,15 @@
 {
   "name": "@convo-vault/advanced-pdf",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "private": true,
   "description": "Local high-quality renderer for Convo Vault structured exports.",
+  "author": "amethyst-cosmos",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amethyst-cosmos/convo-vault.git",
+    "directory": "tools/advanced-pdf"
+  },
   "type": "commonjs",
   "scripts": {
     "render": "node render.js",
