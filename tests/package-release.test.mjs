@@ -27,7 +27,7 @@ test("release package holds the extension, CLI, renderer and skill without depen
       "dist/convo-vault-extension/manifest.json",
       "dist/convo-vault-extension/content.js",
       "cli/convo-vault.mjs",
-      "skills/convo-vault/SKILL.md",
+      "skills/convo-vault-skill/SKILL.md",
       "renderer/server.js",
       "renderer/package.json"
     ]) {

@@ -37,7 +37,7 @@ Usage:
   convo-vault update
   convo-vault reload [--browser NAME]
   convo-vault doctor
-  convo-vault skill install [--agents auto|claude|codex|all]
+  convo-vault skill install [--agents auto|claude|codex|all] [--dir FOLDER]
   convo-vault mcp install [--client claude-desktop]   (or: mcp config)
   convo-vault backend start|stop|status
 
@@ -66,7 +66,7 @@ try {
     case "doctor": await doctor(); break;
     case "skill":
       if (positional[0] !== "install") throw new Error("Usage: convo-vault skill install");
-      await printSkillInstall(flags.agents || "auto");
+      await printSkillInstall(flags.agents || "auto", flags.dir);
       break;
     case "mcp": await mcpCommand(positional[0], flags); break;
     case "backend": await backendCommand(positional[0]); break;
@@ -81,7 +81,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "browser", "timeout", "agents", "client"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -252,7 +252,8 @@ async function setup(flags) {
   const browsers = listInstalledBrowsers();
   const browser = flags.browser ? findBrowser(flags.browser) : browsers[0] || null;
   if (flags.browser && !browser) throw new Error(`Unknown browser "${flags.browser}".`);
-  if (browser) await writeConfig({ browser: browser.name });
+  // The skill finds this project again through the recorded path.
+  await writeConfig({ repo: repoRoot, ...(browser ? { browser: browser.name } : {}) });
 
   console.log("");
   console.log("Convo Vault is ready.");
@@ -357,8 +358,8 @@ async function update(flags) {
   console.log("\nUpdated.");
 }
 
-async function printSkillInstall(target) {
-  const installed = await installSkill(target);
+async function printSkillInstall(target, dir) {
+  const installed = await installSkill(target, { dir });
   if (!installed.length) {
     console.log("No Claude or Codex folder found. Use --agents all to create the skill folders anyway.");
     return;

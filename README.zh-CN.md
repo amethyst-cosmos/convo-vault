@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.3-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.5-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.3`
+当前版本：`0.11.5`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -122,6 +122,8 @@ flowchart LR
 - 扩展认领任务，用页面里已登录的会话抓取对话，通过完整性检查后交给渲染服务，完成后自动关掉标签页
 - 抓取不完整时任务会失败并说明缺了什么，不会静默导出残缺内容
 
+skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到任何地方，或运行 `node cli/convo-vault.mjs skill install --dir <文件夹>`。它自带的启动脚本会自己找到项目，第一次用时自动从 GitHub 安装。
+
 ## 导出的内容
 
 每次导出得到一个文件夹，同时保留 `.zip`。
@@ -201,6 +203,10 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.11.5` skill 改名为 `convo-vault-skill`。
+
+`0.11.4` skill 自成一体，可以保存到任意文件夹。
 
 `0.11.3` 修复 Markdown 里漏出布局标签。
 
