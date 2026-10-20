@@ -26,6 +26,7 @@ function load({ claim, exportConversation, hash = `#convo-vault-job=${JOB_ID}` }
       }
     },
     URLSearchParams,
+    EXPORTER_VERSION: "9.8.7",
     console,
     Date,
     Promise,
@@ -87,6 +88,7 @@ test("a ping job only reports that the extension answers and closes the tab", as
   await settle();
 
   assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab"]);
+  assert.equal(harness.sent[1].message, "Extension 9.8.7 is installed and responding.", "the reply carries the extension version");
   assert.equal(exported, false);
 });
 

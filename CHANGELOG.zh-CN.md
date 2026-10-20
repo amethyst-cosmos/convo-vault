@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.md)
 
+## 0.11.6
+
+一个不熟悉项目、被限制在工作目录内的 Agent 从 GitHub 链接安装时遇到三处不顺：
+
+- **`setup` 不再因为 skill 装不上而中断**：写 `~/.claude/skills`、`~/.codex/skills` 可能被拒绝（沙箱里的 Agent、只读的家目录）。现在 setup 打印警告后继续，配置照常写入，也会显示“加载扩展”的步骤。`setup --no-skill` 可以主动跳过 skill
+- **`verify` 会显示应答的扩展是哪个版本**：扩展在 ping 的回复里带上版本号，`verify` 输出 `Extension X answered in <浏览器>`；X 与本项目版本不同时提示用 `reload`。旧版扩展不带版本号，会如实说明
+- **INSTALL.md 说明如何把一切放在同一个文件夹**：`CONVO_VAULT_HOME`（配置）、`--out`（导出）和 `setup --no-skill`
+
 ## 0.11.5
 
 - **skill 改名为 `convo-vault-skill`**：和项目同名时，Agent 分不清“convo-vault”指项目还是 skill。文件夹是 `skills/convo-vault-skill`，`skill install` 会清掉旧的 `convo-vault` 文件夹（仅当它是这个 skill 的）

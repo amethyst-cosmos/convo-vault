@@ -132,7 +132,11 @@ test("the renderer started for the CLI exits by itself when idle", async () => {
   assert.equal(exit, 0);
 });
 
-test("verify succeeds once the extension claims a ping job", async (t) => {
+const manifestVersion = JSON.parse(await readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8")).version;
+
+// Runs `verify` against a simulated extension that claims the ping job and then reports `statusMessage`
+// (null = claims only, like an extension that sends no status at all).
+async function verifyWithSimulatedExtension(t, statusMessage) {
   const port = await getAvailablePort();
   const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-home-"));
   t.after(async () => {
@@ -152,11 +156,71 @@ test("verify succeeds once the extension claims a ping job", async (t) => {
   const exited = new Promise((resolve) => cli.on("exit", resolve));
 
   const jobId = await waitFor(() => stderr.match(/#convo-vault-job=([a-f0-9]{48})/)?.[1], () => stderr);
-  const claimed = await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" });
-  assert.equal(JSON.parse(claimed.body).options.ping, true);
+  const claimed = JSON.parse((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).body);
+  assert.equal(claimed.options.ping, true);
 
-  assert.equal(await exited, 0, stderr);
-  assert.match(stdout, /the Convo Vault extension answered/);
+  if (statusMessage) {
+    const headers = { "Content-Type": "application/json", "X-Convo-Vault-Token": claimed.token, Origin: "chrome-extension://test" };
+    await rawRequest(port, "POST", `/jobs/${jobId}/status`, headers, JSON.stringify({ state: "working", message: statusMessage }));
+  }
+
+  const status = await exited;
+  return { status, stdout, stderr };
+}
+
+test("verify prints the extension version and stays quiet when it matches the project", async (t) => {
+  const result = await verifyWithSimulatedExtension(t, `Extension ${manifestVersion} is installed and responding.`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`OK: Extension ${manifestVersion.replaceAll(".", "\\.")} answered in `));
+  assert.doesNotMatch(result.stdout, /reload/i);
+});
+
+test("verify hints to reload when the extension is not the project's version", async (t) => {
+  const result = await verifyWithSimulatedExtension(t, "Extension 0.0.1 is installed and responding.");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /OK: Extension 0\.0\.1 answered in /);
+  assert.ok(result.stdout.includes(`this project is ${manifestVersion}`), result.stdout);
+  assert.match(result.stdout, /convo-vault\.mjs" reload/);
+});
+
+test("verify still succeeds with an old extension that sends no version", async (t) => {
+  const result = await verifyWithSimulatedExtension(t, "Extension is installed and responding.");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /OK: the Convo Vault extension answered in /);
+  assert.match(result.stdout, /older extension/);
+});
+
+test("verify succeeds once the extension claims a ping job, even if it never reports a status", async (t) => {
+  const result = await verifyWithSimulatedExtension(t, null);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /the Convo Vault extension answered/);
+});
+
+test("setup keeps going when the skill folders cannot be written, and --no-skill skips them", async (t) => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-setup-home-"));
+  const config = await mkdtemp(path.join(os.tmpdir(), "convo-vault-setup-config-"));
+  t.after(async () => {
+    await rm(home, { recursive: true, force: true });
+    await rm(config, { recursive: true, force: true });
+  });
+  // A file where ~/.claude should be makes writing the skill fail on every platform and for root as well.
+  await writeFile(path.join(home, ".claude"), "not a folder");
+  const env = { HOME: home, USERPROFILE: home, CONVO_VAULT_HOME: config };
+
+  const failing = await run(["setup", "--agents", "claude", "--browser", "chrome", "--no-open"], env);
+  assert.equal(failing.status, 0, failing.stderr);
+  assert.match(failing.stderr, /Warning: could not install the skill/);
+  assert.match(failing.stdout, /Convo Vault is ready\./);
+  assert.match(failing.stdout, /Skill:\s+not installed/);
+  assert.match(failing.stdout, /Load unpacked/);
+  assert.equal(JSON.parse(await readFile(path.join(config, "config.json"), "utf8")).repo, repoRoot);
+
+  await rm(path.join(config, "config.json"));
+  const skipped = await run(["setup", "--agents", "claude", "--browser", "chrome", "--no-open", "--no-skill"], env);
+  assert.equal(skipped.status, 0, skipped.stderr);
+  assert.doesNotMatch(skipped.stderr, /Warning/);
+  assert.match(skipped.stdout, /Skill:\s+skipped \(--no-skill\)/);
+  assert.equal(JSON.parse(await readFile(path.join(config, "config.json"), "utf8")).repo, repoRoot);
 });
 
 test("CLI rejects links that are not ChatGPT conversations", async () => {
@@ -206,12 +270,14 @@ test("installing the skill removes the old convo-vault folder, and only when it 
   assert.equal(await stat(path.join(target, "other")).then(() => true, () => false), true, "other folders untouched");
 });
 
-function run(args) {
+function run(args, extraEnv = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [cliPath, ...args], { cwd: repoRoot, env: { ...process.env, CONVO_VAULT_NO_OPEN: "1" } });
+    const child = spawn(process.execPath, [cliPath, ...args], { cwd: repoRoot, env: { ...process.env, CONVO_VAULT_NO_OPEN: "1", ...extraEnv } });
+    let stdout = "";
     let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
     child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
-    child.on("exit", (status) => resolve({ status, stderr }));
+    child.on("exit", (status) => resolve({ status, stdout, stderr }));
   });
 }
 

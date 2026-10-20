@@ -32,7 +32,7 @@ const HELP = `Convo Vault CLI
 
 Usage:
   convo-vault export <chatgpt-url|conversation-id> [options]
-  convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open]
+  convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
   convo-vault verify [--browser NAME]
   convo-vault update
   convo-vault reload [--browser NAME]
@@ -49,6 +49,9 @@ Export options:
   --keep-tab           Leave the ChatGPT tab open after exporting
   --allow-incomplete   Export even if the integrity gate reports gaps
   --timeout SECONDS    Give up after this long (default: 900)
+
+Environment:
+  CONVO_VAULT_HOME     Config folder (default: ~/.convo-vault)
 `;
 
 const log = (message) => process.stderr.write(`[convo-vault] ${message}\n`);
@@ -248,7 +251,7 @@ async function setup(flags) {
   }
 
   const extensionDir = await ensureExtensionBuilt();
-  const installed = await installSkill(flags.agents || "auto");
+  const skill = await installSkillBestEffort(flags);
   const browsers = listInstalledBrowsers();
   const browser = flags.browser ? findBrowser(flags.browser) : browsers[0] || null;
   if (flags.browser && !browser) throw new Error(`Unknown browser "${flags.browser}".`);
@@ -258,7 +261,7 @@ async function setup(flags) {
   console.log("");
   console.log("Convo Vault is ready.");
   console.log(`  Renderer:  dependencies installed`);
-  console.log(`  Skill:     ${installed.length ? installed.map((item) => item.label).join(", ") : "no agent found (use: skill install --agents all)"}`);
+  console.log(`  Skill:     ${skill.summary}`);
   console.log(`  Extension: ${extensionDir}`);
   console.log("");
   console.log("One manual step, once: load the extension in your browser.");
@@ -271,6 +274,21 @@ async function setup(flags) {
   if (browser && flags.open !== false) {
     openInBrowser(extensionsPageUrl(browser), browser);
     if (process.platform === "darwin") spawnSync("open", [extensionDir]);
+  }
+}
+
+// The skill lives in folders outside the project (~/.claude, ~/.codex). An agent sandboxed to its
+// working folder cannot write there, and that must not stop the rest of setup.
+async function installSkillBestEffort(flags) {
+  if (flags.skill === false) return { summary: "skipped (--no-skill); install later with: skill install" };
+
+  try {
+    const installed = await installSkill(flags.agents || "auto");
+    return { summary: installed.length ? installed.map((item) => item.label).join(", ") : "no agent found (use: skill install --agents all)" };
+  } catch (error) {
+    log(`Warning: could not install the skill (${error.code || error.message}). Setup continues without it.`);
+    log("Run \"skill install\" later from a shell that may write ~/.claude and ~/.codex, or use \"skill install --dir FOLDER\".");
+    return { summary: "not installed (see the warning above)" };
   }
 }
 
@@ -303,7 +321,16 @@ async function verify(flags) {
 
     if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
       if (browser) await writeConfig({ browser: browser.name });
-      console.log(`OK: the Convo Vault extension answered in ${browser?.name || "your browser"}.`);
+      const version = await waitForPingVersion(jobId);
+      const where = browser?.name || "your browser";
+      console.log(version ? `OK: Extension ${version} answered in ${where}.` : `OK: the Convo Vault extension answered in ${where}.`);
+      const expected = await sourceVersion();
+      if (version && expected && version !== expected) {
+        console.log(`The extension in the browser is ${version}, but this project is ${expected}. Run: node "${path.join(repoRoot, "cli", "convo-vault.mjs")}" reload`);
+        console.log("If that does not answer, click the reload icon on the browser's Extensions page.");
+      } else if (!version) {
+        console.log("This is an older extension that does not report its version. Reload it once on the Extensions page to update it.");
+      }
       console.log("Exports also need that browser to be signed in to ChatGPT.");
       return;
     }
@@ -313,6 +340,25 @@ async function verify(flags) {
     "No browser answered. Open the browser's Extensions page. If Convo Vault is listed but switched off, turn it on and click its reload icon.",
     `If it is not listed, turn on Developer mode, click Load unpacked and choose ${path.join(repoRoot, "dist", "convo-vault-extension")}. Then run verify again.`
   ].join("\n"));
+}
+
+// The ping job's status message carries the extension version once it has been sent.
+// Old extensions send no version, so this gives up quietly after a few seconds.
+async function waitForPingVersion(jobId) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const job = await getJob(jobId);
+    const version = job.message?.match(/^Extension (\d+\.\d+\.\d+\S*) is installed/)?.[1];
+    if (version) return version;
+    if (job.message === "Extension is installed and responding.") return "";
+    await sleep(200);
+  }
+  return "";
+}
+
+async function sourceVersion() {
+  const manifest = await fs.readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8").then(JSON.parse, () => null);
+  return manifest?.version || "";
 }
 
 // Makes the loaded extension reload itself, so a rebuilt dist/ takes effect without a click.
