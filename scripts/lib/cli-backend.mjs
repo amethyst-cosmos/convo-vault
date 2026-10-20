@@ -50,6 +50,8 @@ export async function ensureBackend(log) {
     env: {
       ...process.env,
       CGCE_CACHE_DIR: cacheDir,
+      // Closes itself two minutes after the last export, so nobody has to stop it.
+      CGCE_IDLE_EXIT_MS: process.env.CGCE_IDLE_EXIT_MS || String(2 * 60 * 1000),
       CGCE_LOCAL_API_TOKEN: randomBytes(32).toString("hex")
     }
   });

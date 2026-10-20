@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { readZip } from "../scripts/lib/zip-reader.mjs";
 import http from "node:http";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -74,6 +75,62 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const folder = await readdir(path.join(outDir, "Fixture conversation"));
   assert.ok(folder.some((name) => name.endsWith(".md")), folder.join(", "));
   assert.ok(folder.some((name) => name.endsWith(".pdf")), folder.join(", "));
+});
+
+test("--no-pdf exports a data-only bundle without needing a PDF renderer", async (t) => {
+  const port = await getAvailablePort();
+  const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-home-"));
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-out-"));
+  t.after(async () => {
+    await rawRequest(port, "POST", "/shutdown").catch(() => {});
+    await rm(home, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-2", "--out", outDir, "--no-pdf", "--no-extract"], {
+    cwd: repoRoot,
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  cli.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
+  cli.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+  const exited = new Promise((resolve) => cli.on("exit", resolve));
+
+  const jobId = await waitFor(() => stderr.match(/#convo-vault-job=([a-f0-9]{48})/)?.[1], () => stderr);
+  const claimed = JSON.parse((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).body);
+  assert.equal(claimed.options.pdf, false);
+
+  const prepared = await fetch(`http://127.0.0.1:${port}/prepare-render-bundle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Convo-Vault-Token": claimed.token },
+    body: JSON.stringify({ jobId, skipPdf: true, exportPayload: fixture, fileName: "Data only.zip" })
+  });
+  assert.equal(prepared.ok, true, await prepared.clone().text());
+
+  assert.equal(await exited, 0, stderr);
+  const names = (await readdir(outDir)).sort();
+  assert.deepEqual(names, ["Data only.zip"], "--no-extract keeps only the zip");
+  const entries = readZip(path.join(outDir, "Data only.zip")).entries.map((entry) => entry.name);
+  assert.ok(entries.some((name) => name.endsWith(".md")));
+  assert.ok(entries.some((name) => name.endsWith(".messages.jsonl")));
+  assert.ok(!entries.some((name) => name.endsWith(".pdf")), entries.join(", "));
+});
+
+test("the renderer started for the CLI exits by itself when idle", async () => {
+  const port = await getAvailablePort();
+  const server = spawn(process.execPath, [path.join(repoRoot, "tools", "advanced-pdf", "server.js")], {
+    cwd: repoRoot,
+    env: { ...process.env, CGCE_ADVANCED_PDF_PORT: String(port), CGCE_IDLE_EXIT_MS: "800" },
+    stdio: "ignore"
+  });
+  const exit = await Promise.race([
+    new Promise((resolve) => server.on("exit", (code) => resolve(code))),
+    new Promise((resolve) => setTimeout(() => resolve("still running"), 8000))
+  ]);
+  if (exit === "still running") server.kill();
+  assert.equal(exit, 0);
 });
 
 test("verify succeeds once the extension claims a ping job", async (t) => {

@@ -26,6 +26,8 @@ node "{{CLI}}" export "<url-or-id>"
 - It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to ChatGPT. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
+- Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster and needs no PDF renderer.
+- The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
 - Several conversations: run the command once per link, one after another.
 
 ## 3. After it finishes

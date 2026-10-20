@@ -95,3 +95,15 @@ test("a ping job only reports that the extension answers and closes the tab", as
   assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab"]);
   assert.equal(collected, false);
 });
+
+test("a data-only job skips the PDF when exporting", async () => {
+  let exportOptions = null;
+  load({
+    claim: { ok: true, options: { captureMode: "fast", pdf: false, closeTab: true } },
+    collect: async () => ({ messages: [{ id: "m1" }], captureMode: "fast", completeness: { complete: true } }),
+    exportMessages: async (messages, options) => { exportOptions = options; return { ok: true }; }
+  });
+  await settle();
+
+  assert.equal(exportOptions.skipPdf, true);
+});

@@ -45,6 +45,7 @@ Export options:
   --mode MODE          fast (default) | hybrid | full
   --browser NAME       Chrome, Edge, Brave... (default: the one that worked last time)
   --no-extract         Keep only the .zip
+  --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
   --keep-tab           Leave the ChatGPT tab open after exporting
   --allow-incomplete   Export even if the integrity gate reports gaps
   --timeout SECONDS    Give up after this long (default: 900)
@@ -85,7 +86,11 @@ function parseArgs(args) {
     const arg = args[index];
     if (!arg.startsWith("--")) { positional.push(arg); continue; }
     const key = arg.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    if (valued.has(key)) {
+    const negated = key.match(/^no([A-Z].*)$/);
+    if (negated) {
+      // --no-extract, --no-open, --no-pdf
+      flags[negated[1][0].toLowerCase() + negated[1].slice(1)] = false;
+    } else if (valued.has(key)) {
       if (index + 1 >= args.length) throw new Error(`--${arg.slice(2)} needs a value.`);
       flags[key] = args[index + 1];
       index += 1;
@@ -136,7 +141,8 @@ async function exportConversation(input, flags) {
     jobId = await createJob({
       captureMode,
       allowIncomplete: flags.allowIncomplete === true,
-      closeTab: flags.keepTab !== true
+      closeTab: flags.keepTab !== true,
+      pdf: flags.pdf !== false
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser);

@@ -15,6 +15,7 @@
       captureMode: options.captureMode,
       debugLog: options.debugLog,
       jobId: options.jobId,
+      skipPdf: options.skipPdf,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
@@ -100,6 +101,7 @@
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
       ...(options.jobId ? { jobId: options.jobId } : {}),
+      ...(options.skipPdf ? { skipPdf: true } : {}),
       fileName: defaultFileName,
       pageImages: pageImageDownloads.images,
       pageImageFailures: pageImageDownloads.failures

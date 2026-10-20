@@ -83,6 +83,7 @@
         completeness: capture.completeness,
         allowIncomplete: claim.options?.allowIncomplete === true,
         jobId,
+        skipPdf: claim.options?.pdf === false,
         onProgress: (message) => report(message)
       });
 
