@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.10.1";
+  const EXPORTER_VERSION = "0.10.2";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -1232,6 +1232,7 @@
       captureMode: options.captureMode,
       debugLog: options.debugLog,
       jobId: options.jobId,
+      skipPdf: options.skipPdf,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
@@ -1317,6 +1318,7 @@
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
       ...(options.jobId ? { jobId: options.jobId } : {}),
+      ...(options.skipPdf ? { skipPdf: true } : {}),
       fileName: defaultFileName,
       pageImages: pageImageDownloads.images,
       pageImageFailures: pageImageDownloads.failures
@@ -11958,6 +11960,7 @@
         completeness: capture.completeness,
         allowIncomplete: claim.options?.allowIncomplete === true,
         jobId,
+        skipPdf: claim.options?.pdf === false,
         onProgress: (message) => report(message)
       });
 

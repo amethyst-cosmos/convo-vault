@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.10.1-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.10.2-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <img alt="local first" src="https://img.shields.io/badge/local--first-%E4%B8%8D%E4%B8%8A%E4%BC%A0%E4%BB%BB%E4%BD%95%E5%86%85%E5%AE%B9-0f766e?style=flat-square">
@@ -19,7 +19,7 @@
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 
-当前版本：`0.10.1`
+当前版本：`0.10.2`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -152,9 +152,9 @@ node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 | `update` | 拉取最新版本并重新安装（git 克隆） |
 | `skill install` | 重新安装 Claude 和 Codex 的 skill |
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
-| `backend start` / `stop` / `status` | 本地渲染服务；导出时会自动启动 |
+| `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
 
-其他选项：`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
+其他选项：`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
 
 ## 抓取模式
 
@@ -227,6 +227,8 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.10.2` 渲染服务空闲后自动退出，不用再手动关；新增 `--no-pdf` 只导出数据（更快，不依赖 Chrome）。
 
 `0.10.1` 重写 README（横幅、演示图、更清晰的安装步骤），修复 Windows 上的 CI 测试。
 

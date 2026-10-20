@@ -42,7 +42,19 @@ const exportJobs = new Map();
 
 fs.mkdirSync(WORK_DIR, { recursive: true });
 
+// The CLI starts the renderer on demand and sets this so it exits by itself once
+// nothing has used it for a while. 0 keeps it running (the popup's Copy Start).
+const IDLE_EXIT_MS = Number(process.env.CGCE_IDLE_EXIT_MS || 0);
+let activeRequests = 0;
+let lastActivityAt = Date.now();
+
 const server = http.createServer((request, response) => {
+  activeRequests += 1;
+  lastActivityAt = Date.now();
+  response.on("close", () => {
+    activeRequests -= 1;
+    lastActivityAt = Date.now();
+  });
   handleRequest(request, response).catch((error) => {
     sendJson(response, 500, {
       ok: false,
@@ -50,6 +62,15 @@ const server = http.createServer((request, response) => {
     });
   });
 });
+
+if (IDLE_EXIT_MS > 0) {
+  setInterval(() => {
+    if (activeRequests === 0 && Date.now() - lastActivityAt >= IDLE_EXIT_MS) {
+      console.log(`[advanced-pdf-server] Idle for ${Math.round(IDLE_EXIT_MS / 1000)}s, exiting.`);
+      process.exit(0);
+    }
+  }, Math.max(250, Math.min(30_000, IDLE_EXIT_MS / 2))).unref();
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`[advanced-pdf-server] Listening on http://${HOST}:${PORT}`);
@@ -244,7 +265,9 @@ function createExportJob(body) {
       allowIncomplete: body?.allowIncomplete === true,
       closeTab: body?.closeTab !== false,
       // A ping job only proves the extension is installed and answering.
-      ping: body?.ping === true
+      ping: body?.ping === true,
+      // false skips the PDF: a data-only bundle needs no headless Chrome.
+      pdf: body?.pdf !== false
     },
     result: null
   };
@@ -666,12 +689,15 @@ async function buildRenderBundleArtifact(body) {
   });
   timings.mark("dataSidecarsWritten");
 
-  const result = await runRenderer({
-    jsonPath: renderJsonPath,
-    htmlPath,
-    pdfPath,
-    baseName
-  });
+  const skipPdf = body?.skipPdf === true;
+  const result = skipPdf
+    ? { ok: true }
+    : await runRenderer({
+      jsonPath: renderJsonPath,
+      htmlPath,
+      pdfPath,
+      baseName
+    });
   timings.mark("pdfRendered");
 
   if (!result.ok) {
@@ -689,10 +715,10 @@ async function buildRenderBundleArtifact(body) {
       name: `${baseName}.md`,
       path: markdownPath
     },
-    {
+    ...(skipPdf ? [] : [{
       name: `${baseName}.pdf`,
       path: pdfPath
-    },
+    }]),
     {
       name: `${baseName}.payload.json`,
       path: jsonPath
