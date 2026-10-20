@@ -2,6 +2,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const INCLUDE_FILES = {
+  "constants": "constants.js",
+  "selectors": "selectors.js",
+  "capture-orchestrator": "capture-orchestrator.js",
+  "capture-hybrid": "capture-hybrid.js",
+  "capture-budget": "capture-budget.js",
+  "capture-validation": "capture-validation.js",
+  "message-snapshot": "message-snapshot.js",
+  "capture-jobs": "capture-jobs.js",
+  "date-format": "date-format.js",
+  "dom-utils": "dom-utils.js",
+  "page-utils": "page-utils.js",
+  "text-utils": "text-utils.js",
   "auto-export": "auto-export.js",
   "bundle-export": "bundle-export.js",
   "debug-log": "debug-log.js",

@@ -3,9 +3,10 @@ import path from "node:path";
 import vm from "node:vm";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { buildContentScript } from "../scripts/lib/content-build.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const source = await readFile(path.join(repoRoot, "extension", "content", "index.js"), "utf8");
+const source = await buildContentScript(repoRoot);
 
 test("capture job manager cancels superseded work and rejects stale commits", () => {
   const context = loadFunctions([
