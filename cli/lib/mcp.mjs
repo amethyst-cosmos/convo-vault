@@ -1,13 +1,13 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { repoRoot } from "./cli-backend.mjs";
+import { repoRoot } from "./backend.mjs";
 
 const SERVER_NAME = "convo-vault";
 
 // Absolute paths: desktop apps do not inherit the shell PATH, so `node` alone may not resolve.
 export function mcpServerEntry() {
-  return { command: process.execPath, args: [path.join(repoRoot, "scripts", "mcp-server.mjs")] };
+  return { command: process.execPath, args: [path.join(repoRoot, "cli", "mcp-server.mjs")] };
 }
 
 export function claudeDesktopConfigPath() {

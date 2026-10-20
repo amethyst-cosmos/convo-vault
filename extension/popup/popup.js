@@ -213,7 +213,7 @@ function buildStartCommand(settings) {
 
   const args = [
     "node",
-    "scripts/start-local-backend.mjs",
+    "cli/start-local-backend.mjs",
     "--detached"
   ];
 

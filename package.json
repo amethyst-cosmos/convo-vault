@@ -36,15 +36,14 @@
     "test:fixtures": "node --test tests/export-fixtures.test.mjs tests/backend-fixtures.test.mjs",
     "build:extension": "node scripts/build-extension.mjs",
     "package": "node scripts/package-release.mjs",
-    "cli": "node scripts/convo-vault.mjs",
-    "backend": "node scripts/start-local-backend.mjs",
-    "backend:detached": "node scripts/start-local-backend.mjs --detached",
-    "backend:check": "node scripts/check-local-backend.mjs"
+    "cli": "node cli/convo-vault.mjs",
+    "backend": "node cli/start-local-backend.mjs",
+    "backend:detached": "node cli/start-local-backend.mjs --detached"
   },
   "engines": {
     "node": ">=20"
   },
   "bin": {
-    "convo-vault": "scripts/convo-vault.mjs"
+    "convo-vault": "cli/convo-vault.mjs"
   }
 }

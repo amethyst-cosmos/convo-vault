@@ -7,8 +7,8 @@ import { spawnSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CONFIG_DIR, readConfig, writeConfig } from "./lib/cli-config.mjs";
-import { extensionsPageUrl, findBrowser, listInstalledBrowsers, openInBrowser } from "./lib/cli-browser.mjs";
+import { CONFIG_DIR, readConfig, writeConfig } from "./lib/config.mjs";
+import { extensionsPageUrl, findBrowser, listInstalledBrowsers, openInBrowser } from "./lib/browser.mjs";
 import {
   BACKEND_URL,
   backendDependenciesInstalled,
@@ -19,9 +19,9 @@ import {
   getJob,
   repoRoot,
   stopBackend
-} from "./lib/cli-backend.mjs";
-import { installClaudeDesktopMcp, mcpSnippets } from "./lib/cli-mcp.mjs";
-import { installSkill, skillStatus } from "./lib/cli-skill.mjs";
+} from "./lib/backend.mjs";
+import { installClaudeDesktopMcp, mcpSnippets } from "./lib/mcp.mjs";
+import { installSkill, skillStatus } from "./lib/skill.mjs";
 import { extractZip, readZip } from "./lib/zip-reader.mjs";
 
 const CLAIM_TIMEOUT_MS = 25_000;
@@ -157,7 +157,7 @@ async function exportConversation(input, flags) {
   if (!usedBrowser && jobId && !(await wasClaimed(jobId))) {
     throw new Error([
       "The Convo Vault extension did not pick up the job.",
-      "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "scripts", "convo-vault.mjs") + "\" setup),",
+      "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
       "(2) that browser is signed in to ChatGPT, and (3) pass --browser NAME if you use a different one."
     ].join("\n"));
   }
@@ -266,7 +266,7 @@ async function setup(flags) {
   console.log("  1. Open the Extensions page and turn on Developer mode.");
   console.log("  2. Click Load unpacked and choose the Extension folder above.");
   console.log("  3. Sign in to ChatGPT in that browser.");
-  console.log("Then check it: node scripts/convo-vault.mjs verify");
+  console.log("Then check it: node cli/convo-vault.mjs verify");
   console.log("After that, ask your agent to export a conversation, or run: convo-vault export <link>");
 
   if (browser && flags.open !== false) {

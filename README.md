@@ -88,8 +88,8 @@ Or send a screenshot of the conversation and say "download this whole conversati
 Download `convo-vault-<version>.zip` from [Releases](https://github.com/amethyst-cosmos/convo-vault/releases) and unzip it, or clone the repository, then:
 
 ```bash
-node scripts/convo-vault.mjs setup     # install dependencies, build the extension, install the skill
-node scripts/convo-vault.mjs verify    # after loading the extension: confirm the browser answers
+node cli/convo-vault.mjs setup     # install dependencies, build the extension, install the skill
+node cli/convo-vault.mjs verify    # after loading the extension: confirm the browser answers
 ```
 
 Requires Node 20 or newer.
@@ -101,7 +101,7 @@ Requires Node 20 or newer.
 | Environment | Works | How |
 | --- | :---: | --- |
 | Claude Code, the Code tab of the Claude desktop app, Codex | ✅ | Skill, installed by `setup` |
-| Claude desktop chat, Cursor and other clients with local MCP | ✅ | `node scripts/convo-vault.mjs mcp install`, then send a link or screenshot in chat |
+| Claude desktop chat, Cursor and other clients with local MCP | ✅ | `node cli/convo-vault.mjs mcp install`, then send a link or screenshot in chat |
 | claude.ai and chatgpt.com in the browser (including ChatGPT agent mode) | ❌ | They run in a cloud sandbox and cannot reach your browser or local services |
 
 ## What you get
@@ -153,11 +153,11 @@ flowchart LR
 ## CLI
 
 ```bash
-node scripts/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
-node scripts/convo-vault.mjs export <link> --out ./archive            # choose where to save
-node scripts/convo-vault.mjs export <link> --mode hybrid              # fast (default) | hybrid | full
-node scripts/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
-node scripts/convo-vault.mjs export <link> --browser "Microsoft Edge"
+node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
+node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
+node cli/convo-vault.mjs export <link> --mode hybrid              # fast (default) | hybrid | full
+node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
+node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 ```
 
 | Command | What it does |
@@ -178,7 +178,7 @@ Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab op
 
 ## Using the panel by hand
 
-To export only some messages you can skip the agent: open a ChatGPT conversation, click the Convo Vault icon, choose **Open Selector**, pick a mode, **Start Scan**, review the integrity report, then export. The panel needs the renderer running: `node scripts/convo-vault.mjs backend start`, or **Copy Start** in the popup.
+To export only some messages you can skip the agent: open a ChatGPT conversation, click the Convo Vault icon, choose **Open Selector**, pick a mode, **Start Scan**, review the integrity report, then export. The panel needs the renderer running: `node cli/convo-vault.mjs backend start`, or **Copy Start** in the popup.
 
 <table>
   <tr>

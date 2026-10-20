@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { repoRoot } from "./cli-backend.mjs";
+import { repoRoot } from "./backend.mjs";
 
 const SKILL_NAME = "convo-vault";
 const TEMPLATE_PATH = path.join(repoRoot, "skills", SKILL_NAME, "SKILL.md");
@@ -23,7 +23,7 @@ export function listAgentTargets() {
  */
 export async function installSkill(target = "auto") {
   const template = await fs.readFile(TEMPLATE_PATH, "utf8");
-  const cliPath = path.join(repoRoot, "scripts", "convo-vault.mjs");
+  const cliPath = path.join(repoRoot, "cli", "convo-vault.mjs");
   const content = template.replaceAll("{{CLI}}", cliPath);
   const ids = target === "all" ? Object.keys(AGENTS)
     : target === "auto" ? await detectAgents()

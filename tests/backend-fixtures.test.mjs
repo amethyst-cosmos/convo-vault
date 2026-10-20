@@ -8,7 +8,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readZip } from "../scripts/lib/zip-reader.mjs";
+import { readZip } from "../cli/lib/zip-reader.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const fixturesDir = path.join(repoRoot, "tests", "fixtures");

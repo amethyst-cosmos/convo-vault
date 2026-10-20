@@ -28,6 +28,7 @@ const include = [
   "CONTRIBUTING.md",
   "package.json",
   "docs/images",
+  "cli",
   "scripts",
   "skills",
   "extension",
@@ -58,7 +59,7 @@ await fs.rm(stagingRoot, { recursive: true, force: true });
 
 const { size } = await fs.stat(zipPath);
 console.log(`Release package: ${zipPath} (${(size / 1024 / 1024).toFixed(1)} MB)`);
-console.log("Unzip it, then run: node scripts/convo-vault.mjs setup");
+console.log("Unzip it, then run: node cli/convo-vault.mjs setup");
 
 async function copyEntry(source, destination) {
   const stat = await fs.stat(source);

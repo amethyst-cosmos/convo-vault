@@ -7,7 +7,7 @@ Thanks for helping. Bug reports, fixtures from conversations that export badly, 
 ```bash
 git clone https://github.com/amethyst-cosmos/convo-vault.git
 cd convo-vault
-(cd renderer && pnpm install)    # or: node scripts/convo-vault.mjs setup
+(cd renderer && pnpm install)    # or: node cli/convo-vault.mjs setup
 npm run build:extension
 npm test
 ```

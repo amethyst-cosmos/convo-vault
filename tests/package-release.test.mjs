@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readZip } from "../scripts/lib/zip-reader.mjs";
+import { readZip } from "../cli/lib/zip-reader.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
@@ -26,7 +26,7 @@ test("release package holds the extension, CLI, renderer and skill without depen
       "README.md",
       "dist/convo-vault-extension/manifest.json",
       "dist/convo-vault-extension/content.js",
-      "scripts/convo-vault.mjs",
+      "cli/convo-vault.mjs",
       "skills/convo-vault/SKILL.md",
       "renderer/server.js",
       "renderer/package.json"

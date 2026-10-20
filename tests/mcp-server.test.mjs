@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const serverPath = path.resolve(import.meta.dirname, "..", "scripts", "mcp-server.mjs");
+const serverPath = path.resolve(import.meta.dirname, "..", "cli", "mcp-server.mjs");
 
 test("MCP server answers the handshake, lists tools and reports bad links as tool errors", async () => {
   const child = spawn(process.execPath, [serverPath], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, CONVO_VAULT_NO_OPEN: "1" } });

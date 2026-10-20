@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
-import { readZip } from "../scripts/lib/zip-reader.mjs";
+import { readZip } from "../cli/lib/zip-reader.mjs";
 import http from "node:http";
 import { createServer } from "node:net";
 import os from "node:os";
@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const cliPath = path.join(repoRoot, "scripts", "convo-vault.mjs");
+const cliPath = path.join(repoRoot, "cli", "convo-vault.mjs");
 const fixture = JSON.parse(await readFile(path.join(repoRoot, "tests", "fixtures", "multilingual-export.payload.json"), "utf8"));
 
 test("CLI exports a conversation through the extension job flow", async (t) => {

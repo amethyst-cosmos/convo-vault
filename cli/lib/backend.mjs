@@ -35,7 +35,7 @@ export async function ensureBackend(log) {
   }
 
   if (!backendDependenciesInstalled()) {
-    throw new Error("Renderer dependencies are not installed. Run: node scripts/convo-vault.mjs setup");
+    throw new Error("Renderer dependencies are not installed. Run: node cli/convo-vault.mjs setup");
   }
 
   log("Starting the local renderer...");
