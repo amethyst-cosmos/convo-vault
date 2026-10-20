@@ -1,20 +1,17 @@
 node_modules/
-renderer/node_modules/
 tmp/
 output/
-.convo-vault/
 dist/
+.DS_Store
+
+# Runtime data, caches and local profiles
+.convo-vault/
+
+# Private notes and local config
 CURRENT_PROGRESS.md
 vault-private/
-vault-private-*/
-tools/knowledge-pack/tmp/
 .env
 .env.*
 !.env.example
-config.local.*
-catalog-private/
-datasets-private/
-embeddings/
-vector-store/
 *.local.json
 *.local.yaml
