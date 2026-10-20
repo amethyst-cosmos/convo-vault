@@ -1,47 +1,49 @@
-# 给 Agent：安装并使用 Convo Vault
+# For agents: install and use Convo Vault
 
-用户让你“安装这个项目”时，按下面的步骤做。目标：装好后，用户只需对你说“导出这个 ChatGPT 对话 <链接或截图>”。
+When a user asks you to install this project, follow these steps. The goal: afterwards the user only has to say "export this ChatGPT conversation <link or screenshot>".
 
-## 安装
+A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
 
-1. **确定位置**：用户没指定就装到 `~/convo-vault`。
-2. **取代码**：`git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <位置>`。没有 git 就下载最新 Release 的 zip 解压。
-3. **检查 Node 20+**：`node -v`。没有或版本过低，先帮用户装（macOS `brew install node`，Windows `winget install OpenJS.NodeJS.LTS`，或用户已有的 mise/nvm）。
-4. **运行安装**：
+## Install
+
+1. **Pick a location.** Use `~/convo-vault` unless the user names another.
+2. **Get the code.** `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <location>`. Without git, download the latest release zip and unzip it.
+3. **Check Node 20 or newer.** Run `node -v`. If it is missing or too old, help the user install it (`brew install node` on macOS, `winget install OpenJS.NodeJS.LTS` on Windows, or their own mise or nvm).
+4. **Run setup.**
 
    ```bash
-   cd <位置> && node scripts/convo-vault.mjs setup
+   cd <location> && node scripts/convo-vault.mjs setup
    ```
 
-   它会装渲染依赖、构建扩展，把 skill 装进 Claude 和 Codex（找到哪个装哪个），并打开浏览器的扩展页面。用户常用的浏览器不是 Chrome 时加 `--browser edge`（或 brave）。
-5. **让用户在浏览器里加载扩展（只此一步需要人手，一次性）**：
-   1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”；
-   2. 点“加载已解压的扩展程序”，选择 `<位置>/dist/convo-vault-extension`；
-   3. 在这个浏览器里登录 ChatGPT。
+   It installs the renderer dependencies, builds the extension, installs the skill for Claude and Codex (whichever it finds) and opens the browser's extensions page. If the user's browser is not Chrome, add `--browser edge` (or `brave`).
+5. **Ask the user to load the extension. This is the only manual step, and it happens once.**
+   1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
+   2. Click **Load unpacked** and choose `<location>/dist/convo-vault-extension`.
+   3. Sign in to ChatGPT in that browser.
 
-   浏览器不允许程序自动安装未上架的扩展，所以这一步不要假装能替用户完成。
-6. **验证**：`node scripts/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK`。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
-7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node scripts/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node scripts/convo-vault.mjs mcp config` 打印的配置。
-8. **告诉用户**：新装的 skill 要在新开的会话里才会生效，请重开一个会话。
+   Browsers do not let programs install unpublished extensions, so do not pretend you can do this for the user.
+6. **Verify.** Run `node scripts/convo-vault.mjs verify`. It opens a ChatGPT page and confirms the extension answers, printing `OK`. If it fails, relay the message, let the user finish step 5, and try again.
+7. **Optional, for Claude desktop's normal chat (not the Code tab).** Run `node scripts/convo-vault.mjs mcp install`, then ask the user to fully quit and reopen Claude desktop. For other MCP clients, use the settings printed by `node scripts/convo-vault.mjs mcp config`.
+8. **Tell the user** to open a new session: a newly installed skill is only picked up by sessions started afterwards.
 
-## 使用
+## Use
 
-用户给出对话链接或截图（地址栏里有 `chatgpt.com/c/<id>`），运行：
+When the user gives a conversation link or a screenshot (the address bar shows `chatgpt.com/c/<id>`), run:
 
 ```bash
-node <位置>/scripts/convo-vault.mjs export "<链接>"
+node <location>/scripts/convo-vault.mjs export "<link>"
 ```
 
-默认 Fast 模式，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选模式或点面板。详细规则见已安装的 `convo-vault` skill。
+The default is Fast mode, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to choose a mode or click the panel. The installed `convo-vault` skill has the detailed rules.
 
-## 更新与排错
+## Update and troubleshoot
 
-- 更新：`node <位置>/scripts/convo-vault.mjs update`（拉取最新代码并重新安装）；扩展已加载的话，提醒用户在扩展页面点一下重新加载。
-- 自检：`node <位置>/scripts/convo-vault.mjs doctor`。
-- 渲染服务由导出命令自动启动，日志在 `<位置>/.convo-vault/backend.log`。
+- Update: `node <location>/scripts/convo-vault.mjs update` pulls the latest code and reinstalls. If the extension is already loaded, ask the user to reload it on the extensions page.
+- Check: `node <location>/scripts/convo-vault.mjs doctor`.
+- The renderer starts automatically on export and exits when idle. Its log is `<location>/.convo-vault/backend.log`.
 
-## 不要做
+## Do not
 
-- 不要读取、索要或粘贴用户的 ChatGPT Cookie、令牌或密码；扩展使用浏览器里已登录的会话。
-- 不要把对话内容上传到任何在线服务；一切都在本机。
-- 用户没同意前，不要用 `--allow-incomplete` 导出不完整的抓取。
+- Do not read, ask for or paste the user's ChatGPT cookies, tokens or password. The extension uses the session already in the browser.
+- Do not upload conversation content to any online service. Everything stays on the machine.
+- Do not export an incomplete capture with `--allow-incomplete` unless the user agrees.

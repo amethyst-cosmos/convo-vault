@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="对 Agent 说一句话就能导出">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img" aria-label="Tell an agent once and get the full export folder">
   <defs>
     <linearGradient id="user" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6d4aff"/>
@@ -15,28 +15,28 @@
     <circle cx="52" cy="40" r="7" fill="#ff5f57"/>
     <circle cx="76" cy="40" r="7" fill="#febc2e"/>
     <circle cx="100" cy="40" r="7" fill="#28c840"/>
-    <text x="500" y="46" text-anchor="middle" font-size="15" fill="#6b7280">Claude Code · Codex · Claude 桌面版</text>
+    <text x="500" y="46" text-anchor="middle" font-size="15" fill="#6b7280">Claude Code · Codex · Claude desktop</text>
 
     <rect x="470" y="92" width="480" height="104" rx="20" fill="url(#user)"/>
-    <text x="496" y="128" font-size="19" font-weight="600" fill="#ffffff">把这个对话完整导出来</text>
+    <text x="496" y="128" font-size="19" font-weight="600" fill="#ffffff">Export this conversation in full</text>
     <text x="496" y="158" font-size="16" fill="#e0e7ff">https://chatgpt.com/c/68f3c1a2-5b7e-4c1d-9a0e…</text>
-    <rect x="496" y="170" width="168" height="16" rx="8" fill="#ffffff" fill-opacity="0.2"/>
-    <text x="580" y="182" text-anchor="middle" font-size="12" fill="#ffffff">或者发一张对话截图</text>
+    <rect x="496" y="170" width="150" height="16" rx="8" fill="#ffffff" fill-opacity="0.2"/>
+    <text x="571" y="182" text-anchor="middle" font-size="12" fill="#ffffff">or send a screenshot</text>
 
     <circle cx="58" cy="244" r="18" fill="#0f766e"/>
     <text x="58" y="251" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">A</text>
     <rect x="90" y="220" width="620" height="210" rx="20" fill="#f8fafc" stroke="#e2e8f0"/>
-    <text x="116" y="254" font-size="18" fill="#0f172a">已导出，共 28 条消息，完整性检查通过。</text>
-    <text x="116" y="280" font-size="15" fill="#64748b">~/Downloads/convo-vault/整理聊天记录/</text>
+    <text x="116" y="254" font-size="18" fill="#0f172a">Exported 28 messages. Integrity check passed.</text>
+    <text x="116" y="280" font-size="15" fill="#64748b">~/Downloads/convo-vault/Billing refactor plan/</text>
     <g font-size="16" fill="#334155">
-      <circle cx="124" cy="313" r="5" fill="#6d4aff"/><text x="140" y="319">整理聊天记录.md</text><text x="400" y="319" fill="#94a3b8">可读的 Markdown</text>
-      <circle cx="124" cy="341" r="5" fill="#ef4444"/><text x="140" y="347">整理聊天记录.pdf</text><text x="400" y="347" fill="#94a3b8">接近网页的排版</text>
-      <circle cx="124" cy="369" r="5" fill="#0ea5e9"/><text x="140" y="375">…messages.jsonl</text><text x="400" y="375" fill="#94a3b8">逐条消息，可检索</text>
-      <circle cx="124" cy="397" r="5" fill="#f59e0b"/><text x="140" y="403">…agent-trace.md</text><text x="400" y="403" fill="#94a3b8">完整思考与工具过程</text>
+      <circle cx="124" cy="313" r="5" fill="#6d4aff"/><text x="140" y="319">Billing refactor plan.md</text><text x="420" y="319" fill="#94a3b8">readable Markdown</text>
+      <circle cx="124" cy="341" r="5" fill="#ef4444"/><text x="140" y="347">Billing refactor plan.pdf</text><text x="420" y="347" fill="#94a3b8">page-like PDF layout</text>
+      <circle cx="124" cy="369" r="5" fill="#0ea5e9"/><text x="140" y="375">…messages.jsonl</text><text x="420" y="375" fill="#94a3b8">one message per line</text>
+      <circle cx="124" cy="397" r="5" fill="#f59e0b"/><text x="140" y="403">…agent-trace.md</text><text x="420" y="403" fill="#94a3b8">full thinking and tool trace</text>
     </g>
     <g font-size="14" fill="#475569">
       <rect x="730" y="226" width="220" height="40" rx="20" fill="#ecfdf5" stroke="#a7f3d0"/>
-      <text x="840" y="251" text-anchor="middle" fill="#047857" font-weight="600">不用点面板 · 不用选模式</text>
+      <text x="840" y="251" text-anchor="middle" fill="#047857" font-weight="600">No panel · no mode to pick</text>
     </g>
   </g>
 </svg>

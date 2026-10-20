@@ -1,0 +1,57 @@
+name: Bug report
+description: An export failed, is incomplete or looks wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Exports contain your whole conversation. Please remove anything private before pasting logs or files.
+  - type: input
+    id: version
+    attributes:
+      label: Convo Vault version
+      description: Shown in the extension popup, or `node scripts/convo-vault.mjs doctor`.
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How did you export?
+      options:
+        - Agent (skill or MCP)
+        - CLI
+        - Extension panel
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Capture mode
+      options:
+        - Fast
+        - Hybrid
+        - Full
+        - Not sure
+  - type: input
+    id: platform
+    attributes:
+      label: OS and browser
+      placeholder: macOS 15, Chrome 140
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error message or integrity report
+      render: text
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `node scripts/convo-vault.mjs doctor`
+      render: text

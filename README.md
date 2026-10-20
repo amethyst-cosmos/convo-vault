@@ -1,235 +1,278 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Convo Vault：把 ChatGPT 对话，变成真正属于你的本地知识包" width="100%">
+  <img src="docs/images/banner.svg" alt="Convo Vault: turn ChatGPT conversations into a knowledge pack you own" width="100%">
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.10.2-6d4aff?style=flat-square">
+  <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.10.3-6d4aff?style=flat-square"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
-  <img alt="local first" src="https://img.shields.io/badge/local--first-%E4%B8%8D%E4%B8%8A%E4%BC%A0%E4%BB%BB%E4%BD%95%E5%86%85%E5%AE%B9-0f766e?style=flat-square">
   <img alt="agents" src="https://img.shields.io/badge/Agent-Claude%20%7C%20Codex%20%7C%20MCP-d97706?style=flat-square">
 </p>
 
 <p align="center">
-  <a href="#快速开始">快速开始</a> ·
-  <a href="#它能做什么">它能做什么</a> ·
-  <a href="#导出的内容">导出的内容</a> ·
-  <a href="#命令行">命令行</a> ·
-  <a href="#安全与隐私">安全与隐私</a> ·
-  <a href="CHANGELOG.md">更新日志</a>
+  English · <a href="README.zh-CN.md">简体中文</a>
 </p>
-
-当前版本：`0.10.2`
-
-一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
-
-Convo Vault 在你自己的电脑上，把对话导出成一个文件夹：排好版的 Markdown 和 PDF，加上能直接交给 Codex、Claude、Cursor、知识库或 RAG 流程的结构化数据。你只需要对 Agent 说一句话，或者发一张对话截图。
 
 <p align="center">
-  <img src="docs/images/agent-demo.svg" alt="对 Agent 说一句话，就得到完整的导出文件夹" width="860">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#what-you-get">What you get</a> ·
+  <a href="#how-it-compares">How it compares</a> ·
+  <a href="#cli">CLI</a> ·
+  <a href="#privacy-and-security">Privacy</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-## 它能做什么
+Current version: `0.10.3`
+
+**Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
+
+Everything runs on your machine. The extension reads the ChatGPT tab you are already signed in to, and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
+
+<p align="center">
+  <img src="docs/images/agent-demo.svg" alt="Tell an agent once and get the full export folder" width="860">
+</p>
+
+## Why Convo Vault
 
 <table>
   <tr>
     <td width="33%" valign="top">
-      <h3>对 Agent 说话</h3>
-      在 Claude 或 Codex 里贴链接或发截图，它自己打开页面、导出、整理好文件夹。不用点面板，不用选 Fast 或 Full。
+      <h3>Agent-native</h3>
+      A skill for Claude Code and Codex, an MCP server for chat apps, and a CLI. Paste a link or a screenshot; the agent installs, exports and reports. No panel to click, no mode to pick.
     </td>
     <td width="33%" valign="top">
-      <h3>内容不丢</h3>
-      以 ChatGPT 接口的消息清单为准逐条核对，缺一条就拒绝导出并说明原因。图片、引用、思考过程、生成式界面都保留。
+      <h3>Nothing silently lost</h3>
+      Every export is checked message by message against ChatGPT's own message list. A gap blocks the export and tells you what is missing. Images, citations, thinking steps and generative UI are kept.
     </td>
     <td width="33%" valign="top">
-      <h3>全部在本机</h3>
-      渲染服务只监听 <code>127.0.0.1</code>，不用任何在线转换服务。你的 Cookie、令牌和密码不会交给 Agent。
+      <h3>Local by design</h3>
+      The renderer listens on <code>127.0.0.1</code> only, jobs can only be claimed by the extension, and your login stays in the browser. Files never leave the machine.
     </td>
   </tr>
 </table>
 
-## 快速开始
+## Quick start
 
-### 一、让 Agent 替你装
+### 1. Let an agent install it
 
-在 Claude Code、Claude 桌面版的 Code 标签或 Codex 里发这一句：
+In Claude Code, the Code tab of the Claude desktop app, or Codex, send:
 
 ```text
-请帮我安装 https://github.com/amethyst-cosmos/convo-vault ，按仓库里的 INSTALL.md 操作，装到 ~/convo-vault。
+Install https://github.com/amethyst-cosmos/convo-vault for me. Follow INSTALL.md in the repository and put it in ~/convo-vault.
 ```
 
-Agent 会克隆项目、安装依赖、构建扩展、安装 skill，并运行检查。
+The agent clones the repository, installs dependencies, builds the extension, installs the skill and runs a check.
 
-### 二、在浏览器里加载一次扩展
+### 2. Load the extension once
 
-这是唯一需要你动手的一步，浏览器不允许程序自动安装未上架的扩展：
+This is the only manual step, because browsers do not let programs install unpublished extensions:
 
-1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”
-2. 点“加载已解压的扩展程序”，选择 `~/convo-vault/dist/convo-vault-extension`
-3. 在这个浏览器里登录 ChatGPT
+1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
+2. Click **Load unpacked** and choose `~/convo-vault/dist/convo-vault-extension`.
+3. Sign in to ChatGPT in that browser.
 
-### 三、开始用
+### 3. Use it
 
-重开一个会话，然后说：
+Start a new agent session and say:
 
-> 把这个对话导出来：https://chatgpt.com/c/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+> Export this conversation: https://chatgpt.com/c/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
-或者发一张对话截图，说“帮我把这段对话完整下载下来”。Agent 会从截图的地址栏读出链接。导出的文件夹在 `~/Downloads/convo-vault/`。
+Or send a screenshot of the conversation and say "download this whole conversation". The agent reads the link from the address bar. The folder appears in `~/Downloads/convo-vault/`.
 
 <details>
-<summary><b>不想让 Agent 装？手动安装</b></summary>
+<summary><b>Prefer to install it yourself?</b></summary>
 
 <br>
 
-从 [Releases](https://github.com/amethyst-cosmos/convo-vault/releases) 下载 `convo-vault-<版本>.zip` 解压，或者克隆仓库，然后：
+Download `convo-vault-<version>.zip` from [Releases](https://github.com/amethyst-cosmos/convo-vault/releases) and unzip it, or clone the repository, then:
 
 ```bash
-node scripts/convo-vault.mjs setup     # 装依赖、构建扩展、安装 skill，并打开扩展页面
-node scripts/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里的扩展有响应
+node scripts/convo-vault.mjs setup     # install dependencies, build the extension, install the skill
+node scripts/convo-vault.mjs verify    # after loading the extension: confirm the browser answers
 ```
 
-需要 Node 20 或更新版本。
+Requires Node 20 or newer.
 
 </details>
 
-### 哪些环境能用
+### Where it works
 
-| 环境 | 支持 | 方式 |
+| Environment | Works | How |
 | --- | :---: | --- |
-| Claude Code、Claude 桌面版的 Code 标签、Codex | ✅ | skill，`setup` 自动安装 |
-| Claude 桌面版的普通聊天、Cursor 等支持本地 MCP 的客户端 | ✅ | `node scripts/convo-vault.mjs mcp install`，在聊天里发链接或截图 |
-| claude.ai 网页、ChatGPT 网页（含 Agent 模式） | ❌ | 它们跑在云端沙盒里，碰不到你电脑上的浏览器和本地服务 |
+| Claude Code, the Code tab of the Claude desktop app, Codex | ✅ | Skill, installed by `setup` |
+| Claude desktop chat, Cursor and other clients with local MCP | ✅ | `node scripts/convo-vault.mjs mcp install`, then send a link or screenshot in chat |
+| claude.ai and chatgpt.com in the browser (including ChatGPT agent mode) | ❌ | They run in a cloud sandbox and cannot reach your browser or local services |
 
-## 它是怎么做到不用点的
+## What you get
+
+Each export is a folder (and a `.zip`), including a PDF that reads like the ChatGPT page.
+
+<table>
+  <tr>
+    <td valign="top" width="58%">
+
+| File | Contents |
+| --- | --- |
+| `*.md` | Readable Markdown with clickable citation footnotes |
+| `*.pdf` | Typeset PDF; formulas, Mermaid, charts and generative UI drawn statically |
+| `*.summary.md` | Summary index |
+| `*.messages.jsonl` | One message per line, ready for search and RAG |
+| `*.qa-pairs.json` | Question and answer pairs |
+| `*.topics.json`, `*.entities.json` | Topic index; links, file names, dates |
+| `*.agent-trace.json` | Full thinking and tool trace per answer, in order, with complete tool outputs and a source index |
+| `*.agent-trace.md` | Readable version of the trace |
+| `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded |
+| `*.payload.json`, `*.conversation.json`, `*.data.json` | Complete export data and metadata, enough to re-render later |
+
+</td>
+    <td valign="top" width="42%" align="center">
+      <img src="docs/images/pdf-sample.png" alt="Sample PDF page with a formula, a state diagram and a bar chart" width="360"><br>
+      <sub>PDF output: formulas, Mermaid diagrams and charts, rendered from the test fixtures</sub>
+    </td>
+  </tr>
+</table>
+
+## How it compares
+
+Convo Vault is young. This is how it sits next to the established options, taken from each project's public README or site in October 2026. Corrections are welcome.
+
+| | **Convo Vault** | [pionxzh/chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) | [ChatGPT Exporter](https://www.chatgptexporter.com/) (Chrome extension) | OpenAI data export + converters such as [convoviz](https://github.com/mohamed-chs/convoviz) |
+| --- | --- | --- | --- | --- |
+| Runs | Local extension and local renderer | Tampermonkey userscript | Chrome extension; PDF is generated on the vendor's servers, per its site | OpenAI emails a zip; converters run locally |
+| Formats | Markdown, PDF, JSONL, QA pairs, topics, entities, asset manifest | Text, PNG, Markdown, HTML, JSON | PDF, Markdown, TXT, JSON, CSV, image | Raw JSON; Markdown, charts and word clouds from convoviz |
+| Thinking and tool trace | ✅ Ordered, with full tool output | Not listed in its README | Not listed on its site | Not listed in convoviz's README |
+| Completeness check | ✅ Against ChatGPT's message list; blocks on gaps | Not listed | Not listed | n/a |
+| Agent, CLI and MCP | ✅ Skill, CLI, MCP server | Not listed | Not listed | CLI only |
+| Export all conversations | ❌ Not yet | ✅ Export All | Not listed | ✅ Whole history |
+| Install | Releases or `git clone`; load unpacked once | Tampermonkey and a userscript | Chrome Web Store | No install, or `pip` / `uv` |
+| Maturity | New | 2.8k stars, active since December 2022 | "80,000+ users" (self-reported) | Established |
+
+If you need to archive your whole history today, use one of the others. If you want complete, agent-ready exports of the conversations that matter, with the thinking trace, and a way to ask an agent to do it, that is what Convo Vault is for.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    A["你 / Agent"] -->|"export 链接"| B["命令行"]
-    B -->|"创建任务"| C["本地渲染服务<br/>127.0.0.1"]
-    B -->|"打开对话页"| D["浏览器里的扩展<br/>用你已登录的 ChatGPT"]
-    D -->|"认领任务，抓取，完整性检查"| D
-    D -->|"提交对话和图片"| C
-    C -->|"渲染 Markdown / PDF / 数据"| C
+    A["You / agent"] -->|"export link"| B["CLI"]
+    B -->|"create job"| C["Local renderer<br/>127.0.0.1"]
+    B -->|"open the conversation"| D["Extension in your browser<br/>signed-in ChatGPT"]
+    D -->|"claim job, capture, integrity check"| D
+    D -->|"send conversation and images"| C
+    C -->|"render Markdown / PDF / data"| C
     C -->|"zip"| B
-    B -->|"解压成文件夹"| A
+    B -->|"unpack to a folder"| A
 ```
 
-- 命令行在本地渲染服务里创建一个任务，再打开 `chatgpt.com/c/<id>#convo-vault-job=<任务 id>`
-- 扩展认领任务，用页面里已登录的会话抓取对话，通过完整性检查后交给渲染服务，完成后自动关掉标签页
-- 抓取不完整时任务会失败并说明缺了什么，不会静默导出残缺内容
+- The CLI creates a job on the local renderer, then opens `chatgpt.com/c/<id>#convo-vault-job=<job id>`.
+- The extension claims the job, captures the conversation with the session already in your browser, passes the integrity check, hands the data to the renderer, and closes the tab.
+- If the capture is incomplete the job fails and says what is missing. Nothing partial is exported silently.
+- The renderer started for the CLI exits two minutes after its last request.
 
-## 导出的内容
-
-每次导出得到一个文件夹，同时保留 `.zip`。
-
-| 文件 | 内容 |
-| --- | --- |
-| `*.md` | 可读的 Markdown 档案，引用是可点击的脚注 |
-| `*.pdf` | 本地渲染的 PDF，排版接近 ChatGPT 页面；生成式界面、公式、Mermaid、图表都静态绘制 |
-| `*.summary.md` | 摘要索引 |
-| `*.messages.jsonl` | 逐条消息，适合检索和 RAG |
-| `*.qa-pairs.json` | 问答配对 |
-| `*.topics.json`、`*.entities.json` | 话题索引；链接、文件名、日期等实体线索 |
-| `*.agent-trace.json` | 完整思考过程：每个回答从提问到作答之间的思考摘要、工具调用和完整返回内容，按时间排序，附来源索引 |
-| `*.agent-trace.md` | 同一份记录的可读版，长输出截断并指向 JSON |
-| `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因 |
-| `*.payload.json`、`*.conversation.json`、`*.data.json` | 完整导出数据和对话元数据，可用于重新渲染 |
-
-## 命令行
+## CLI
 
 ```bash
-node scripts/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
-node scripts/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
-node scripts/convo-vault.mjs export <链接> --mode hybrid               # fast（默认）| hybrid | full
-node scripts/convo-vault.mjs export <链接> --browser "Microsoft Edge"
+node scripts/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
+node scripts/convo-vault.mjs export <link> --out ./archive            # choose where to save
+node scripts/convo-vault.mjs export <link> --mode hybrid              # fast (default) | hybrid | full
+node scripts/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
+node scripts/convo-vault.mjs export <link> --browser "Microsoft Edge"
 ```
 
-| 命令 | 作用 |
+| Command | What it does |
 | --- | --- |
-| `setup` | 安装依赖、构建扩展、安装 skill |
-| `verify` | 确认浏览器里的扩展有响应 |
-| `doctor` | 自检：依赖、扩展构建、浏览器、skill |
-| `update` | 拉取最新版本并重新安装（git 克隆） |
-| `skill install` | 重新安装 Claude 和 Codex 的 skill |
-| `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
-| `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
+| `setup` | Install dependencies, build the extension, install the skill |
+| `verify` | Confirm the extension in your browser answers |
+| `doctor` | Check dependencies, extension build, browsers and skills |
+| `update` | Pull the latest version and reinstall (git checkouts) |
+| `skill install` | Reinstall the Claude and Codex skills |
+| `mcp install` / `mcp config` | Add the MCP server to Claude desktop; print config for other clients |
+| `backend start` / `stop` / `status` | The local renderer; it starts on demand and exits when idle |
 
-其他选项：`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
+Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab open, `--allow-incomplete` exports a capture that failed the integrity check (refused by default). The first export tries each installed Chrome, Edge and Brave and remembers the one with the extension.
 
-## 抓取模式
+## Capture modes
 
-| 模式 | 数据来源 | 什么时候用 |
+| Mode | Source | Use it for |
 | --- | --- | --- |
-| **Fast**（默认） | 直接读 ChatGPT 的 conversation API：消息、顺序、图片、思考过程、引用、生成文件，不受虚拟滚动影响，长对话几秒完成 | 日常归档 |
-| **Hybrid** | 先 Fast，再用 Full 补页面上才有的细节，按消息 id 合并 | 需要页面额外细节 |
-| **Full** | 逐屏滚动页面，要几分钟 | 接口不可用时 |
+| **Fast** (default) | ChatGPT's conversation API: messages, order, images, thinking, citations, generated files. Not affected by virtual scrolling; long conversations take seconds | Everyday archiving |
+| **Hybrid** | Fast first, then Full fills in details that only exist on the page, merged by message id | Page-only details |
+| **Full** | Scrolls the page and reads the DOM; takes minutes | When the API is unavailable |
 
-三种模式都用接口生成“应有消息清单”，按消息 id 核对结果；对不上就判为不完整并阻止导出。
+All three modes build the expected message list from the API and check the result against it by message id. A mismatch is reported as incomplete and blocks the export.
 
-## 手动使用扩展面板
+## Using the panel by hand
 
-只想导出其中几条消息时，可以不用 Agent：打开 ChatGPT 对话，点浏览器工具栏的 Convo Vault 图标，点 **Open Selector**，选好模式后 **Start Scan**，核对完整性报告再导出。面板方式要先启动渲染服务：运行 `node scripts/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start** 并把命令粘贴到终端。
+To export only some messages you can skip the agent: open a ChatGPT conversation, click the Convo Vault icon, choose **Open Selector**, pick a mode, **Start Scan**, review the integrity report, then export. The panel needs the renderer running: `node scripts/convo-vault.mjs backend start`, or **Copy Start** in the popup.
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/images/04-open-selector-modal.png" alt="扩展弹窗：Open Selector 和本地渲染服务状态" width="400"><br>
-      <sub>扩展弹窗：打开选择器，查看渲染服务状态</sub>
+      <img src="docs/images/04-open-selector-modal.png" alt="Extension popup with Open Selector and renderer status" width="400"><br>
+      <sub>The popup: open the selector, check the renderer</sub>
     </td>
     <td align="center" width="50%">
-      <img src="docs/images/06-inspect-and-export.png" alt="选择消息、查看完整性报告并导出" width="300"><br>
-      <sub>选择消息，核对完整性报告，导出</sub>
+      <img src="docs/images/06-inspect-and-export.png" alt="Selecting messages, reading the integrity report and exporting" width="300"><br>
+      <sub>Pick messages, read the integrity report, export</sub>
     </td>
   </tr>
 </table>
 
 <details>
-<summary>更多面板截图</summary>
+<summary>More panel screenshots</summary>
 
 <br>
 
-<p align="center"><img src="docs/images/01-click-extension-icon.png" alt="点击扩展图标" width="560"></p>
-<p align="center"><img src="docs/images/02-configure-backend-path.png" alt="配置服务路径" width="560"></p>
-<p align="center"><img src="docs/images/03-terminal-start-backend.png" alt="终端启动服务" width="640"></p>
-<p align="center"><img src="docs/images/05-choose-capture-mode.png" alt="选择抓取模式" width="320"></p>
-<p align="center"><img src="docs/images/07-stop-local-backend.png" alt="停止本地服务" width="340"></p>
+<p align="center"><img src="docs/images/01-click-extension-icon.png" alt="Click the extension icon" width="560"></p>
+<p align="center"><img src="docs/images/02-configure-backend-path.png" alt="Set the backend folder" width="560"></p>
+<p align="center"><img src="docs/images/03-terminal-start-backend.png" alt="Start the renderer in a terminal" width="640"></p>
+<p align="center"><img src="docs/images/05-choose-capture-mode.png" alt="Choose a capture mode" width="320"></p>
+<p align="center"><img src="docs/images/07-stop-local-backend.png" alt="Stop the renderer" width="340"></p>
 
 </details>
 
-## 安全与隐私
+## Privacy and security
 
-- 扩展只读取当前打开的 ChatGPT 页面，不使用任何远程转换服务
-- PDF、Markdown 和 zip 都在本机生成；运行时数据放在 `.convo-vault/`，不会进 Git
-- 渲染服务只监听 `127.0.0.1`，请求要带令牌；没有令牌时，带浏览器 Origin 的请求会被拒绝
-- 自动导出任务用 192 位随机 id 标识，只能被扩展认领一次，令牌在认领时直接交给扩展，不经过网页
-- 创建任务和读取结果只接受不带浏览器 Origin 的本机请求，并校验 Host，网页和 DNS 重绑定调用不了
-- Agent 不需要也拿不到你的 ChatGPT 登录状态，扩展用的是浏览器里已登录的会话
+- The extension reads only the ChatGPT page you have open. No remote conversion service is used.
+- PDF, Markdown and zip files are generated on your machine. Runtime data lives in `.convo-vault/`, which is git-ignored.
+- The renderer listens on `127.0.0.1` only and requires a token. Without one, requests that carry a browser `Origin` are rejected.
+- Export jobs are identified by a 192-bit random id and can be claimed once, by the extension only. The renderer's token is handed to the extension at claim time and never passes through a web page.
+- Creating jobs and reading results accept only local requests without a browser `Origin`, and the `Host` header is checked, so web pages and DNS rebinding cannot drive them.
+- An agent never needs, and never gets, your ChatGPT session: the extension uses the one already in your browser.
 
-## 多语言与输出类型
+See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
-对话内容按 Unicode 原文保留：中文、英文、西语、意大利语、日语、韩语、阿拉伯语、希伯来语和混排都能导出，不翻译。
+## Languages and output types
 
-PDF 是给人看的阅读档案，JSON 和资源清单是给机器和恢复用的证据档案。公式、Mermaid、简单图表、代码、表格、图片和 ChatGPT 的生成式界面尽量静态渲染；视频、音频、交互卡片用清晰的卡片降级，并在 JSON 里记录 `kind`、`renderStatus`、`degraded` 和原因，内容不会静默丢失。
+Conversation text is kept as Unicode and never translated: Chinese, English, Spanish, Italian, Japanese, Korean, Arabic, Hebrew and mixed-direction text all export correctly. The interface and documentation are in English, with a [Chinese README](README.zh-CN.md).
 
-## 开发
+The PDF is the reading archive and the JSON files are the evidence archive. Formulas, Mermaid, simple charts, code, tables, images and ChatGPT's generative UI are drawn statically where possible. Video, audio and interactive cards degrade to a clear card, and the JSON records `kind`, `renderStatus`, `degraded` and the reason, so nothing disappears silently.
+
+## Roadmap
+
+Ideas under consideration, not promises:
+
+- Export all conversations, with incremental sync that fetches only what changed.
+- Build the bundle inside the extension so no local service is needed (PDF stays optional).
+- Chrome Web Store release.
+- Obsidian-friendly Markdown (frontmatter and tags).
+
+## Development
 
 ```bash
-npm test                  # 全部测试
-npm run check             # 语法与 JSON 校验，并确认 content.js 与 src/content 同步
-npm run build:extension   # 生成 dist/convo-vault-extension 和 zip
-npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
+npm test                  # all tests
+npm run check             # syntax and JSON checks; verifies content.js matches src/content
+npm run build:extension   # build dist/convo-vault-extension and its zip
+npm run package           # build dist/convo-vault-<version>.zip
 ```
 
-- `content.js` 由 `src/content/index.js` 加各模块生成，改了 `src/content` 后运行 `npm run build:extension`
-- 发布：改版本号后推送 `v<版本>` 标签，GitHub Actions 会检查、测试、打包并创建 Release
-- 版本号需要同步：`package.json`、`manifest.json`、`tools/advanced-pdf/package.json`、`src/content/index.js`、`popup.html`、本文件、`CHANGELOG.md`
+- `content.js` is generated from `src/content/index.js` and its modules. Run `npm run build:extension` after editing `src/content`.
+- Releases: bump the version, merge, then push a `v<version>` tag. GitHub Actions checks, tests, packages and publishes the release.
+- Keep the version in sync across `package.json`, `manifest.json`, `tools/advanced-pdf/package.json`, `src/content/index.js`, `popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
 
-## 更新日志
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 
-完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+## License
 
-`0.10.2` 渲染服务空闲后自动退出，不用再手动关；新增 `--no-pdf` 只导出数据（更快，不依赖 Chrome）。
-
-`0.10.1` 重写 README（横幅、演示图、更清晰的安装步骤），修复 Windows 上的 CI 测试。
-
-`0.10.0` 让 Agent 直接导出：新增 `convo-vault` skill（Claude、Codex）、MCP 服务、命令行 `export` / `setup` / `verify`、自动导出任务、一句话安装（`INSTALL.md`）和一键发布包。
+[MIT](LICENSE)
