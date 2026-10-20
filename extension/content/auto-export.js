@@ -57,7 +57,7 @@
     }
 
     if (claim.options?.ping) {
-      await sendAutoExportMessage({ action: "status", jobId, state: "working", message: "Extension is installed and responding." });
+      await sendAutoExportMessage({ action: "status", jobId, state: "working", message: `Extension ${EXPORTER_VERSION} is installed and responding.` });
       await sendAutoExportMessage({ action: "close-tab", jobId });
       return;
     }

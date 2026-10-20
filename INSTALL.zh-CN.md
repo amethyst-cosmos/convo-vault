@@ -22,7 +22,7 @@
    3. 在这个浏览器里登录 ChatGPT。
 
    浏览器不允许程序自动安装未上架的扩展，所以这一步不要假装能替用户完成。
-6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK`。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
+6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK: Extension <版本> answered in <浏览器>`；如果这个版本和本项目（`extension/manifest.json`）的不同，它会建议运行 `node cli/convo-vault.mjs reload` 或在扩展页面点重新加载。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
 7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node cli/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node cli/convo-vault.mjs mcp config` 打印的配置。
 8. **告诉用户**：新装的 skill 要在新开的会话里才会生效，请重开一个会话。
 
@@ -35,6 +35,16 @@ node <位置>/cli/convo-vault.mjs export "<链接>"
 ```
 
 导出整段对话，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选任何东西或点弹窗。详细规则见已安装的 `convo-vault-skill`。
+
+## 把一切放在同一个文件夹
+
+默认情况下 Convo Vault 会写到项目之外：配置在 `~/.convo-vault`，skill 在 `~/.claude/skills` 和 `~/.codex/skills`，导出在 `~/Downloads/convo-vault`。想全部放在一个文件夹里（例如你被限制在工作目录内）：
+
+- `CONVO_VAULT_HOME=<文件夹>` 移动配置文件夹，每条命令都要带上，例如 `CONVO_VAULT_HOME=$PWD/.state node cli/convo-vault.mjs setup`。
+- `--out <文件夹>` 指定导出位置，例如 `node cli/convo-vault.mjs export "<链接>" --out ./exports`。
+- `setup --no-skill` 跳过安装 skill；或用 `skill install --dir <文件夹>` 把 skill 装到你选的文件夹。
+
+被限制在工作目录内的 Agent，写 `~/.claude`、`~/.codex` 和 `~/.convo-vault` 需要用户批准。skill 写不进去时 `setup` 仍会完成，只对 skill 给出警告。设置 `CONVO_VAULT_HOME` 可让配置也留在你的文件夹里。
 
 ## 更新与排错
 

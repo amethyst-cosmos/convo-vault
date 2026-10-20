@@ -22,7 +22,7 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
    3. Sign in to ChatGPT in that browser.
 
    Browsers do not let programs install unpublished extensions, so do not pretend you can do this for the user.
-6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a ChatGPT page and confirms the extension answers, printing `OK`. If it fails, relay the message, let the user finish step 5, and try again.
+6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a ChatGPT page and confirms the extension answers, printing `OK: Extension <version> answered in <browser>`. If that version differs from this project's (`extension/manifest.json`), it suggests running `node cli/convo-vault.mjs reload`, or reloading the extension on the extensions page. If it fails, relay the message, let the user finish step 5, and try again.
 7. **Optional, for Claude desktop's normal chat (not the Code tab).** Run `node cli/convo-vault.mjs mcp install`, then ask the user to fully quit and reopen Claude desktop. For other MCP clients, use the settings printed by `node cli/convo-vault.mjs mcp config`.
 8. **Tell the user** to open a new session: a newly installed skill is only picked up by sessions started afterwards.
 
@@ -35,6 +35,16 @@ node <location>/cli/convo-vault.mjs export "<link>"
 ```
 
 The whole conversation is exported, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to choose anything or click the popup. The installed `convo-vault-skill` has the detailed rules.
+
+## Keep everything in one folder
+
+By default Convo Vault writes outside the project: its config to `~/.convo-vault`, the skill to `~/.claude/skills` and `~/.codex/skills`, and exports to `~/Downloads/convo-vault`. To keep it all in one folder (for example when you are sandboxed to your working folder):
+
+- `CONVO_VAULT_HOME=<folder>` moves the config folder. Set it for every command, e.g. `CONVO_VAULT_HOME=$PWD/.state node cli/convo-vault.mjs setup`.
+- `--out <folder>` saves an export there, e.g. `node cli/convo-vault.mjs export "<link>" --out ./exports`.
+- `setup --no-skill` skips installing the skill, or use `skill install --dir <folder>` to put the skill in a folder of your choice.
+
+An agent that is sandboxed to its working folder will need the user's approval to write `~/.claude`, `~/.codex` and `~/.convo-vault`. If writing the skill is refused, `setup` still finishes and only warns about it. Set `CONVO_VAULT_HOME` so the config stays in your folder too.
 
 ## Update and troubleshoot
 

@@ -4,6 +4,14 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.6
+
+Three rough edges found when an unfamiliar, sandboxed agent installed from the GitHub link:
+
+- **`setup` no longer stops when the skill cannot be installed.** Writing `~/.claude/skills` or `~/.codex/skills` can be refused (a sandboxed agent, a read-only home). Setup now prints a warning and continues, so the config is written and the "load the extension" steps are shown. `setup --no-skill` skips the skill on purpose.
+- **`verify` tells you which extension version answered.** The extension reports its version in the ping reply, and `verify` prints `Extension X answered in <browser>`. When X differs from this project's version it suggests `reload`. Older extensions send no version and are reported as such.
+- **INSTALL.md explains how to keep everything in one folder:** `CONVO_VAULT_HOME` (config), `--out` (exports) and `setup --no-skill`.
+
 ## 0.11.5
 
 - **The skill is now called `convo-vault-skill`.** With the project's own name, agents could not tell whether "convo-vault" meant the project or the skill. The folder is `skills/convo-vault-skill`, and `skill install` removes the old `convo-vault` folder when it is this skill's.
