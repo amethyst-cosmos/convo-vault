@@ -26,8 +26,8 @@ const MAX_BODY_BYTES = Number(process.env.CGCE_ADVANCED_PDF_MAX_BODY_BYTES || 25
 const MAX_EXPORT_ASSET_BYTES = Number(process.env.CGCE_MAX_EXPORT_ASSET_BYTES || 128 * 1024 * 1024);
 const LOCAL_API_TOKEN_HEADER = "x-convo-vault-token";
 const LOCAL_API_TOKEN = String(process.env.CGCE_LOCAL_API_TOKEN || "").trim();
-const ROOT_DIR = path.resolve(__dirname, "..", "..");
-const WORK_DIR = path.join(ROOT_DIR, "tmp", "advanced-pdf-server");
+const ROOT_DIR = path.resolve(__dirname, "..");
+const WORK_DIR = path.join(ROOT_DIR, "tmp", "renderer-server");
 const RENDER_SCRIPT = path.join(__dirname, "render.js");
 const DEFAULT_CACHE_ROOT = path.join(ROOT_DIR, ".convo-vault");
 const BUNDLE_DOWNLOAD_TTL_MS = 10 * 60 * 1000;
@@ -66,16 +66,16 @@ const server = http.createServer((request, response) => {
 if (IDLE_EXIT_MS > 0) {
   setInterval(() => {
     if (activeRequests === 0 && Date.now() - lastActivityAt >= IDLE_EXIT_MS) {
-      console.log(`[advanced-pdf-server] Idle for ${Math.round(IDLE_EXIT_MS / 1000)}s, exiting.`);
+      console.log(`[renderer] Idle for ${Math.round(IDLE_EXIT_MS / 1000)}s, exiting.`);
       process.exit(0);
     }
   }, Math.max(250, Math.min(30_000, IDLE_EXIT_MS / 2))).unref();
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`[advanced-pdf-server] Listening on http://${HOST}:${PORT}`);
-  console.log(`[advanced-pdf-server] Local API token: ${LOCAL_API_TOKEN ? "required" : "not configured; browser-origin requests will be rejected"}`);
-  console.log("[advanced-pdf-server] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
+  console.log(`[renderer] Listening on http://${HOST}:${PORT}`);
+  console.log(`[renderer] Local API token: ${LOCAL_API_TOKEN ? "required" : "not configured; browser-origin requests will be rejected"}`);
+  console.log("[renderer] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
 });
 
 async function handleRequest(request, response) {
@@ -337,7 +337,7 @@ function handleShutdown(response) {
     shuttingDown: true
   });
 
-  console.log("[advanced-pdf-server] Shutdown requested.");
+  console.log("[renderer] Shutdown requested.");
   setTimeout(() => {
     server.close(() => {
       process.exit(0);
@@ -858,7 +858,7 @@ function expirePreparedBundleDownload(downloadId) {
     fs.unlinkSync(prepared.zipPath);
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      console.warn(`[advanced-pdf-server] Could not remove expired prepared bundle: ${error.message || error}`);
+      console.warn(`[renderer] Could not remove expired prepared bundle: ${error.message || error}`);
     }
   }
 }

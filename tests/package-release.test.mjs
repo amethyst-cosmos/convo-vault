@@ -28,8 +28,8 @@ test("release package holds the extension, CLI, renderer and skill without depen
       "dist/convo-vault-extension/content.js",
       "scripts/convo-vault.mjs",
       "skills/convo-vault/SKILL.md",
-      "tools/advanced-pdf/server.js",
-      "tools/advanced-pdf/package.json"
+      "renderer/server.js",
+      "renderer/package.json"
     ]) {
       assert.ok(names.includes(`${root}/${expected}`), `missing ${expected}`);
     }

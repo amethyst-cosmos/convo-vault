@@ -7,7 +7,7 @@ Thanks for helping. Bug reports, fixtures from conversations that export badly, 
 ```bash
 git clone https://github.com/amethyst-cosmos/convo-vault.git
 cd convo-vault
-(cd tools/advanced-pdf && pnpm install)    # or: node scripts/convo-vault.mjs setup
+(cd renderer && pnpm install)    # or: node scripts/convo-vault.mjs setup
 npm run build:extension
 npm test
 ```
@@ -18,7 +18,7 @@ Node 20 or newer is required. PDF rendering needs a local Chrome or Chromium.
 
 - Run `npm run check` and `npm test`. CI runs both on Ubuntu, macOS and Windows.
 - `content.js` is generated. Edit `src/content/*.js`, then run `npm run build:extension`. `npm run check` fails if they disagree.
-- Every change someone would install or test bumps the version. Keep it identical in `package.json`, `manifest.json`, `tools/advanced-pdf/package.json`, `src/content/index.js` (`EXPORTER_VERSION`), `popup.html`, `README.md`, `README.zh-CN.md`, `CHANGELOG.md` and `CHANGELOG.zh-CN.md`. `tests/version.test.mjs` checks it.
+- Every change someone would install or test bumps the version. Keep it identical in `package.json`, `manifest.json`, `renderer/package.json`, `src/content/index.js` (`EXPORTER_VERSION`), `popup.html`, `README.md`, `README.zh-CN.md`, `CHANGELOG.md` and `CHANGELOG.zh-CN.md`. `tests/version.test.mjs` checks it.
 - Add a test with the change. Export bugs are best captured as a fixture in `tests/fixtures/` (see `tests/fixtures/README.md`).
 - Keep the integrity gate honest: never make an incomplete capture look complete.
 

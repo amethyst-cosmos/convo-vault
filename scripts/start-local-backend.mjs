@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const serverScript = path.join(repoRoot, "tools", "advanced-pdf", "server.js");
+const serverScript = path.join(repoRoot, "renderer", "server.js");
 const options = parseArgs(process.argv.slice(2));
 const port = normalizePort(options.port || process.env.CGCE_ADVANCED_PDF_PORT);
 const cacheDir = path.resolve(repoRoot, options.cacheDir || process.env.CGCE_CACHE_DIR || ".convo-vault");

@@ -8,7 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 test("project version is synchronized", async () => {
   const rootPackage = await readJson("package.json");
   const manifest = await readJson("manifest.json");
-  const backendPackage = await readJson(path.join("tools", "advanced-pdf", "package.json"));
+  const backendPackage = await readJson(path.join("renderer", "package.json"));
   const content = await readFile(path.join(repoRoot, "content.js"), "utf8");
 
   assert.equal(rootPackage.version, "0.11.0");

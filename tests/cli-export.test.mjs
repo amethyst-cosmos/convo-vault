@@ -120,7 +120,7 @@ test("--no-pdf exports a data-only bundle without needing a PDF renderer", async
 
 test("the renderer started for the CLI exits by itself when idle", async () => {
   const port = await getAvailablePort();
-  const server = spawn(process.execPath, [path.join(repoRoot, "tools", "advanced-pdf", "server.js")], {
+  const server = spawn(process.execPath, [path.join(repoRoot, "renderer", "server.js")], {
     cwd: repoRoot,
     env: { ...process.env, CGCE_ADVANCED_PDF_PORT: String(port), CGCE_IDLE_EXIT_MS: "800" },
     stdio: "ignore"

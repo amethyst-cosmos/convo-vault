@@ -30,7 +30,7 @@ jobs:
         run: corepack enable
 
       - name: Install PDF backend dependencies
-        working-directory: tools/advanced-pdf
+        working-directory: renderer
         run: pnpm install --frozen-lockfile
 
       - name: Check syntax and JSON

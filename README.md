@@ -217,7 +217,7 @@ npm run package           # build dist/convo-vault-<version>.zip
 
 - `content.js` is generated from `src/content/index.js` and its modules. Run `npm run build:extension` after editing `src/content`.
 - Releases: bump the version, merge, then push a `v<version>` tag. GitHub Actions checks, tests, packages and publishes the release.
-- Keep the version in sync across `package.json`, `manifest.json`, `tools/advanced-pdf/package.json`, `src/content/index.js`, `popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
+- Keep the version in sync across `package.json`, `manifest.json`, `renderer/package.json`, `src/content/index.js`, `popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 

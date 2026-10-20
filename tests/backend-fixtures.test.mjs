@@ -16,7 +16,7 @@ const cases = JSON.parse(
   await readFile(path.join(fixturesDir, "export-regression-cases.json"), "utf8")
 );
 const { buildDataBundle, buildMarkdownDocument, normalizePayload } = createRequire(import.meta.url)(
-  path.join(repoRoot, "tools", "advanced-pdf", "bundle-content.js")
+  path.join(repoRoot, "renderer", "bundle-content.js")
 );
 
 test("bundle Markdown and data builders preserve export fixture text", async () => {
@@ -93,7 +93,7 @@ test("backend renderer prepares and serves export bundles", async (t) => {
   const cacheRoot = await mkdtemp(path.join(os.tmpdir(), "convo-vault-backend-cache-"));
   const outputRoot = await mkdtemp(path.join(os.tmpdir(), "convo-vault-backend-output-"));
   const server = spawn(process.execPath, [
-    path.join(repoRoot, "tools", "advanced-pdf", "server.js")
+    path.join(repoRoot, "renderer", "server.js")
   ], {
     cwd: repoRoot,
     env: {

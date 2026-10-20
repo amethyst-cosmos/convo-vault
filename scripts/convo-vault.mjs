@@ -242,7 +242,7 @@ async function setup(flags) {
     log("Renderer dependencies already installed.");
   } else {
     log("Installing renderer dependencies...");
-    const cwd = path.join(repoRoot, "tools", "advanced-pdf");
+    const cwd = path.join(repoRoot, "renderer");
     const usePnpm = spawnSync("pnpm", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
     const args = usePnpm ? ["install", "--frozen-lockfile"] : ["install", "--omit=dev"];
     const result = spawnSync(usePnpm ? "pnpm" : "npm", args, { cwd, stdio: "inherit", shell: process.platform === "win32" });

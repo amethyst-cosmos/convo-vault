@@ -12,7 +12,7 @@ const { chromium } = require("playwright-core");
 const { normalizeEmbeddedImageSource } = require("./assets.js");
 
 const DEFAULT_OUTPUT_DIR = path.resolve(process.cwd(), "output", "pdf");
-const DEFAULT_HTML_DIR = path.resolve(process.cwd(), "tmp", "advanced-pdf");
+const DEFAULT_HTML_DIR = path.resolve(process.cwd(), "tmp", "renderer");
 const ASSET_DIR = path.resolve(__dirname, "assets");
 const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
@@ -26,7 +26,7 @@ const CJK_STRONG_OPEN = "CVSTRONGOPENX";
 const CJK_STRONG_CLOSE = "CVSTRONGCLOSEX";
 
 main().catch((error) => {
-  console.error(`[advanced-pdf] ${error.stack || error.message || error}`);
+  console.error(`[renderer] ${error.stack || error.message || error}`);
   process.exit(1);
 });
 
@@ -52,7 +52,7 @@ async function main() {
   fs.writeFileSync(htmlPath, html, "utf8");
 
   if (args.htmlOnly) {
-    console.log(`[advanced-pdf] HTML written: ${htmlPath}`);
+    console.log(`[renderer] HTML written: ${htmlPath}`);
     return;
   }
 
@@ -64,13 +64,13 @@ async function main() {
 
   const outlineResult = addPdfOutlines(outputPath, buildPdfOutlineItems(payload.messages));
   const sizeMb = fs.statSync(outputPath).size / 1024 / 1024;
-  console.log(`[advanced-pdf] PDF written: ${outputPath} (${sizeMb.toFixed(2)} MB)`);
+  console.log(`[renderer] PDF written: ${outputPath} (${sizeMb.toFixed(2)} MB)`);
   if (outlineResult.count) {
-    console.log(`[advanced-pdf] PDF bookmarks: ${outlineResult.count}`);
+    console.log(`[renderer] PDF bookmarks: ${outlineResult.count}`);
   } else if (outlineResult.warning) {
-    console.warn(`[advanced-pdf] PDF bookmarks skipped: ${outlineResult.warning}`);
+    console.warn(`[renderer] PDF bookmarks skipped: ${outlineResult.warning}`);
   }
-  console.log(`[advanced-pdf] HTML source: ${htmlPath}`);
+  console.log(`[renderer] HTML source: ${htmlPath}`);
 }
 
 function parseArgs(argv) {
@@ -103,7 +103,7 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.log(`Usage:
-  node tools/advanced-pdf/render.js <export-debug-or-payload.json> [--out output.pdf] [--html output.html]
+  node renderer/render.js <export-debug-or-payload.json> [--out output.pdf] [--html output.html]
 
 Options:
   --out, -o      PDF output path

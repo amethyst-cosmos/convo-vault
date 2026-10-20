@@ -59,7 +59,7 @@ them in an export session, then calls `/prepare-render-bundle`.
 ## Render a payload directly
 
 ```bash
-node tools/advanced-pdf/render.js path/to/payload.json --out output/pdf/conversation.pdf --html tmp/conversation.html
+node renderer/render.js path/to/payload.json --out output/pdf/conversation.pdf --html tmp/conversation.html
 ```
 
 `render.js` uses local Chrome, Edge, or another Chromium build. Set

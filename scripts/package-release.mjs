@@ -38,7 +38,7 @@ const include = [
   "scripts",
   "skills",
   "src",
-  "tools/advanced-pdf"
+  "renderer"
 ];
 const skipNames = new Set(["node_modules", "tmp", ".DS_Store"]);
 

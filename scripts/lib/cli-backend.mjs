@@ -8,7 +8,7 @@ export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)
 export const BACKEND_URL = `http://127.0.0.1:${Number(process.env.CGCE_ADVANCED_PDF_PORT) || 38474}`;
 
 export function backendDependenciesInstalled() {
-  return existsSync(path.join(repoRoot, "tools", "advanced-pdf", "node_modules", "markdown-it"));
+  return existsSync(path.join(repoRoot, "renderer", "node_modules", "markdown-it"));
 }
 
 export async function getHealth() {
@@ -42,7 +42,7 @@ export async function ensureBackend(log) {
   const cacheDir = path.join(repoRoot, ".convo-vault");
   mkdirSync(cacheDir, { recursive: true });
   const logFile = openSync(path.join(cacheDir, "backend.log"), "a");
-  const child = spawn(process.execPath, [path.join(repoRoot, "tools", "advanced-pdf", "server.js")], {
+  const child = spawn(process.execPath, [path.join(repoRoot, "renderer", "server.js")], {
     cwd: repoRoot,
     detached: true,
     stdio: ["ignore", logFile, logFile],
