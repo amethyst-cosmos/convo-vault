@@ -46,6 +46,7 @@ Export options:
   --browser NAME       Chrome, Edge, Brave... (default: the one that worked last time)
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
+  --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
   --keep-tab           Leave the ChatGPT tab open after exporting
   --allow-incomplete   Export even if the integrity gate reports gaps
   --timeout SECONDS    Give up after this long (default: 900)
@@ -143,7 +144,8 @@ async function exportConversation(input, flags) {
     jobId = await createJob({
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
-      pdf: flags.pdf !== false
+      pdf: flags.pdf !== false,
+      files: flags.files === true
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser);

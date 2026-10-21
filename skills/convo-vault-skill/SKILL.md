@@ -16,7 +16,18 @@ Get one `chatgpt.com/c/<id>` link (or a bare conversation id), from the first of
 3. A browser tool you already have (Claude in Chrome, a browser MCP): read the URL of the open ChatGPT tab.
 4. Otherwise ask the user once for the link. Do not guess an id from a conversation title.
 
-## 2. Export
+## 2. Ask once about files
+
+The conversation, its thinking and tool trace and its images are always exported. **Files** are different: Word, PDF, zip and other documents the user uploaded to the conversation or ChatGPT generated in it. They can be many and large, so by default they are **not** downloaded; the export only lists them in `*.assets.manifest.json` as "not requested".
+
+Before exporting, ask the user one short question, in their language, with the default stated. For example: "Besides the conversation and the model's thinking, should I also download the files uploaded and generated in it (Word, PDF, zip)? Default is no."
+
+- A clear yes ("yes", "all of them", "include the attachments", "连文件一起下") → add `--files`.
+- Anything else → leave `--files` off: "no", a vague or unrelated reply, no reply, or a setting where you cannot ask. Do not ask twice or press.
+- Skip the question when the user already said it in the request ("download the attachments too", "just the conversation, no files").
+- With several links, ask once and apply the answer to all of them.
+
+## 3. Export
 
 ```bash
 node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
@@ -25,17 +36,19 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 - `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to ChatGPT. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
+- Add `--files` only when the user said yes in step 2. It downloads uploaded and generated files into `assets/files/` with the browser's ChatGPT session and records size and SHA-256 in the manifest. Files that cannot be downloaded (ChatGPT has already deleted the conversation's sandbox, a file over 64 MB, more than 120 MB in one export) are listed with the reason; the export itself still succeeds.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster and needs no PDF renderer.
 - The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
 - Several conversations: run the command once per link, one after another.
 
-## 3. After it finishes
+## 4. After it finishes
 
 - Tell the user where the folder is and list the key files: `*.md` (readable), `*.pdf`, `*.summary.md`, `*.agent-trace.md`.
+- If files were requested, report how many were stored and how many failed (`fileDownload` in `*.assets.manifest.json`: `requested`, `total`, `stored`, `failed`), and name the main failure reason. If files were not requested but the manifest lists some, you may tell the user they can ask for them and re-run with `--files`.
 - If the user wanted something done with the conversation (summarize, continue the work, extract decisions), read the `.md` or `*.messages.jsonl` from the folder and do it. Do not paste the whole conversation back.
 - The integrity gate can refuse an incomplete capture. Report that message to the user. Do not retry with `--allow-incomplete` unless they say they accept a partial export.
 
-## 4. When it fails
+## 5. When it fails
 
 | Message | What to do |
 | --- | --- |

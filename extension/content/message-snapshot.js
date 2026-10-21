@@ -29,6 +29,7 @@
       ...(Array.isArray(message?.dil) && message.dil.length ? { dil: message.dil } : {}),
       codeBlockCount: message?.codeBlockCount || 0,
       fileCount: message?.fileCount || 0,
+      ...(Array.isArray(message?.fileRefs) && message.fileRefs.length ? { fileRefs: message.fileRefs } : {}),
       imageCount,
       imagesEmbedded,
       imagesDeferred,

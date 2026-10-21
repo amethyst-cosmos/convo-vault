@@ -245,16 +245,28 @@ async function prepareAndDownloadLocalBundle(serializedBody) {
   // script downloads them and ships the bytes here; the renderer never sees them.
   const pageImages = readPageImageMap(body?.pageImages);
   const pageImageFailures = readPageImageMap(body?.pageImageFailures);
+  const pageFiles = readPageImageMap(body?.pageFiles);
   if (body && typeof body === "object") {
     delete body.pageImages;
     delete body.pageImageFailures;
+    delete body.pageFiles;
   }
 
   try {
     const imageSources = collectBundleImageSources(body?.exportPayload?.messages);
-    if (imageSources.length) {
+    if (imageSources.length || pageFiles.size) {
       const session = await createLocalExportSession(rendererUrl, requestHeaders);
       exportSessionId = session.sessionId;
+      body.exportSessionId = exportSessionId;
+    }
+
+    if (pageFiles.size) {
+      const fileFailures = await stageBundleFiles({ rendererUrl, requestHeaders, exportSessionId, pageFiles });
+      const download = body.exportPayload.fileDownload || (body.exportPayload.fileDownload = { requested: true, failures: {} });
+      Object.assign(download.failures ||= {}, fileFailures);
+    }
+
+    if (imageSources.length) {
       const staged = await stageBundleImageSources({
         rendererUrl,
         requestHeaders,
@@ -265,7 +277,6 @@ async function prepareAndDownloadLocalBundle(serializedBody) {
         pageUrl: body?.exportPayload?.source || ""
       });
       applyStagedImageStats(body?.exportPayload, staged);
-      body.exportSessionId = exportSessionId;
     }
 
     response = await fetch(`${rendererUrl}/prepare-render-bundle`, {
@@ -376,6 +387,43 @@ async function stageBundleImageSources(options) {
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
   return resultsBySource;
+}
+
+// Files go to the renderer one request each, keyed by the hash of their
+// reference key, so the renderer can match them to the payload's fileRefs.
+async function stageBundleFiles(options) {
+  const entries = [...options.pageFiles.entries()];
+  const failures = {};
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < entries.length) {
+      const [refKey, dataUri] = entries[cursor];
+      cursor += 1;
+
+      try {
+        const blob = dataUriToBlob(dataUri);
+        const response = await fetch(`${options.rendererUrl}/export-sessions/${options.exportSessionId}/files/${await sha256Text(refKey)}`, {
+          method: "PUT",
+          headers: {
+            ...options.requestHeaders,
+            "Content-Type": blob.type || "application/octet-stream"
+          },
+          body: blob
+        });
+        const result = await readRendererJson(response);
+
+        if (!response.ok || !result?.ok) {
+          throw new Error(result?.error || `HTTP ${response.status}`);
+        }
+      } catch (error) {
+        failures[refKey] = `could not be stored: ${error.message || error}`;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(LOCAL_RENDERER_ASSET_CONCURRENCY, entries.length) }, () => worker()));
+  return failures;
 }
 
 async function resolveStageableImageBlob(source, options) {
@@ -621,9 +669,10 @@ async function fetchImageAsBlob(src) {
 }
 
 function dataUriToBlob(dataUri) {
-  const match = String(dataUri || "").match(/^data:([^;,]+)?;base64,([a-z0-9+/=\r\n]+)$/i);
+  // Files can carry type parameters ("text/csv;charset=utf-8"); they are dropped.
+  const match = String(dataUri || "").match(/^data:([^;,]+)?(?:;[^;,]*)*;base64,([a-z0-9+/=\r\n]+)$/i);
   if (!match) {
-    throw new Error("Unsupported image data URI.");
+    throw new Error("Unsupported data URI.");
   }
 
   const binary = atob(match[2].replace(/\s+/g, ""));

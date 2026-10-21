@@ -25,6 +25,7 @@ function normalizePayload(body) {
     language: payload.language || payload.locale || payload.documentLanguage || "",
     captureMode: payload.captureMode || "",
     messageCount: payload.messageCount || messages.length,
+    ...(payload.fileDownload && typeof payload.fileDownload === "object" ? { fileDownload: payload.fileDownload } : {}),
     messages
   };
 }

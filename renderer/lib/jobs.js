@@ -112,7 +112,9 @@ function createExportJob(body) {
       // Makes the extension reload itself, so a rebuilt extension takes effect without clicking.
       reload: body?.reload === true,
       // false skips the PDF: a data-only bundle needs no headless Chrome.
-      pdf: body?.pdf !== false
+      pdf: body?.pdf !== false,
+      // true downloads uploaded and generated files into assets/files/; off by default.
+      files: body?.files === true
     },
     result: null
   };

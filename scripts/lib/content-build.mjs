@@ -13,6 +13,7 @@ export const INCLUDE_FILES = {
   "text-utils": "text-utils.js",
   "auto-export": "auto-export.js",
   "bundle-export": "bundle-export.js",
+  "chatgpt-files": "chatgpt-files.js",
   "debug-log": "debug-log.js",
   "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",

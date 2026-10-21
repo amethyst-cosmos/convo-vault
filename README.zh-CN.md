@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.6-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.7-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.6`
+当前版本：`0.11.7`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -138,7 +138,8 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 | `*.topics.json`、`*.entities.json` | 话题索引；链接、文件名、日期等实体线索 |
 | `*.agent-trace.json` | 完整思考过程：每个回答从提问到作答之间的思考摘要、工具调用和完整返回内容，按时间排序，附来源索引 |
 | `*.agent-trace.md` | 同一份记录的可读版，长输出截断并指向 JSON |
-| `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因 |
+| `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因；已下载文件的大小和 SHA-256 |
+| `assets/files/` | 仅 `--files` 时有：对话里上传和生成的 Word、PDF、zip 等文件 |
 | `*.payload.json`、`*.conversation.json`、`*.data.json` | 完整导出数据和对话元数据，可用于重新渲染 |
 
 ## 命令行
@@ -160,7 +161,7 @@ node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
 | `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
 
-其他选项：`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
+其他选项：`--files` 同时下载对话里上传和生成的文件（默认不下，Agent 会先问你一次），`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
 
 ## 不用 Agent 时
 
@@ -170,7 +171,7 @@ node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 
 Convo Vault 读的是 ChatGPT 自己的对话接口，也就是页面画出来的那份数据。它不会滚动或点击页面，所以很长的对话几秒就读完，标签页放在后台也行。读完后会按消息 id 对照 ChatGPT 的消息清单，缺任何一条都会拦截并说明。
 
-导出的是对话里有的一切：每条消息、模型的思考步骤和工具调用（按顺序，含完整返回内容）、它看过和引用过的每个网页、图片、文件和生成式界面。留下哪些，由你导出后自己决定。
+导出的是对话里有的一切：每条消息、模型的思考步骤和工具调用（按顺序，含完整返回内容）、它看过和引用过的每个网页、图片和生成式界面。上传和生成的文件会列在清单里，只有你要求时才下载（`--files`，Agent 会问一次，默认不下）。留下哪些，由你导出后自己决定。
 
 ## 安全与隐私
 
@@ -203,6 +204,8 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.11.7` 可选下载对话里上传和生成的文件（默认不下载，由 Agent 先问一句）；`--files`。
 
 `0.11.6` `setup` 不再因 skill 目录不可写而中断；`verify` 会显示扩展版本。
 

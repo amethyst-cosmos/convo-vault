@@ -305,6 +305,73 @@ test("background renderer bridge stages page-downloaded ChatGPT file images with
   assert.deepEqual(JSON.parse(JSON.stringify(result.assetStats.imageFailureSamples)), ["page download failed: file download lookup HTTP 404"]);
 });
 
+test("background renderer bridge stages page-downloaded files and records the ones the renderer refuses", async () => {
+  const backgroundSource = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
+  const runtimeConnectEvent = createEvent();
+  const stagedFiles = [];
+  const prepareBodies = [];
+  const sessionId = "a".repeat(48);
+  const csv = "upload:file_csv";
+  const doc = "generated:m1:/mnt/data/out.docx";
+  const csvUri = `data:text/csv;charset=utf-8;base64,${Buffer.from("a,b\n1,2\n").toString("base64")}`;
+  const docUri = `data:application/msword;base64,${Buffer.from("doc bytes").toString("base64")}`;
+  const keyHash = async (key) => Buffer.from(await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(key))).toString("hex");
+  const refused = await keyHash(doc);
+  const chrome = {
+    runtime: { id: "page-file-test", lastError: null, onMessage: createEvent(), onConnect: runtimeConnectEvent },
+    storage: { local: { get(_keys, callback) { callback({ convoVaultSettings: { backendToken: "token" } }); } } },
+    downloads: { download(_options, callback) { callback(5); } }
+  };
+  const context = {
+    AbortController, Blob, URL, TextEncoder, Uint8Array, atob, btoa, chrome, console,
+    crypto: webcrypto, setTimeout, clearTimeout, setInterval: () => 1, clearInterval: () => {},
+    fetch: async (url, options = {}) => {
+      if (url === "http://127.0.0.1:38474/export-sessions") {
+        return jsonResponse({ ok: true, sessionId });
+      }
+      if (String(url).startsWith(`http://127.0.0.1:38474/export-sessions/${sessionId}/files/`)) {
+        stagedFiles.push({ key: String(url).split("/").pop(), type: options.body.type, size: options.body.size });
+        return String(url).endsWith(refused)
+          ? jsonResponse({ ok: false, error: "Not enough free disk space" }, 507)
+          : jsonResponse({ ok: true, sha256: "f".repeat(64) });
+      }
+      if (url === "http://127.0.0.1:38474/prepare-render-bundle") {
+        prepareBodies.push(JSON.parse(options.body));
+        return jsonResponse({ ok: true, filename: "files.zip", downloadPath: `/download-bundle/${"9".repeat(48)}` });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+  };
+
+  vm.runInNewContext(backgroundSource, context, { filename: "background.js" });
+  const port = createPort();
+  runtimeConnectEvent.emit(port);
+  const serializedBody = JSON.stringify({
+    exportPayload: {
+      source: "https://chatgpt.com/c/page-files",
+      assetStats: {},
+      fileDownload: { requested: true, failures: { "upload:file_gone": "lookup HTTP 404 (conversation_not_found)" } },
+      messages: [{ id: "u1", role: "user", markdown: "no images", thinkingMarkdown: "" }]
+    },
+    fileName: "files.zip",
+    pageFiles: { [csv]: csvUri, [doc]: docUri }
+  });
+
+  port.onMessage.emit({ type: "START", totalCharacters: serializedBody.length, totalBytes: serializedBody.length });
+  port.onMessage.emit({ type: "CHUNK", data: serializedBody });
+  port.onMessage.emit({ type: "END" });
+  await waitFor(() => port.sent.some((message) => message.type === "RESULT"));
+
+  assert.equal(port.sent.find((message) => message.type === "RESULT").result.ok, true);
+  assert.deepEqual(stagedFiles.map((file) => file.type).sort(), ["application/msword", "text/csv"], "type parameters are dropped, bytes are sent as blobs");
+  const prepared = prepareBodies[0];
+  assert.equal(prepared.exportSessionId, sessionId);
+  assert.equal(prepared.pageFiles, undefined, "file bytes stay out of the control JSON");
+  assert.equal(prepared.exportPayload.fileDownload.failures["upload:file_gone"], "lookup HTTP 404 (conversation_not_found)");
+  assert.match(prepared.exportPayload.fileDownload.failures[doc], /could not be stored: Not enough free disk space/);
+  assert.equal(prepared.exportPayload.fileDownload.failures[csv], undefined);
+});
+
 function jsonResponse(body, status = 200) {
   return {
     ok: status >= 200 && status < 300,

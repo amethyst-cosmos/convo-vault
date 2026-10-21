@@ -86,7 +86,7 @@ test("--no-pdf exports a data-only bundle without needing a PDF renderer", async
     await rm(outDir, { recursive: true, force: true });
   });
 
-  const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-2", "--out", outDir, "--no-pdf", "--no-extract"], {
+  const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-2", "--out", outDir, "--no-pdf", "--files", "--no-extract"], {
     cwd: repoRoot,
     env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
     stdio: ["ignore", "pipe", "pipe"]
@@ -100,6 +100,7 @@ test("--no-pdf exports a data-only bundle without needing a PDF renderer", async
   const jobId = await waitFor(() => stderr.match(/#convo-vault-job=([a-f0-9]{48})/)?.[1], () => stderr);
   const claimed = JSON.parse((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).body);
   assert.equal(claimed.options.pdf, false);
+  assert.equal(claimed.options.files, true, "--files asks the extension to download uploaded and generated files");
 
   const prepared = await fetch(`http://127.0.0.1:${port}/prepare-render-bundle`, {
     method: "POST",
