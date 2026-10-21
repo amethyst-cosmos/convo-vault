@@ -838,6 +838,7 @@ async function loadFastCaptureModule(overrides = {}) {
     "chatgpt-markup.js",
     "conversation-manifest.js",
     "agent-trace.js",
+    "chatgpt-files.js",
     "capture-fast.js"
   ].map((file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8")))).join("\n");
   const context = vm.createContext({

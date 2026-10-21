@@ -40,6 +40,7 @@
       allowIncomplete: options.allowIncomplete === true,
       jobId: options.jobId,
       skipPdf: options.skipPdf === true,
+      downloadFiles: options.downloadFiles === true,
       onProgress
     });
   }

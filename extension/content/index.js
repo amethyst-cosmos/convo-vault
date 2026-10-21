@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.11.6";
+  const EXPORTER_VERSION = "0.11.7";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -32,6 +32,7 @@
   // @convo-vault-include capture-validation
 
   // @convo-vault-include bundle-export
+  // @convo-vault-include chatgpt-files
 
   function countMarkdownImages(markdown) {
     return (String(markdown || "").match(/!\[[^\]]*]\([^)]+\)/g) || []).length;

@@ -103,6 +103,19 @@ test("a data-only job skips the PDF when exporting", async () => {
   assert.equal(exportOptions.skipPdf, true);
 });
 
+test("files are downloaded only when the job asks for them", async () => {
+  const seen = [];
+  for (const options of [{ closeTab: true }, { closeTab: true, files: true }]) {
+    load({
+      claim: { ok: true, options },
+      exportConversation: async (exportOptions) => { seen.push(exportOptions.downloadFiles); return { ok: true }; }
+    });
+    await settle();
+  }
+
+  assert.deepEqual(seen, [false, true]);
+});
+
 test("a reload job closes its tab and asks the extension to reload without exporting", async () => {
   let exported = false;
   const harness = load({

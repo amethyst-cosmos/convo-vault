@@ -4,6 +4,17 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.7
+
+Optional file download. The point of an export is the conversation and the model's thinking, so files stay off unless the user asks:
+
+- **`--files` downloads the files in a conversation.** Files the user uploaded and files ChatGPT generated (`sandbox:/mnt/data/...` links) are fetched with the browser's own ChatGPT session into `assets/files/<hash>-<name>`. Each file is recorded in `*.assets.manifest.json` with size, SHA-256, type and origin. MCP: `files: true`.
+- **Off by default, and the skill asks once.** The skill now asks "also download the uploaded and generated files? default no". Only a clear yes adds `--files`; no answer, a vague answer or an unrelated one means no. Without `--files` the manifest still lists every file as `not-requested`, so nothing disappears silently. Images are unchanged and always saved.
+- **A file never fails the export.** A file that cannot be downloaded (ChatGPT already deleted the sandbox, a deleted conversation, over 64 MB, more than 120 MB of files in one export, a network error) is recorded with its own reason (`download.state: "failed"`, `download.reason`) and the rest carries on. `fileDownload` in the manifest gives `requested`, `total`, `stored`, `failed`.
+- **Structured file references.** Every message now carries `fileRefs` (kind, file id or sandbox path, name, type, size), recorded even when files are not downloaded.
+
+Found while testing on a real 564-message conversation: ChatGPT serves uploads from `/backend-api/files/download/<id>` and generated files from `/backend-api/conversation/<id>/interpreter/download`, and both stop working once the conversation or its sandbox is gone.
+
 ## 0.11.6
 
 Three rough edges found when an unfamiliar, sandboxed agent installed from the GitHub link:

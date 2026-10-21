@@ -279,6 +279,78 @@ test("backend renderer prepares and serves export bundles", async (t) => {
   assert.equal(portableConversation.degradedObjectCount, 0);
   assert.equal(createHash("sha256").update(stagedZip.data(stagedEntries.get(stagedAssetEntry))).digest("hex"), stagedSha);
   assert.equal(stagedZip.data(stagedEntries.get(stagedPdfEntry)).subarray(0, 4).toString("ascii"), "%PDF");
+
+  // Files: a stored upload lands under assets/files/, a failed generated file
+  // keeps its reason, and a bundle that did not ask for files lists them as not requested.
+  const wordBytes = Buffer.from("PK\u0003\u0004 pretend this is a Word file");
+  const wordSha = createHash("sha256").update(wordBytes).digest("hex");
+  const fileRefs = [
+    { key: "upload:file_000000000000000000000001", kind: "upload", fileId: "file_000000000000000000000001", name: "题目:报告?.docx", mimeType: "application/msword", sizeBytes: wordBytes.length, messageId: "files-user" },
+    { key: "generated:files-assistant:/mnt/data/out.docx", kind: "generated", name: "out.docx", messageId: "files-assistant", sandboxPath: "/mnt/data/out.docx" }
+  ];
+  const filesSession = await (await fetch(`http://127.0.0.1:${port}/export-sessions`, {
+    method: "POST",
+    headers: { "X-Convo-Vault-Token": token }
+  })).json();
+  const fileResponse = await fetch(`http://127.0.0.1:${port}/export-sessions/${filesSession.sessionId}/files/${createHash("sha256").update(fileRefs[0].key).digest("hex")}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/msword", "X-Convo-Vault-Token": token },
+    body: wordBytes
+  });
+  const storedFile = await fileResponse.json();
+  assert.equal(fileResponse.ok, true, JSON.stringify(storedFile));
+  assert.equal(storedFile.sha256, wordSha);
+
+  const filesPayload = (requested) => ({
+    schemaVersion: 1,
+    title: "File assets fixture",
+    source: "https://chatgpt.com/c/file-assets",
+    exportedAt: "2026-10-21T00:00:00.000Z",
+    captureMode: "fast",
+    messageCount: 2,
+    fileDownload: { requested, failures: requested ? { [fileRefs[1].key]: "lookup HTTP 404 (conversation_deleted)" } : {} },
+    messages: [
+      { id: "files-user", role: "user", turnNumber: 1, markdown: "[File: 题目:报告?.docx]", thinkingMarkdown: "", fileRefs: [fileRefs[0]] },
+      { id: "files-assistant", role: "assistant", turnNumber: 2, markdown: "Here: [out.docx](sandbox:/mnt/data/out.docx)", thinkingMarkdown: "", fileRefs: [fileRefs[1]] }
+    ]
+  });
+  const prepareFiles = async (payload, sessionId) => {
+    const response = await fetch(`http://127.0.0.1:${port}/prepare-render-bundle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Convo-Vault-Token": token },
+      body: JSON.stringify({ exportPayload: payload, skipPdf: true, ...(sessionId ? { exportSessionId: sessionId } : {}), fileName: "file-assets.fixture.zip" })
+    });
+    const prepared = await response.json();
+    assert.equal(response.ok, true, JSON.stringify(prepared));
+    const zipPath = path.join(outputRoot, `file-assets-${Date.now()}.zip`);
+    await writeFile(zipPath, Buffer.from(await (await fetch(`http://127.0.0.1:${port}${prepared.downloadPath}`)).arrayBuffer()));
+    const zip = readZip(zipPath);
+    const entries = new Map(zip.entries.map((entry) => [entry.name, entry]));
+    const manifestName = [...entries.keys()].find((name) => name.endsWith(".assets.manifest.json"));
+    return { entries, zip, manifest: JSON.parse(zip.data(entries.get(manifestName)).toString("utf8")) };
+  };
+
+  const withFiles = await prepareFiles(filesPayload(true), filesSession.sessionId);
+  const storedName = `assets/files/${wordSha.slice(0, 8)}-题目_报告_.docx`;
+  assert.ok(withFiles.entries.has(storedName), `bundle must hold ${storedName}: ${[...withFiles.entries.keys()].join(", ")}`);
+  assert.equal(createHash("sha256").update(withFiles.zip.data(withFiles.entries.get(storedName))).digest("hex"), wordSha);
+  const fileAssets = withFiles.manifest.assets.filter((asset) => asset.kind === "file");
+  assert.equal(fileAssets.length, 2, "text scan must not list structured files again");
+  const storedAsset = fileAssets.find((asset) => asset.origin === "user-provided");
+  assert.equal(storedAsset.download.state, "stored");
+  assert.equal(storedAsset.sha256, wordSha);
+  assert.equal(storedAsset.sizeBytes, wordBytes.length);
+  assert.equal(storedAsset.bundlePath, storedName);
+  const failedAsset = fileAssets.find((asset) => asset.origin === "ai-generated");
+  assert.equal(failedAsset.download.state, "failed");
+  assert.match(failedAsset.download.reason, /conversation_deleted/);
+  assert.equal(failedAsset.sourceUrl, "sandbox:/mnt/data/out.docx");
+  assert.deepEqual(withFiles.manifest.fileDownload, { requested: true, total: 2, stored: 1, failed: 1 });
+
+  const withoutFiles = await prepareFiles(filesPayload(false));
+  assert.equal([...withoutFiles.entries.keys()].some((name) => name.startsWith("assets/files/")), false);
+  assert.deepEqual(withoutFiles.manifest.fileDownload, { requested: false, total: 2, stored: 0, failed: 0 });
+  assert.ok(withoutFiles.manifest.assets.filter((asset) => asset.kind === "file").every((asset) => asset.download.state === "not-requested"));
 });
 
 function getAvailablePort() {

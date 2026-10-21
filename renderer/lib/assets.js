@@ -33,11 +33,13 @@ function buildAssetManifest(payload, options = {}) {
     fs.mkdirSync(assetRoot, { recursive: true });
   }
 
+  const structuredFileNames = collectStructuredFileAssets(payload, assetsById, options.localFiles);
+
   for (const message of messages) {
     collectMessageImageAssets(message, "markdown", assetRoot, assetsById, embeddedAssetCache, dataUriCache, localImageAssetMap);
     collectMessageImageAssets(message, "thinkingMarkdown", assetRoot, assetsById, embeddedAssetCache, dataUriCache, localImageAssetMap);
-    collectMessageFileAssets(message, "markdown", assetsById);
-    collectMessageFileAssets(message, "thinkingMarkdown", assetsById);
+    collectMessageFileAssets(message, "markdown", assetsById, structuredFileNames);
+    collectMessageFileAssets(message, "thinkingMarkdown", assetsById, structuredFileNames);
   }
 
   const assets = [...assetsById.values()].sort((a, b) => a.assetId.localeCompare(b.assetId));
@@ -54,9 +56,17 @@ function buildAssetManifest(payload, options = {}) {
     byStorage: {}
   });
 
+  const fileAssets = assets.filter((asset) => asset.download);
+
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
+    fileDownload: {
+      requested: payload?.fileDownload?.requested === true,
+      total: fileAssets.length,
+      stored: fileAssets.filter((asset) => asset.download.state === "stored").length,
+      failed: fileAssets.filter((asset) => asset.download.state === "failed").length
+    },
     conversation: {
       title: payload?.title || "ChatGPT Conversation",
       source: payload?.source || "",
@@ -92,7 +102,7 @@ function dedupeEmbeddedImageAssets(payload, assetManifest, options = {}) {
 function rewriteEmbeddedImageAssets(payload, assetManifest, options = {}) {
   const localImageAssetMap = createLocalImageAssetMap(options.localImageAssets);
   const assetsBySha = new Map((assetManifest?.assets || [])
-    .filter((asset) => asset?.sha256 && asset?.cachePath)
+    .filter((asset) => asset?.sha256 && asset?.cachePath && asset.kind !== "file")
     .map((asset) => [asset.sha256, asset]));
   const replacementCache = new Map();
   const messages = (Array.isArray(payload?.messages) ? payload.messages : []).map((message) => {
@@ -289,7 +299,97 @@ function resolveEmbeddedImageAsset(src, assetRoot, cache, dataUriCache) {
   return asset;
 }
 
-function collectMessageFileAssets(message, field, assetsById) {
+// Uploaded and generated files, from the structured references the extension
+// recorded (message.fileRefs). A file the export stored carries its hash, size
+// and bundle path; any other says whether it was never requested or failed, and why.
+// Returns the file names covered, so the text scan below does not list them twice.
+function collectStructuredFileAssets(payload, assetsById, localFiles) {
+  const storedByKey = new Map((Array.isArray(localFiles) ? localFiles : []).map((file) => [file.sourceKey, file]));
+  const requested = payload?.fileDownload?.requested === true;
+  const failures = payload?.fileDownload?.failures || {};
+  const names = new Set();
+
+  for (const message of Array.isArray(payload?.messages) ? payload.messages : []) {
+    for (const ref of Array.isArray(message?.fileRefs) ? message.fileRefs : []) {
+      if (!ref?.key) {
+        continue;
+      }
+
+      const fileName = cleanText(ref.name || ref.fileId || "file", 180);
+      const stored = storedByKey.get(hashSha256(ref.key));
+      const asset = {
+        assetId: `file:${hashString(ref.key)}`,
+        kind: "file",
+        origin: ref.kind === "generated" ? "ai-generated" : "user-provided",
+        fileName,
+        label: fileName,
+        mimeType: stored?.mimeType || ref.mimeType || "",
+        declaredSizeBytes: ref.sizeBytes || 0,
+        ...(ref.fileId ? { fileId: ref.fileId } : {}),
+        ...(ref.sandboxPath ? { sourceUrl: `sandbox:${ref.sandboxPath}` } : {}),
+        references: [buildReference(message, "fileRefs", { label: fileName })]
+      };
+
+      if (stored) {
+        Object.assign(asset, {
+          storage: "local-cache",
+          sha256: stored.sha256,
+          sizeBytes: stored.sizeBytes,
+          cachePath: stored.cachePath,
+          bundlePath: `assets/files/${stored.sha256.slice(0, 8)}-${safeFileName(fileName)}`,
+          download: { state: "stored" }
+        });
+      } else if (requested) {
+        Object.assign(asset, {
+          storage: "reference-only",
+          download: { state: "failed", reason: failures[ref.key] || "was not downloaded" }
+        });
+      } else {
+        Object.assign(asset, {
+          storage: "reference-only",
+          download: { state: "not-requested", reason: "files are only downloaded when requested (convo-vault export --files)" }
+        });
+      }
+
+      upsertAsset(assetsById, asset);
+      names.add(fileName);
+    }
+  }
+
+  return names;
+}
+
+function safeFileName(value) {
+  const cleaned = String(value || "file")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+    .replace(/^\.+/, "_")
+    .trim();
+  const dot = cleaned.lastIndexOf(".");
+  const extension = dot > 0 && cleaned.length - dot <= 12 ? cleaned.slice(dot) : "";
+  return `${cleaned.slice(0, dot > 0 && extension ? dot : cleaned.length).slice(0, 100)}${extension}` || "file";
+}
+
+// The text scan can pick up a few characters around a name ("[out.docx"), so a
+// name that contains a structured file's name counts as the same file.
+function isCoveredFileName(coveredNames, fileName) {
+  if (coveredNames.has(fileName)) {
+    return true;
+  }
+
+  for (const name of coveredNames) {
+    if (fileName.includes(name)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hashSha256(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function collectMessageFileAssets(message, field, assetsById, coveredNames = new Set()) {
   const source = maskEmbeddedDataUris(message?.[field]);
   const sourceWithoutFileLinks = source.replace(FILE_LINK_RE, " ");
   let match;
@@ -298,6 +398,9 @@ function collectMessageFileAssets(message, field, assetsById) {
   while ((match = FILE_LINK_RE.exec(source))) {
     const fileName = cleanText(match[1] || "attachment", 180);
     const sourceUrl = match[2] || "";
+    if (isCoveredFileName(coveredNames, fileName)) {
+      continue;
+    }
     upsertAsset(assetsById, {
       assetId: `file-ref:${hashString(`${fileName}\n${sourceUrl}`)}`,
       kind: "file",
@@ -313,6 +416,9 @@ function collectMessageFileAssets(message, field, assetsById) {
   FILENAME_RE.lastIndex = 0;
   while ((match = FILENAME_RE.exec(sourceWithoutFileLinks))) {
     const fileName = cleanText(match[0], 180);
+    if (isCoveredFileName(coveredNames, fileName)) {
+      continue;
+    }
     upsertAsset(assetsById, {
       assetId: `file-name:${hashString(fileName)}`,
       kind: "file",

@@ -67,6 +67,7 @@ async function buildRenderBundleArtifact(body) {
   const exportSessionId = String(body?.exportSessionId || "").trim();
   const exportSession = exportSessionId ? getActiveExportSession(exportSessionId) : null;
   const localImageAssets = exportSession ? [...exportSession.assetsBySourceKey.values()] : [];
+  const localFiles = exportSession ? [...exportSession.filesBySourceKey.values()] : [];
   timings.mark("payloadNormalized");
 
   if (exportSessionId && !exportSession) {
@@ -104,7 +105,7 @@ async function buildRenderBundleArtifact(body) {
   const assetManifestPath = path.join(requestDir, `${baseName}.assets.manifest.json`);
 
   const cacheRoot = getCacheRoot();
-  const assetManifest = buildAssetManifest(payload, { cacheRoot, localImageAssets: renderLocalImageAssets });
+  const assetManifest = buildAssetManifest(payload, { cacheRoot, localImageAssets: renderLocalImageAssets, localFiles });
   const renderPayload = dedupeEmbeddedImageAssets(payload, assetManifest, {
     localImageAssets: renderLocalImageAssets,
     renderLocalFiles: true
@@ -306,13 +307,15 @@ function buildBundleAssetEntries(assetManifest, cacheRoot) {
   const entries = [];
 
   for (const asset of assetManifest?.assets || []) {
-    const entryName = String(asset?.cachePath || "").replace(/\\/g, "/");
+    const cachePath = String(asset?.cachePath || "").replace(/\\/g, "/");
+    // Files are stored by hash in the cache but unpacked under a readable name.
+    const entryName = String(asset?.bundlePath || cachePath).replace(/\\/g, "/");
 
-    if (asset?.storage !== "local-cache" || !entryName || seen.has(entryName)) {
+    if (asset?.storage !== "local-cache" || !cachePath || seen.has(entryName)) {
       continue;
     }
 
-    const absolutePath = path.resolve(root, entryName);
+    const absolutePath = path.resolve(root, cachePath);
     if (!absolutePath.startsWith(prefix) || !fs.existsSync(absolutePath)) {
       continue;
     }

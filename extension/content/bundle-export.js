@@ -15,6 +15,7 @@
       captureMode: options.captureMode,
       jobId: options.jobId,
       skipPdf: options.skipPdf,
+      downloadFiles: options.downloadFiles,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
@@ -83,9 +84,23 @@
       onProgress: options.onProgress
     });
 
+    // Files are fetched only when the job asks for them. The references are
+    // always in the payload, so the manifest says what was left out.
+    const fileDownloads = options.downloadFiles
+      ? await downloadChatGptFiles(payload.messages, {
+        debugLog: options.debugLog,
+        onProgress: options.onProgress
+      })
+      : null;
+    payload.fileDownload = {
+      requested: Boolean(fileDownloads),
+      failures: fileDownloads?.failures || {}
+    };
+
     options.onProgress?.("Rendering Markdown, PDF, and data files...");
     const result = await requestBackgroundBundleExport({
       exportPayload: payload,
+      ...(fileDownloads ? { pageFiles: fileDownloads.files } : {}),
       ...(options.jobId ? { jobId: options.jobId } : {}),
       ...(options.skipPdf ? { skipPdf: true } : {}),
       fileName: defaultFileName,

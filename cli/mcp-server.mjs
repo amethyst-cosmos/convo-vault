@@ -30,7 +30,8 @@ const TOOLS = [
       properties: {
         url: { type: "string", description: "Conversation link like https://chatgpt.com/c/<id>, or the bare conversation id." },
         out_dir: { type: "string", description: "Folder to save into. Default: ~/Downloads/convo-vault." },
-        pdf: { type: "boolean", description: "Set false to skip the PDF and export data only (faster). Default true." }
+        pdf: { type: "boolean", description: "Set false to skip the PDF and export data only (faster). Default true." },
+        files: { type: "boolean", description: "Set true to also download the files uploaded to and generated in the conversation (Word, PDF, zip...) into assets/files/. Default false: ask the user first; if they do not clearly say yes, leave it off." }
       },
       required: ["url"]
     }
@@ -86,6 +87,7 @@ async function callTool(name, args) {
     const cliArgs = ["export", String(args.url || "")];
     if (args.out_dir) cliArgs.push("--out", String(args.out_dir));
     if (args.pdf === false) cliArgs.push("--no-pdf");
+    if (args.files === true) cliArgs.push("--files");
     const id = randomBytes(6).toString("hex");
     const job = startCli(cliArgs);
     exports.set(id, job);

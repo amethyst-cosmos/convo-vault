@@ -16,7 +16,8 @@ function handleCreateExportSession(response) {
     createdAt: Date.now(),
     expiresAt: Date.now() + EXPORT_SESSION_TTL_MS,
     totalBytes: 0,
-    assetsBySourceKey: new Map()
+    assetsBySourceKey: new Map(),
+    filesBySourceKey: new Map()
   };
   exportSessions.set(sessionId, session);
   scheduleExportSessionExpiry(sessionId);
@@ -29,7 +30,7 @@ function handleCreateExportSession(response) {
   });
 }
 
-async function handleExportSessionAsset(request, response, sessionId, sourceKey) {
+async function handleExportSessionAsset(request, response, sessionId, sourceKey, options = {}) {
   const session = getActiveExportSession(sessionId);
 
   if (!session) {
@@ -50,7 +51,7 @@ async function handleExportSessionAsset(request, response, sessionId, sourceKey)
   }
 
   try {
-    const asset = await stageExportSessionAsset(request, session, sourceKey);
+    const asset = await stageExportSessionAsset(request, session, sourceKey, options);
     sendJson(response, 200, {
       ok: true,
       sourceKey: asset.sourceKey,
@@ -76,7 +77,8 @@ function handleDeleteExportSession(response, sessionId) {
   });
 }
 
-async function stageExportSessionAsset(request, session, sourceKey) {
+async function stageExportSessionAsset(request, session, sourceKey, options = {}) {
+  const isFile = options.kind === "file";
   const cacheRoot = getCacheRoot();
   const uploadRoot = path.join(cacheRoot, "tmp", "export-assets");
   fs.mkdirSync(uploadRoot, { recursive: true });
@@ -119,8 +121,10 @@ async function stageExportSessionAsset(request, session, sourceKey) {
     throw error;
   }
 
-  const mimeType = detectUploadedImageMime(prefix, request.headers["content-type"]);
-  if (!mimeType.startsWith("image/")) {
+  const mimeType = isFile
+    ? String(request.headers["content-type"] || "").split(";", 1)[0].trim().toLowerCase() || "application/octet-stream"
+    : detectUploadedImageMime(prefix, request.headers["content-type"]);
+  if (!isFile && !mimeType.startsWith("image/")) {
     fs.rmSync(tempPath, { force: true });
     const error = new Error(`Export asset is not a supported image (${mimeType || "unknown type"}).`);
     error.statusCode = 415;
@@ -128,10 +132,10 @@ async function stageExportSessionAsset(request, session, sourceKey) {
   }
 
   const sha256 = digest.digest("hex");
-  const extension = extensionFromImageMime(mimeType);
+  const extension = isFile ? "bin" : extensionFromImageMime(mimeType);
   const cachePath = path.posix.join(
     "assets",
-    "sha256",
+    isFile ? "files-store" : "sha256",
     sha256.slice(0, 2),
     sha256.slice(2, 4),
     `${sha256}.${extension}`
@@ -156,7 +160,7 @@ async function stageExportSessionAsset(request, session, sourceKey) {
     fileUrl: pathToFileURL(absolutePath).href,
     reused
   };
-  session.assetsBySourceKey.set(sourceKey, asset);
+  (isFile ? session.filesBySourceKey : session.assetsBySourceKey).set(sourceKey, asset);
   session.totalBytes += totalBytes;
   session.expiresAt = Date.now() + EXPORT_SESSION_TTL_MS;
   return asset;

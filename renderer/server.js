@@ -44,7 +44,7 @@ if (IDLE_EXIT_MS > 0) {
 server.listen(PORT, HOST, () => {
   console.log(`[renderer] Listening on http://${HOST}:${PORT}`);
   console.log(`[renderer] Local API token: ${LOCAL_API_TOKEN ? "required" : "not configured; browser-origin requests will be rejected"}`);
-  console.log("[renderer] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
+  console.log("[renderer] Endpoints: GET /health, POST /shutdown, POST /jobs, GET /jobs/:id, POST /export-sessions, PUT /export-sessions/:id/assets/:sourceKey, PUT /export-sessions/:id/files/:key, DELETE /export-sessions/:id, POST /prepare-render-bundle, GET /download-bundle/:id");
 });
 
 async function handleRequest(request, response) {
@@ -106,6 +106,12 @@ async function handleRequest(request, response) {
   const exportAssetMatch = url.pathname.match(/^\/export-sessions\/([a-f0-9]{48})\/assets\/([a-f0-9]{64})$/);
   if (request.method === "PUT" && exportAssetMatch) {
     await handleExportSessionAsset(request, response, exportAssetMatch[1], exportAssetMatch[2]);
+    return;
+  }
+
+  const exportFileMatch = url.pathname.match(/^\/export-sessions\/([a-f0-9]{48})\/files\/([a-f0-9]{64})$/);
+  if (request.method === "PUT" && exportFileMatch) {
+    await handleExportSessionAsset(request, response, exportFileMatch[1], exportFileMatch[2], { kind: "file" });
     return;
   }
 

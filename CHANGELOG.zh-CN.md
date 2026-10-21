@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.md)
 
+## 0.11.7
+
+可选的文件下载。导出的重点是对话和模型的思考，所以文件默认不下，用户要了才下：
+
+- **`--files` 下载对话里的文件**：用户上传的文件，和 ChatGPT 生成的文件（`sandbox:/mnt/data/...` 链接），用浏览器里已登录的 ChatGPT 会话下载到 `assets/files/<哈希>-<文件名>`。每个文件在 `*.assets.manifest.json` 里记录大小、SHA-256、类型和来源。MCP 参数：`files: true`
+- **默认关闭，skill 会问一次**：skill 现在会先问“要不要把上传和生成的文件也下载？默认不下”。只有明确说要才加 `--files`；没回答、回答含糊或答非所问都按不下载处理。不加 `--files` 时，manifest 仍把每个文件列为 `not-requested`，不会悄悄丢掉。图片不变，始终保存
+- **单个文件失败不会让导出失败**：下不下来的文件（ChatGPT 已清掉沙箱、对话已删除、超过 64 MB、一次导出的文件总量超过 120 MB、网络错误）会各自记录原因（`download.state: "failed"`、`download.reason`），其余照常。manifest 的 `fileDownload` 给出 `requested`、`total`、`stored`、`failed`
+- **结构化的文件引用**：每条消息现在带 `fileRefs`（类型、文件 id 或沙箱路径、名称、类型、大小），即使不下载文件也会记录
+
+在一个真实的 564 条消息对话上测试时确认：上传文件走 `/backend-api/files/download/<id>`，生成的文件走 `/backend-api/conversation/<id>/interpreter/download`，对话或沙箱不在之后两者都不能下载。
+
 ## 0.11.6
 
 一个不熟悉项目、被限制在工作目录内的 Agent 从 GitHub 链接安装时遇到三处不顺：

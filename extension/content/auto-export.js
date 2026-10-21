@@ -80,6 +80,7 @@
         jobId,
         allowIncomplete: claim.options?.allowIncomplete === true,
         skipPdf: claim.options?.pdf === false,
+        downloadFiles: claim.options?.files === true,
         onProgress: (message) => report(message)
       });
 

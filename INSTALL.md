@@ -34,7 +34,7 @@ When the user gives a conversation link or a screenshot (the address bar shows `
 node <location>/cli/convo-vault.mjs export "<link>"
 ```
 
-The whole conversation is exported, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to choose anything or click the popup. The installed `convo-vault-skill` has the detailed rules.
+The whole conversation is exported, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to click the popup. The only question is whether to also download the files uploaded and generated in the conversation (default no, `--files`); the installed skill says how to ask. The installed `convo-vault-skill` has the detailed rules.
 
 ## Keep everything in one folder
 

@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.6-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.7-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.11.6`
+Current version: `0.11.7`
 
 **Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -124,7 +124,8 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the Chat
 | `*.topics.json`, `*.entities.json` | Topic index; links, file names, dates |
 | `*.agent-trace.json` | Full thinking and tool trace per answer, in order, with complete tool outputs and a source index |
 | `*.agent-trace.md` | Readable version of the trace |
-| `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded |
+| `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded; size and SHA-256 of each downloaded file |
+| `assets/files/` | Only with `--files`: the Word, PDF, zip... files uploaded to or generated in the conversation |
 | `*.payload.json`, `*.conversation.json`, `*.data.json` | Complete export data and metadata, enough to re-render later |
 
 </td>
@@ -158,6 +159,7 @@ flowchart LR
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
 node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
+node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 ```
 
@@ -182,7 +184,7 @@ Open the ChatGPT conversation, click the Convo Vault icon and press **Export thi
 
 Convo Vault reads ChatGPT's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against ChatGPT's message list by message id; if anything is missing the export is blocked and says what.
 
-You get everything the conversation has: every message, the model's thinking steps and tool calls in order with their full output, every web page it looked at and cited, images, files and generative UI. Choosing what to keep is up to you afterwards.
+You get everything the conversation has: every message, the model's thinking steps and tool calls in order with their full output, every web page it looked at and cited, images and generative UI. Uploaded and generated files are listed in the manifest and downloaded only when you ask for them (`--files`; the agent asks once, default no). Choosing what to keep is up to you afterwards.
 
 ## Privacy and security
 
