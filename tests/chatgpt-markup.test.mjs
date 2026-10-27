@@ -307,6 +307,64 @@ test("Fast builder drops document page images and lists each cited document once
   assert.equal((answer.match(/📄 \*\*Document\*\*: Outline\.pdf/g) || []).length, 1);
 });
 
+test("Fast builder drops document page images from the tool that current ChatGPT calls api_tool", async () => {
+  const fast = await loadFastModule();
+  const pages = [0, 1].map((page) => ({
+    content_type: "image_asset_pointer",
+    asset_pointer: `sediment://2c0ae403df893c${page}#file_0000000096a481fa915be0997a64bf8e#p_${page}.4f9c5c1b4c.jpg`
+  }));
+  const messages = fast.buildMessagesFromConversationApi({
+    messages: [
+      apiMessage("u1", "user", "Make a slide in the style of my PDF"),
+      {
+        id: "t1",
+        author: { role: "tool", name: "api_tool" },
+        content: { content_type: "multimodal_text", parts: ["[L1] <PARSED TEXT FOR PAGE: 1 / 2>", ...pages] },
+        recipient: "all",
+        metadata: {}
+      },
+      apiMessage("a1", "assistant", "Done, here is the slide.", { channel: "final", end_turn: true }),
+      {
+        id: "t2",
+        author: { role: "tool", name: "t2uay3k.sj1i4kz" },
+        content: {
+          content_type: "multimodal_text",
+          parts: [{ content_type: "image_asset_pointer", asset_pointer: "sediment://file_00000000cccccccccccccccccccccccc" }]
+        },
+        recipient: "all",
+        metadata: {}
+      }
+    ],
+    page_info: { has_previous_page: false }
+  });
+
+  const answer = messages[1].markdown;
+  assert.doesNotMatch(answer, /#p_\d+/);
+  assert.equal((answer.match(/!\[/g) || []).length, 1, "only the generated image stays");
+  assert.match(answer, /sediment:\/\/file_00000000cccccccccccccccccccccccc/);
+});
+
+test("Fast builder turns FileCite tags into a footnote, and removes them when there is no citation record", async () => {
+  const fast = await loadFastModule();
+  const text = "Borrow the layout.<FileCite ref=\"turn2file0\" line_range_start={785} line_range_end={809}/> Keep it simple.<FileCite ref=\"turn2file0\" line_range_start={1242} line_range_end={1261}/>";
+  const build = (metadata) => fast.buildMessagesFromConversationApi({
+    messages: [
+      apiMessage("u1", "user", "Compare with my PDF"),
+      apiMessage("a1", "assistant", text, { channel: "final", end_turn: true, metadata })
+    ],
+    page_info: { has_previous_page: false }
+  })[1].markdown;
+
+  const cited = build({ citations: [{ metadata: { title: "Outline.pdf" } }] });
+  assert.doesNotMatch(cited, /<FileCite|line_range/);
+  assert.match(cited, /Borrow the layout\.\[\^1\] Keep it simple\.\[\^1\]/);
+  assert.match(cited, /\[\^1\]: 📄 \*\*Document\*\*: Outline\.pdf/);
+
+  const uncited = build({});
+  assert.doesNotMatch(uncited, /<FileCite|line_range/);
+  assert.match(uncited, /Borrow the layout\. Keep it simple\./);
+});
+
 test("DIL messages with literal loops render from source instead of the loop-less fallback", async () => {
   const markup = await loadMarkupModule();
   const source = [

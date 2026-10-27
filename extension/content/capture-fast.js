@@ -268,7 +268,7 @@
             }
           } else if (part && typeof part === "object") {
             const ptr = part.asset_pointer || part.assetPointer || part.url || "";
-            if (ptr && !isFileReader && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
+            if (ptr && !isFileReader && !isDocumentPagePreviewPointer(ptr) && isApiImageHaystack(`${part.content_type || ""} ${part.mime_type || ""} ${ptr}`)) {
               const label = sanitizeApiMarkdownLabel(part.name || part.filename || part.title || "Image");
               const imgMd = `![${label}](${ptr})`;
               if (!imagePointers.includes(imgMd)) {
@@ -792,10 +792,15 @@
     return files.map((file) => file.url ? `📥 **Generated File**: [${file.name}](${file.url})` : `📥 **Generated Artifact**: ${file.name}`).join("\n");
   }
 
+  // Current ChatGPT cites an uploaded document with an inline component tag,
+  // <FileCite ref="turn2file0" line_range_start={785} line_range_end={809}/>,
+  // where older versions used the fileciteturn0file0 token.
+  const API_FILE_CITE_TAG_RE = /<FileCite\b[^>]*\/>/g;
+
   function enrichApiMarkdownWithCitations(markdown, message) {
     const citations = Array.isArray(message?.metadata?.citations) ? message.metadata.citations : [];
     if (!citations.length) {
-      return markdown;
+      return markdown.replace(API_FILE_CITE_TAG_RE, "");
     }
 
     let enriched = markdown;
@@ -829,12 +834,13 @@
       }
 
       // Replace matching citation tokens if present
-      const markerPattern = new RegExp(`fileciteturn\\d+file\\d+L\\d+-L\\d+|fileciteturn\\d+file\\d+|【\\d+:\\d+†source】|【\\d+†source】|【turn\\d+search\\d+】`, "g");
+      const markerPattern = new RegExp(`<FileCite\\b[^>]*/>|fileciteturn\\d+file\\d+L\\d+-L\\d+|fileciteturn\\d+file\\d+|【\\d+:\\d+†source】|【\\d+†source】|【turn\\d+search\\d+】`, "g");
       enriched = enriched.replace(markerPattern, `[^${footnoteIndex}]`);
     });
 
     // Remove any remaining raw citation tokens and normalize footnote spacing
     enriched = enriched
+      .replace(API_FILE_CITE_TAG_RE, "")
       .replace(/(?:file|web|mem)?citeturn\w+(?:L\d+-L\d+)?/gi, "")
       .replace(/\bfileL\d+(?:-L\d+)?\b/gi, "")
       .replace(/【\d+(?::\d+)?†source】/gi, "")
