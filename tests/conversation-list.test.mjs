@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8");
 
-const PROJECT_ID = `g-p-${"6911465a6f688191899dd2472df837c0"}`;
+const PROJECT_ID = `g-p-${"0123456789abcdef0123456789abcdef"}`;
 const conv = (n, title, extra = {}) => ({ id: `00000000-0000-4000-8000-00000000000${n}`, title, update_time: 1_700_000_000 + n, ...extra });
 
 // Loads conversation-list.js with a fake ChatGPT: `routes` maps a path prefix to a JSON answer (or a status).
@@ -39,17 +39,17 @@ async function loadList({ routes, links = [] }) {
 test("a project is found by name, then its conversations are read page by page", async () => {
   const { list, requested } = await loadList({
     routes: {
-      "/backend-api/gizmos/snorlax/sidebar": { items: [{ gizmo: { gizmo: { id: PROJECT_ID, display: { name: "Working" } } }, conversations: { items: [] } }] },
-      [`/backend-api/gizmos/${PROJECT_ID}/conversations?cursor=0`]: { items: [conv(1, "解读商业合作邀请"), conv(2, "二手衣物测量广告整理")], cursor: "2" },
-      [`/backend-api/gizmos/${PROJECT_ID}/conversations?cursor=2`]: { items: [conv(3, "制作PPT第一页")], cursor: null }
+      "/backend-api/gizmos/snorlax/sidebar": { items: [{ gizmo: { gizmo: { id: PROJECT_ID, display: { name: "Research" } } }, conversations: { items: [] } }] },
+      [`/backend-api/gizmos/${PROJECT_ID}/conversations?cursor=0`]: { items: [conv(1, "会议纪要整理"), conv(2, "发票对账")], cursor: "2" },
+      [`/backend-api/gizmos/${PROJECT_ID}/conversations?cursor=2`]: { items: [conv(3, "季度报告初稿")], cursor: null }
     }
   });
 
-  const result = await list({ project: "working" });
+  const result = await list({ project: "research" });
 
   assert.equal(result.source, "api");
-  assert.deepEqual({ ...result.project }, { id: PROJECT_ID, name: "Working" });
-  assert.deepEqual(Array.from(result.conversations, (item) => item.title), ["制作PPT第一页", "二手衣物测量广告整理", "解读商业合作邀请"], "newest first");
+  assert.deepEqual({ ...result.project }, { id: PROJECT_ID, name: "Research" });
+  assert.deepEqual(Array.from(result.conversations, (item) => item.title), ["季度报告初稿", "发票对账", "会议纪要整理"], "newest first");
   assert.ok(result.conversations.every((item) => item.projectId === PROJECT_ID));
   assert.equal(requested.filter((url) => url.includes("cursor=")).length, 2);
 });
@@ -59,7 +59,7 @@ test("a project link or id skips the project lookup", async () => {
     routes: { [`/backend-api/gizmos/${PROJECT_ID}/conversations`]: { items: [conv(1, "Only one")] } }
   });
 
-  const result = await list({ project: `https://chatgpt.com/g/${PROJECT_ID}-working/project` });
+  const result = await list({ project: `https://chatgpt.com/g/${PROJECT_ID}-research/project` });
 
   assert.equal(result.project.id, PROJECT_ID);
   assert.equal(result.conversations.length, 1);
@@ -68,25 +68,25 @@ test("a project link or id skips the project lookup", async () => {
 
 test("an unknown project names the projects that were seen", async () => {
   const { list } = await loadList({
-    routes: { "/backend-api/gizmos/snorlax/sidebar": { items: [{ id: PROJECT_ID, name: "Working" }] } }
+    routes: { "/backend-api/gizmos/snorlax/sidebar": { items: [{ id: PROJECT_ID, name: "Research" }] } }
   });
 
-  await assert.rejects(() => list({ project: "Nope" }), /No project named "Nope".*Working/);
+  await assert.rejects(() => list({ project: "Nope" }), /No project named "Nope".*Research/);
 });
 
 test("when the project API fails the links on the page are used, and the note says so", async () => {
   const { list } = await loadList({
     routes: {},
     links: [
-      { kind: "g-p-", href: `/g/${PROJECT_ID}-working/project`, text: "Working" },
-      { kind: "/c/", href: `/g/${PROJECT_ID}-working/c/00000000-0000-4000-8000-000000000009`, text: " 制作PPT第一页 " }
+      { kind: "g-p-", href: `/g/${PROJECT_ID}-research/project`, text: "Research" },
+      { kind: "/c/", href: `/g/${PROJECT_ID}-research/c/00000000-0000-4000-8000-000000000009`, text: " 季度报告初稿 " }
     ]
   });
 
-  const result = await list({ project: "Working" });
+  const result = await list({ project: "Research" });
 
   assert.equal(result.source, "page");
-  assert.equal(result.conversations[0].title, "制作PPT第一页");
+  assert.equal(result.conversations[0].title, "季度报告初稿");
   assert.ok(result.notes.some((note) => /links on this page/.test(note)));
 });
 
@@ -117,8 +117,8 @@ test("the title of the conversation comes from the API, not from a tab that stil
 
   assert.equal(run("getConversationTitle()"), "新聊天", "no API title yet: the old behaviour");
 
-  run(`lastApiConversationTitle = cleanApiConversationTitle("制作PPT第一页")`);
-  assert.equal(run("getConversationTitle()"), "制作PPT第一页");
+  run(`lastApiConversationTitle = cleanApiConversationTitle("季度报告初稿")`);
+  assert.equal(run("getConversationTitle()"), "季度报告初稿");
 
   run(`lastApiConversationTitle = cleanApiConversationTitle("New chat")`);
   assert.equal(run("getConversationTitle()"), "新聊天", "a placeholder from the API is ignored");

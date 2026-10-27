@@ -153,9 +153,9 @@ node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或�
 node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
 node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <链接1> <链接2> <链接3>             # 一次导出多个，只开一个浏览器标签页
-node cli/convo-vault.mjs list --project "Working"                  # 查看项目里有哪些对话（id、日期、标题）
-node cli/convo-vault.mjs export --project "Working"                # 导出项目里的所有对话
-node cli/convo-vault.mjs export --project "Working" --files-for "二手衣物,PPT"   # 只有这两个带附件
+node cli/convo-vault.mjs list --project "Research"                  # 查看项目里有哪些对话（id、日期、标题）
+node cli/convo-vault.mjs export --project "Research"                # 导出项目里的所有对话
+node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"   # 只有标题含“发票”或“报告”的带附件
 ```
 
 | 命令 | 作用 |

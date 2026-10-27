@@ -15,7 +15,7 @@ This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.
 
 Requires: Node.js 20 or newer, git, a Chromium browser (Chrome, Edge, Brave) signed in to ChatGPT, and a terminal the agent can use. It works on macOS, Windows and Linux.
 
-The user only has to say "export this ChatGPT conversation" (or "everything in my Working project") and give a link, a screenshot or a project name. Do the rest, except the one browser step in section 2, which only the user can do.
+The user only has to say "export this ChatGPT conversation" (or "everything in my Research project") and give a link, a screenshot or a project name. Do the rest, except the one browser step in section 2, which only the user can do.
 
 ## How to run the commands
 
@@ -30,10 +30,10 @@ Get the `chatgpt.com/c/<id>` links (or bare conversation ids) from the first of 
 1. The user's message: pasted links or ids.
 2. A screenshot: read the address bar. Ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`; read them carefully.
 3. A browser tool you already have: read the URL of the open ChatGPT tab.
-4. The user names a project or some titles instead of giving links ("everything in my Working project"): list them, do not ask for links.
+4. The user names a project or some titles instead of giving links ("everything in my Research project"): list them, do not ask for links.
 
 ```
-node "$HOME/convo-vault/cli/convo-vault.mjs" list --project "Working"
+node "$HOME/convo-vault/cli/convo-vault.mjs" list --project "Research"
 ```
 
    It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
@@ -122,8 +122,8 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Add `--files` only when the user said yes in section 3.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
-- A whole project: `export --project "Working"` exports every conversation in it (add links to include others).
-- Files for only some: `--files-for "二手衣物,PPT"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
+- A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
+- Files for only some: `--files-for "invoice,report"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 - On macOS the browser tab opens in the background. On Windows and Linux the browser window may come to the front once per run, not once per conversation.
 
 ## 5. After it finishes
