@@ -137,6 +137,11 @@ async function exportConversation(input, flags) {
 
   await ensureBackend(log);
 
+  // Only a browser that has answered before is checked (the remembered one, or --browser).
+  if (candidates.length === 1 && candidates[0] && (flags.browser || config.browser)) {
+    await refreshStaleExtension(candidates[0]);
+  }
+
   let jobId = "";
   let usedBrowser = null;
 
@@ -363,6 +368,26 @@ async function sourceVersion() {
   return manifest?.version || "";
 }
 
+// Asks the extension in one browser to reload itself. True once it took the job.
+async function reloadExtensionIn(browser) {
+  const jobId = await createJob({ reload: true, closeTab: true });
+  log(`Asking the extension in ${browser?.name || "the default browser"} to reload...`);
+  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+
+  if (!(await waitForClaim(jobId, CLAIM_TIMEOUT_MS))) return false;
+  await sleep(1500);
+  return true;
+}
+
+// Asks the extension in one browser which version it is.
+async function pingExtension(browser) {
+  const jobId = await createJob({ ping: true, closeTab: true });
+  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+
+  if (!(await waitForClaim(jobId, CLAIM_TIMEOUT_MS))) return { answered: false, version: "" };
+  return { answered: true, version: await waitForPingVersion(jobId) };
+}
+
 // Makes the loaded extension reload itself, so a rebuilt dist/ takes effect without a click.
 // Needs a version that already knows the reload job; older ones must be reloaded by hand once.
 async function reloadExtension(flags) {
@@ -371,18 +396,48 @@ async function reloadExtension(flags) {
   await ensureBackend(log);
 
   for (const browser of candidates) {
-    const jobId = await createJob({ reload: true, closeTab: true });
-    log(`Asking the extension in ${browser?.name || "the default browser"} to reload...`);
-    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
-
-    if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
-      await sleep(1500);
+    if (await reloadExtensionIn(browser)) {
       console.log("The extension reloaded itself.");
       return;
     }
   }
 
   throw new Error("The extension did not answer. If this is the first time after an update, reload it by hand once on the extensions page; after that this command works.");
+}
+
+// After the project was updated (by `update`, a git pull or a skill), the browser may still run the
+// old extension. Reload it here so nobody has to click reload on the Extensions page. It asks once per
+// project version, and only for a browser that has answered before, so a first export pays nothing.
+async function refreshStaleExtension(browser) {
+  const expected = await sourceVersion();
+  const config = await readConfig();
+  if (!expected || config.extensionVersionChecked === expected) return;
+
+  const found = await pingExtension(browser);
+  // No answer: the export itself reports a missing or switched-off extension.
+  if (!found.answered) return;
+
+  if (found.version === expected) {
+    await writeConfig({ extensionVersionChecked: expected });
+    return;
+  }
+
+  log(`The extension is ${found.version || "an older version"} and this project is ${expected}. Reloading the extension...`);
+  const built = await fs.readFile(path.join(repoRoot, "dist", "convo-vault-extension", "manifest.json"), "utf8").then(JSON.parse, () => null);
+  if (built?.version !== expected) await ensureExtensionBuilt();
+
+  if (!(await reloadExtensionIn(browser))) {
+    log("The extension did not take the reload. Reload it once by hand on the browser's Extensions page; after that it updates by itself.");
+    return;
+  }
+
+  const after = await pingExtension(browser);
+  if (after.answered && after.version === expected) {
+    await writeConfig({ extensionVersionChecked: expected });
+    log(`The extension is now ${expected}.`);
+  } else {
+    log(`The extension still reports ${after.version || "no version"}. Click its reload icon on the browser's Extensions page.`);
+  }
 }
 
 // Pulls the latest code (git checkouts only), then repeats setup so the skill and extension match.

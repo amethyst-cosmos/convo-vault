@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.9-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.11.10-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.9`
+当前版本：`0.11.10`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -210,6 +210,8 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.11.10` 导出前自动重新加载过期的扩展，更新后不用再手动刷新；Agensi skill 增加更新步骤。
 
 `0.11.9` 修复两处导出泄漏：上传 PDF 的页面预览图混进回答，以及 `<FileCite>` 标签以原文漏出。
 

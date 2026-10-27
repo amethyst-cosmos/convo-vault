@@ -4,6 +4,13 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.10
+
+Nobody should have to click reload on the Extensions page after an update.
+
+- **`export` reloads an out-of-date extension by itself.** Updating the project (`update`, a `git pull`, a skill) leaves the browser running the old extension until it is reloaded. Before exporting, the CLI now asks the extension for its version, and if it differs from the project's it rebuilds `dist/` when needed, asks the extension to reload itself, confirms the new version and then exports. It does this once per project version, and only for a browser that has answered before (the remembered one or `--browser`), so a first export and every later one cost nothing extra. A reload by hand is needed only when the installed extension is too old to know the reload job (before 0.11.1).
+- **The Agensi skill now says how to update.** A new "Updating later" step runs `update --no-skill`, which pulls, rebuilds and reloads the extension without a click.
+
 ## 0.11.9
 
 Two leaks found by checking a real export (a 70-message conversation with an uploaded PDF) against the ChatGPT page. Messages, order, first and last message and thinking all matched; these two did not.
