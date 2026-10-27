@@ -52,11 +52,13 @@ After a yes:
 1. Check Node: `node -v` must print v20 or newer. If it does not, help the user install a current Node.js first (for example `brew install node` on macOS), then continue.
 2. Download the project:
 
+This skips the files only developers need (tests, docs images, CI):
+
 ```bash
-git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git "$HOME/convo-vault"
+git clone --depth 1 --filter=blob:none --sparse https://github.com/amethyst-cosmos/convo-vault.git "$HOME/convo-vault" && git -C "$HOME/convo-vault" sparse-checkout set --no-cone '/*' '!/tests/' '!/docs/' '!/.github/' '!/AGENTS.md' '!/CONTRIBUTING.md' '!/eslint.config.mjs'
 ```
 
-If git is missing, ask the user to install it, or to download the latest release zip from https://github.com/amethyst-cosmos/convo-vault/releases and unzip it to `~/convo-vault`.
+If that fails because git is old, use a plain `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git "$HOME/convo-vault"`. If git is missing, ask the user to install it, or to download the latest release zip from https://github.com/amethyst-cosmos/convo-vault/releases and unzip it to `~/convo-vault`.
 
 3. Set it up. This installs dependencies and builds the extension, and does not touch any agent's skill folders:
 

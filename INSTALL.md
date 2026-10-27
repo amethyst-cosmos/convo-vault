@@ -7,7 +7,13 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
 ## Install
 
 1. **Pick a location.** Use `~/convo-vault` unless the user names another.
-2. **Get the code.** `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <location>`. Without git, download the latest release zip and unzip it.
+2. **Get the code.** This skips the files only developers need (tests, docs images, CI):
+
+   ```bash
+   git clone --depth 1 --filter=blob:none --sparse https://github.com/amethyst-cosmos/convo-vault.git <location> && git -C <location> sparse-checkout set --no-cone '/*' '!/tests/' '!/docs/' '!/.github/' '!/AGENTS.md' '!/CONTRIBUTING.md' '!/eslint.config.mjs'
+   ```
+
+   If that fails (an old git), use `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <location>`. Without git, download the latest release zip and unzip it.
 3. **Check Node 20 or newer.** Run `node -v`. If it is missing or too old, help the user install it (`brew install node` on macOS, `winget install OpenJS.NodeJS.LTS` on Windows, or their own mise or nvm).
 4. **Run setup.**
 
