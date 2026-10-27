@@ -4,6 +4,16 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.12.1
+
+Release tooling and a lighter download. Nothing changes for someone who already exports.
+
+- **`npm run version:set -- X.Y.Z` writes the version everywhere.** It covers `package.json`, `renderer/package.json`, `package-lock.json`, `extension/manifest.json`, `EXPORTER_VERSION`, the popup, and the badge and "current version" line of both READMEs, and adds an empty entry to both changelogs. A release no longer means editing a dozen files by hand. `tests/version.test.mjs` no longer hard-codes a version, and fails while a changelog entry still holds the placeholder, so an unwritten entry cannot be released. The per-version list in `README.zh-CN.md` duplicated the changelog and is gone; the README links to it.
+- **Developer-only files are not downloaded.** Tests, the docs images, CI files, `AGENTS.md`, `CONTRIBUTING.md` and the lint config stay in the repository but are skipped by the install commands (a sparse clone, with a plain clone as the fallback for an old git) and left out of GitHub's "Source code" archives (`export-ignore`). The release zip never contained them. This only affects a fresh install; an existing checkout keeps working and `update` still pulls.
+- **Cleanups.** `package-lock.json` said 0.11.0; the skill launcher no longer looks in a personal folder; `AGENTS.md` and `.gitignore` lose references to files that only exist on one machine.
+
+## 0.12.0
+
 ## 0.12.0
 
 Batch export without a pop-up per conversation, and a way to say "the whole Working project" instead of handing over links.

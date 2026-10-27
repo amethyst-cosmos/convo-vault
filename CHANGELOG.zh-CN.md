@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.md)
 
+## 0.12.1
+
+发版工具和更轻的下载。对已经在用的人没有任何变化。
+
+- **`npm run version:set -- X.Y.Z` 一次写好所有版本号**：包括 `package.json`、`renderer/package.json`、`package-lock.json`、`extension/manifest.json`、`EXPORTER_VERSION`、弹窗，以及两份 README 的徽章和“当前版本”，并在两份 CHANGELOG 里加一个空条目。发版不用再手动改十几个文件。`tests/version.test.mjs` 不再写死版本号，而且 CHANGELOG 条目里还留着占位符时会失败，所以没写的条目发不出去。`README.zh-CN.md` 里逐版本的列表和 CHANGELOG 重复，已删除，改为链接到它
+- **只有开发者才要的文件不再被下载**：测试、文档图片、CI 文件、`AGENTS.md`、`CONTRIBUTING.md` 和 lint 配置仍在仓库里，但安装命令会跳过它们（稀疏克隆，git 太旧时退回普通克隆），GitHub 的“Source code”压缩包也不含它们（`export-ignore`）。发布包本来就不含这些。这只影响全新安装；已有的目录照常使用，`update` 仍然能拉取
+- **清理**：`package-lock.json` 里的版本号还是 0.11.0；skill 启动脚本不再去个人文件夹里找项目；`AGENTS.md` 和 `.gitignore` 删掉了只在一台机器上存在的文件的引用
+
+## 0.12.0
+
 ## 0.12.0
 
 批量导出不再每个对话弹一个窗口；也不用再逐个给链接，可以直接说“Working 项目里的全部对话”。

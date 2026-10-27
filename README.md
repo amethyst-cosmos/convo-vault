@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.12.0-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.12.1-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.12.0`
+Current version: `0.12.1`
 
 **Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -222,8 +222,7 @@ npm run package           # build dist/convo-vault-<version>.zip
 ```
 
 - The extension is in `extension/`; its content script is generated from `extension/content/index.js` and its modules by `npm run build:extension`, which writes the loadable folder to `dist/convo-vault-extension`.
-- Releases: bump the version, merge, then push a `v<version>` tag. GitHub Actions checks, tests, packages and publishes the release.
-- Keep the version in sync across `package.json`, `renderer/package.json`, `extension/manifest.json`, `extension/content/index.js`, `extension/popup/popup.html`, both READMEs and both changelogs. `tests/version.test.mjs` enforces it.
+- Releases: `npm run version:set -- X.Y.Z` writes the version into every file that carries it (and adds an empty entry to both changelogs). Fill in the two changelog entries, merge, then push a `vX.Y.Z` tag. GitHub Actions checks, tests, packages and publishes the release.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 

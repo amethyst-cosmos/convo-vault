@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.12.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.12.1-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.12.0`
+当前版本：`0.12.1`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -209,33 +209,8 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ```
 
 - 扩展源码在 `extension/`，内容脚本由 `npm run build:extension` 从 `extension/content/index.js` 和各模块生成，输出到 `dist/convo-vault-extension`
-- 发布：改版本号后推送 `v<版本>` 标签，GitHub Actions 会检查、测试、打包并创建 Release
-- 版本号需要同步：`package.json`、`renderer/package.json`、`extension/manifest.json`、`extension/content/index.js`、`extension/popup/popup.html`、两份 README、两份 CHANGELOG；`tests/version.test.mjs` 会检查
+- 发布：运行 `npm run version:set -- X.Y.Z`，它会把版本号写进所有用到它的文件（并在两份 CHANGELOG 里加一个空条目）；补写两份 CHANGELOG，合并后推送 `vX.Y.Z` 标签，GitHub Actions 会检查、测试、打包并创建 Release
 
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
-
-`0.12.0` 一次导出多个对话（只开一个标签页）、按项目列出和导出、只给指定对话下载附件；标题改用接口里的真实标题。
-
-`0.11.10` 导出前自动重新加载过期的扩展，更新后不用再手动刷新；Agensi skill 增加更新步骤。
-
-`0.11.9` 修复两处导出泄漏：上传 PDF 的页面预览图混进回答，以及 `<FileCite>` 标签以原文漏出。
-
-`0.11.8` 弹窗新增“手动控制”开关，默认关闭：导出交给 Agent，想手动点的用户自己打开；上架 Agensi。
-
-`0.11.7` 可选下载对话里上传和生成的文件（默认不下载，由 Agent 先问一句）；`--files`。
-
-`0.11.6` `setup` 不再因 skill 目录不可写而中断；`verify` 会显示扩展版本。
-
-`0.11.5` skill 改名为 `convo-vault-skill`。
-
-`0.11.4` skill 自成一体，可以保存到任意文件夹。
-
-`0.11.3` 修复 Markdown 里漏出布局标签。
-
-`0.11.2` 不再读取页面，思考记录完全来自 API。
-
-`0.11.1` 只用 Fast 抓取（删除 Full、Hybrid 和选择面板），扩展能自己重新加载。
-
-`0.11.0` 由 Agent 来跑导出：skill、MCP 服务、命令行 `export`、自动导出任务和一句话安装。

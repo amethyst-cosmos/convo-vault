@@ -3,6 +3,7 @@ import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildContentScript } from "../scripts/lib/content-build.mjs";
+import { CHANGELOG_PLACEHOLDER } from "../scripts/set-version.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
@@ -12,7 +13,11 @@ test("project version is synchronized", async () => {
   const backendPackage = await readJson(path.join("renderer", "package.json"));
   const content = await buildContentScript(repoRoot);
 
-  assert.equal(rootPackage.version, "0.12.0");
+  const lock = await readJson("package-lock.json");
+
+  assert.match(rootPackage.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(lock.version, rootPackage.version, "package-lock.json version");
+  assert.equal(lock.packages[""].version, rootPackage.version, "package-lock.json root package version");
   assert.equal(manifest.version, rootPackage.version);
   assert.equal(backendPackage.version, rootPackage.version);
   assert.match(content, new RegExp(`EXPORTER_VERSION = "${escapeRegExp(rootPackage.version)}"`));
@@ -33,6 +38,8 @@ test("docs carry the project version", async () => {
   assert.ok(readmeZh.includes(`version-${version}-`), "README.zh-CN.md badge");
   assert.match(changelog, new RegExp(`^## ${escapeRegExp(version)}$`, "m"), "CHANGELOG.md entry");
   assert.match(changelogZh, new RegExp(`^## ${escapeRegExp(version)}$`, "m"), "CHANGELOG.zh-CN.md entry");
+  assert.ok(!changelog.includes(CHANGELOG_PLACEHOLDER), "CHANGELOG.md still has the placeholder from npm run version:set");
+  assert.ok(!changelogZh.includes(CHANGELOG_PLACEHOLDER), "CHANGELOG.zh-CN.md still has the placeholder from npm run version:set");
 });
 
 async function readJson(relativePath) {

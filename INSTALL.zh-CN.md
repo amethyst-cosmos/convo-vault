@@ -7,7 +7,13 @@
 ## 安装
 
 1. **确定位置**：用户没指定就装到 `~/convo-vault`。
-2. **取代码**：`git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <位置>`。没有 git 就下载最新 Release 的 zip 解压。
+2. **取代码**：下面这条会跳过只有开发者才需要的文件（测试、文档图片、CI）：
+
+   ```bash
+   git clone --depth 1 --filter=blob:none --sparse https://github.com/amethyst-cosmos/convo-vault.git <位置> && git -C <位置> sparse-checkout set --no-cone '/*' '!/tests/' '!/docs/' '!/.github/' '!/AGENTS.md' '!/CONTRIBUTING.md' '!/eslint.config.mjs'
+   ```
+
+   如果失败（git 太旧），改用 `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git <位置>`。没有 git 就下载最新 Release 的 zip 解压。
 3. **检查 Node 20+**：`node -v`。没有或版本过低，先帮用户装（macOS `brew install node`，Windows `winget install OpenJS.NodeJS.LTS`，或用户已有的 mise/nvm）。
 4. **运行安装**：
 
