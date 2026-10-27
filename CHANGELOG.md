@@ -4,9 +4,12 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
-## Unreleased
+## 0.11.8
 
-- **Agensi listing.** A text-only version of the skill is listed for free on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter). Its source is `skills/convo-vault-agensi`; it asks the user before installing this project from GitHub. No code that users install changed, so there is no version bump.
+The popup no longer pushes manual export; the user decides.
+
+- **A "Manual controls" switch in the popup, off by default.** Off, the popup is a plain connector: it says that the agent starts exports and shows nothing to click. On, it shows what it always did (Export this conversation, the backend folder, Check, Copy Start, Stop). The choice is saved in `convoVaultSettings.manualControls`, and the local token the renderer hands out is kept either way. Exports started by an agent, the CLI or MCP are not affected by the switch. Existing users who used the popup button need to turn the switch on once.
+- **Agensi listing.** A text-only version of the skill is listed for free on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter). Its source is `skills/convo-vault-agensi`; it asks the user before installing this project from GitHub.
 
 ## 0.11.7
 
