@@ -4,6 +4,10 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## Unreleased
+
+- **Agensi listing.** A text-only version of the skill is listed for free on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter). Its source is `skills/convo-vault-agensi`; it asks the user before installing this project from GitHub. No code that users install changed, so there is no version bump.
+
 ## 0.11.7
 
 Optional file download. The point of an export is the conversation and the model's thinking, so files stay off unless the user asks:

@@ -106,6 +106,10 @@ Requires Node 20 or newer.
 
 The skill is the self-contained folder `skills/convo-vault-skill`. Copy it anywhere, or run `node cli/convo-vault.mjs skill install --dir <folder>`. Its launcher finds the project, or installs it from GitHub the first time.
 
+### Also on Agensi
+
+The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter), a marketplace that serves skills to your agent over MCP. It is a text-only version (`skills/convo-vault-agensi`): on first use the agent asks your permission, installs this project from GitHub into `~/convo-vault`, and you load the extension once. It is the same open-source code either way; the Agensi listing is only another way to find it.
+
 ## What you get
 
 Each export is a folder (and a `.zip`), including a PDF that reads like the ChatGPT page.
