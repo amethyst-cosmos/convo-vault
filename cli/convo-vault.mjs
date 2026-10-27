@@ -31,7 +31,9 @@ const POLL_INTERVAL_MS = 700;
 const HELP = `Convo Vault CLI
 
 Usage:
-  convo-vault export <chatgpt-url|conversation-id> [options]
+  convo-vault export <chatgpt-url|conversation-id>... [options]
+  convo-vault export --project NAME [options]
+  convo-vault list [--project NAME|ID|URL] [--limit N] [--json]
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
   convo-vault verify [--browser NAME]
   convo-vault update
@@ -47,6 +49,8 @@ Export options:
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
+  --files-for A,B      Only for the conversations whose title contains A or B (or whose id is A or B)
+  --project NAME       Export every conversation in that project (a name, id or project link)
   --keep-tab           Leave the ChatGPT tab open after exporting
   --allow-incomplete   Export even if the integrity gate reports gaps
   --timeout SECONDS    Give up after this long (default: 900)
@@ -62,7 +66,8 @@ try {
   const { positional, flags } = parseArgs(rest);
 
   switch (command) {
-    case "export": await exportConversation(positional[0], flags); break;
+    case "export": await exportCommand(positional, flags); break;
+    case "list": await listCommand(flags); break;
     case "setup": await setup(flags); break;
     case "verify": await verify(flags); break;
     case "update": await update(flags); break;
@@ -85,7 +90,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "limit"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -153,7 +158,7 @@ async function exportConversation(input, flags) {
       files: flags.files === true
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
-    openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser);
+    openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser, { background: true });
 
     if (await waitForClaim(jobId, candidates.length > 1 ? CLAIM_TIMEOUT_MS : CLAIM_TIMEOUT_MS * 2)) {
       usedBrowser = browser;
@@ -173,6 +178,14 @@ async function exportConversation(input, flags) {
   if (usedBrowser && usedBrowser.name !== config.browser) await writeConfig({ browser: usedBrowser.name });
 
   const job = await waitForDone(jobId, timeoutMs);
+  const saved = await saveJobBundle(jobId, job, outDir, flags);
+
+  console.log(`Exported: ${conversationUrl}`);
+  printSaved(saved, "");
+}
+
+// Downloads a finished job's bundle into outDir and unpacks it unless --no-extract.
+async function saveJobBundle(jobId, job, outDir, flags) {
   const zipBytes = await downloadJobBundle(jobId);
   await fs.mkdir(outDir, { recursive: true });
   const zipPath = await uniquePath(path.join(outDir, job.result.filename));
@@ -186,12 +199,192 @@ async function exportConversation(input, flags) {
     files = (await fs.readdir(folder)).sort();
   }
 
-  console.log(`Exported: ${conversationUrl}`);
-  console.log(`Zip:      ${zipPath}`);
+  return { zipPath, folder, files };
+}
+
+function printSaved({ zipPath, folder, files }, indent) {
+  console.log(`${indent}Zip:      ${zipPath}`);
   if (folder) {
-    console.log(`Folder:   ${folder}`);
-    for (const file of files) console.log(`  ${file}`);
+    console.log(`${indent}Folder:   ${folder}`);
+    for (const file of files) console.log(`${indent}  ${file}`);
   }
+}
+
+// `export` takes one link (the original path), several links, or a whole project. Several
+// conversations run in ONE browser tab, one after another, so nothing pops up per conversation.
+async function exportCommand(inputs, flags) {
+  if (inputs.length === 1 && !flags.project && !flags.filesFor) {
+    await exportConversation(inputs[0], flags);
+    return;
+  }
+
+  if (!inputs.length && !flags.project) {
+    throw new Error("Give one or more chatgpt.com/c/<id> links, or --project NAME.\n\n" + HELP);
+  }
+
+  const targets = [];
+  const addTarget = (id, title) => {
+    if (!targets.some((target) => target.id === id)) targets.push({ id, title: title || "" });
+  };
+
+  for (const input of inputs) {
+    addTarget(new URL(parseConversation(input)).pathname.match(/\/c\/([a-z0-9_-]{8,})/i)[1], "");
+  }
+
+  if (flags.project) {
+    const listing = await requestConversationList({ project: String(flags.project), limit: 2000 }, flags);
+    log(`Project "${listing.project?.name || flags.project}": ${listing.conversations.length} conversation(s).`);
+    for (const conversation of listing.conversations) addTarget(conversation.id, conversation.title);
+  }
+
+  if (!targets.length) throw new Error("There is no conversation to export.");
+  await exportBatch(targets, flags);
+}
+
+// True when --files-for names this conversation: by id, or by a word from its title.
+function matchesFilesFor(filesFor, target) {
+  const terms = String(filesFor === true ? "" : filesFor || "").split(",").map((term) => term.trim().toLowerCase()).filter(Boolean);
+  return terms.some((term) => target.id.toLowerCase() === term || (target.title && target.title.toLowerCase().includes(term)));
+}
+
+async function exportBatch(targets, flags) {
+  const config = await readConfig();
+  const outDir = path.resolve(flags.out || config.outDir || path.join(os.homedir(), "Downloads", "convo-vault"));
+  const candidates = await browserCandidates(flags.browser || config.browser);
+  const timeoutMs = flags.timeout ? Number(flags.timeout) * 1000 : EXPORT_TIMEOUT_MS;
+
+  await ensureBackend(log);
+
+  if (candidates.length === 1 && candidates[0] && (flags.browser || config.browser)) {
+    await refreshStaleExtension(candidates[0]);
+  }
+
+  const jobs = [];
+  for (const [index, target] of targets.entries()) {
+    const files = flags.files === true || matchesFilesFor(flags.filesFor, target);
+    const jobId = await createJob({
+      conversationId: target.id,
+      allowIncomplete: flags.allowIncomplete === true,
+      // The tab stays open until the last conversation is done.
+      closeTab: flags.keepTab !== true && index === targets.length - 1,
+      pdf: flags.pdf !== false,
+      files
+    });
+    jobs.push({ ...target, jobId, files });
+  }
+
+  let started = false;
+  for (const browser of candidates) {
+    log(`Opening one ChatGPT tab in ${browser?.name || "the default browser"} for ${jobs.length} conversation(s)...`);
+    openInBrowser(`https://chatgpt.com/c/${jobs[0].id}#convo-vault-job=${jobs.map((job) => job.jobId).join(",")}`, browser, { background: true });
+
+    if (await waitForClaim(jobs[0].jobId, candidates.length > 1 ? CLAIM_TIMEOUT_MS : CLAIM_TIMEOUT_MS * 2)) {
+      if (browser && browser.name !== config.browser) await writeConfig({ browser: browser.name });
+      started = true;
+      break;
+    }
+    log(`${browser?.name || "The browser"} did not respond.`);
+  }
+
+  if (!started) {
+    throw new Error([
+      "The Convo Vault extension did not pick up the jobs.",
+      "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
+      "(2) that browser is signed in to ChatGPT, and (3) pass --browser NAME if you use a different one."
+    ].join("\n"));
+  }
+
+  const outcomes = [];
+  let lastProgressAt = Date.now();
+
+  for (const [index, job] of jobs.entries()) {
+    const label = `[${index + 1}/${jobs.length}] ${job.title || job.id}`;
+    try {
+      const done = await waitForBatchJob(job.jobId, timeoutMs, () => lastProgressAt, label);
+      const saved = await saveJobBundle(job.jobId, done, outDir, flags);
+      console.log(`${label}\n  Exported: https://chatgpt.com/c/${job.id}${job.files ? " (with files)" : ""}`);
+      printSaved(saved, "  ");
+      outcomes.push({ ...job, ok: true, saved });
+    } catch (error) {
+      console.log(`${label}\n  FAILED: ${error.message}`);
+      outcomes.push({ ...job, ok: false, error: error.message });
+    }
+    lastProgressAt = Date.now();
+  }
+
+  const failed = outcomes.filter((outcome) => !outcome.ok);
+  console.log(`\nExported ${outcomes.length - failed.length} of ${outcomes.length} conversation(s).`);
+  for (const outcome of failed) console.log(`  FAILED ${outcome.title || outcome.id}: ${outcome.error}`);
+  if (failed.length) process.exitCode = 1;
+}
+
+// Waits for one job of a batch. A job still waiting long after the one before it finished means
+// the tab stopped processing the batch (it was closed, or ChatGPT signed out), so it fails
+// instead of waiting out the full export timeout for every remaining conversation.
+async function waitForBatchJob(jobId, timeoutMs, getLastProgressAt, label) {
+  const deadline = Date.now() + timeoutMs;
+  let lastMessage = "";
+
+  while (Date.now() < deadline) {
+    const job = await getJob(jobId);
+    if (job.message !== lastMessage) {
+      lastMessage = job.message;
+      log(`${label}: ${job.message}`);
+    }
+    if (job.state === "done") return job;
+    if (job.state === "error") throw new Error(job.message);
+    if (job.state === "waiting" && Date.now() - getLastProgressAt() > CLAIM_TIMEOUT_MS * 2) {
+      throw new Error("The browser tab stopped processing the batch (was it closed?).");
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  throw new Error("Timed out waiting for this conversation.");
+}
+
+// Asks the extension for a list of conversations (all, or one project's) and returns it.
+async function requestConversationList(request, flags) {
+  const config = await readConfig();
+  const candidates = await browserCandidates(flags.browser || config.browser);
+  await ensureBackend(log);
+
+  if (candidates.length === 1 && candidates[0] && (flags.browser || config.browser)) {
+    await refreshStaleExtension(candidates[0]);
+  }
+
+  for (const browser of candidates) {
+    const jobId = await createJob({ list: request, closeTab: true });
+    log(`Listing conversations in ${browser?.name || "the default browser"}...`);
+    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser, { background: true });
+
+    if (await waitForClaim(jobId, candidates.length > 1 ? CLAIM_TIMEOUT_MS : CLAIM_TIMEOUT_MS * 2)) {
+      if (browser && browser.name !== config.browser) await writeConfig({ browser: browser.name });
+      const job = await waitForDone(jobId, 2 * 60_000);
+      if (!job.data?.conversations) throw new Error("The extension answered, but sent no conversation list.");
+      for (const note of job.data.notes || []) log(note);
+      return job.data;
+    }
+  }
+
+  throw new Error("The Convo Vault extension did not pick up the job. Run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" verify");
+}
+
+async function listCommand(flags) {
+  const limit = flags.limit ? Number(flags.limit) : 200;
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("--limit needs a whole number of 1 or more.");
+
+  const listing = await requestConversationList({ project: flags.project ? String(flags.project) : "", limit }, flags);
+
+  if (flags.json) {
+    console.log(JSON.stringify(listing, null, 2));
+    return;
+  }
+
+  console.log(listing.project ? `Project: ${listing.project.name || listing.project.id}` : "All conversations");
+  for (const conversation of listing.conversations) {
+    console.log(`${conversation.id}  ${String(conversation.updatedAt || "").slice(0, 10).padEnd(10)}  ${conversation.title || "(untitled)"}`);
+  }
+  console.log(`${listing.conversations.length} conversation(s).`);
 }
 
 async function browserCandidates(preferredName) {
@@ -324,7 +517,7 @@ async function verify(flags) {
   for (const browser of candidates) {
     const jobId = await createJob({ ping: true, closeTab: true });
     log(`Checking the extension in ${browser?.name || "the default browser"}...`);
-    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+    openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser, { background: true });
 
     if (await waitForClaim(jobId, CLAIM_TIMEOUT_MS)) {
       if (browser) await writeConfig({ browser: browser.name });
@@ -372,7 +565,7 @@ async function sourceVersion() {
 async function reloadExtensionIn(browser) {
   const jobId = await createJob({ reload: true, closeTab: true });
   log(`Asking the extension in ${browser?.name || "the default browser"} to reload...`);
-  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser, { background: true });
 
   if (!(await waitForClaim(jobId, CLAIM_TIMEOUT_MS))) return false;
   await sleep(1500);
@@ -382,7 +575,7 @@ async function reloadExtensionIn(browser) {
 // Asks the extension in one browser which version it is.
 async function pingExtension(browser) {
   const jobId = await createJob({ ping: true, closeTab: true });
-  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser);
+  openInBrowser(`https://chatgpt.com/#convo-vault-job=${jobId}`, browser, { background: true });
 
   if (!(await waitForClaim(jobId, CLAIM_TIMEOUT_MS))) return { answered: false, version: "" };
   return { answered: true, version: await waitForPingVersion(jobId) };

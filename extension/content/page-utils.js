@@ -1,4 +1,17 @@
   function getConversationTitle() {
+    if (activeExportContext?.title) {
+      return activeExportContext.title;
+    }
+
+    if (lastApiConversationTitle) {
+      return lastApiConversationTitle;
+    }
+
+    // A batch exports conversations other than the one in the tab, so the tab title is not theirs.
+    if (activeExportContext?.conversationId) {
+      return "ChatGPT Conversation";
+    }
+
     const documentTitle = cleanTitle(document.title);
 
     if (documentTitle && documentTitle.toLowerCase() !== "chatgpt") {
@@ -8,6 +21,12 @@
     const heading = document.querySelector("main h1, h1");
     const headingText = heading ? cleanTitle(getElementText(heading)) : "";
     return headingText || "ChatGPT Conversation";
+  }
+
+  function getExportSourceUrl() {
+    return activeExportContext?.conversationId
+      ? `${location.origin}/c/${encodeURIComponent(activeExportContext.conversationId)}`
+      : location.href;
   }
 
   function cleanTitle(title) {

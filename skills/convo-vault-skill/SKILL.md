@@ -14,7 +14,14 @@ Get one `chatgpt.com/c/<id>` link (or a bare conversation id), from the first of
 1. The user's message: a pasted link or id.
 2. A screenshot: read the address bar. The URL is usually visible; read the `/c/<id>` part carefully, ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`.
 3. A browser tool you already have (Claude in Chrome, a browser MCP): read the URL of the open ChatGPT tab.
-4. Otherwise ask the user once for the link. Do not guess an id from a conversation title.
+4. The user names a project or some titles instead of giving links ("everything in my Working project"): list them, do not ask for links.
+
+```bash
+node "{{SKILL_DIR}}/scripts/run.mjs" list --project "Working"
+```
+
+   It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
+5. Otherwise ask the user once for the link. Do not guess an id from a conversation title.
 
 ## 2. Ask once about files
 
@@ -25,7 +32,7 @@ Before exporting, ask the user one short question, in their language, with the d
 - A clear yes ("yes", "all of them", "include the attachments", "连文件一起下") → add `--files`.
 - Anything else → leave `--files` off: "no", a vague or unrelated reply, no reply, or a setting where you cannot ask. Do not ask twice or press.
 - Skip the question when the user already said it in the request ("download the attachments too", "just the conversation, no files").
-- With several links, ask once and apply the answer to all of them.
+- With several conversations, ask once; if the user wants files for only some of them, use `--files-for` with their names.
 
 ## 3. Export
 
@@ -39,7 +46,9 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 - Add `--files` only when the user said yes in step 2. It downloads uploaded and generated files into `assets/files/` with the browser's ChatGPT session and records size and SHA-256 in the manifest. Files that cannot be downloaded (ChatGPT has already deleted the conversation's sandbox, a file over 64 MB, more than 120 MB in one export) are listed with the reason; the export itself still succeeds.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster and needs no PDF renderer.
 - The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
-- Several conversations: run the command once per link, one after another.
+- Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
+- A whole project: `export --project "Working"` exports every conversation in it (add links to include others).
+- Files for only some: `--files-for "二手衣物,PPT"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 
 ## 4. After it finishes
 

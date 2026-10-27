@@ -62,6 +62,19 @@ async function handleJobMessage(message, sender) {
     return { ok: true };
   }
 
+  if (message.action === "result") {
+    // A job that returns data instead of a bundle, such as a list of conversations.
+    const response = await fetch(`${rendererUrl}/jobs/${jobId}/result`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Convo-Vault-Token": settings.backendToken
+      },
+      body: JSON.stringify({ data: message.data, message: String(message.message || "") })
+    });
+    return { ok: response.ok, error: response.ok ? "" : `The renderer refused the result (${response.status}).` };
+  }
+
   if (message.action === "reload-extension") {
     // Reply first: the service worker restarts right after.
     setTimeout(() => chrome.runtime.reload(), 300);

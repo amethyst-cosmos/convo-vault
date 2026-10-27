@@ -12,7 +12,7 @@ const exportJobs = new Map();
  * the caller can continue with the normal token-gated routes.
  */
 async function handleJobRequest(request, response, url) {
-  const jobMatch = url.pathname.match(/^\/jobs\/([a-f0-9]{48})(?:\/(claim|status|bundle))?$/);
+  const jobMatch = url.pathname.match(/^\/jobs\/([a-f0-9]{48})(?:\/(claim|status|bundle|result))?$/);
 
   if (url.pathname === "/jobs") {
     if (request.method !== "POST") return false;
@@ -61,6 +61,23 @@ async function handleJobRequest(request, response, url) {
     const body = await readJsonBody(request);
     const state = body?.state === "error" ? "error" : "working";
     updateExportJob(job, state, String(body?.message || "").slice(0, 2000));
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "result") {
+    // A job that returns data instead of a bundle (listing conversations) reports it here.
+    if (!isLocalApiAuthorized(request)) {
+      sendJson(response, 401, { ok: false, error: "Missing or invalid local API token." });
+      return true;
+    }
+    const body = await readJsonBody(request);
+    if (!body || typeof body.data !== "object" || body.data === null) {
+      sendJson(response, 400, { ok: false, error: "A result needs a data object." });
+      return true;
+    }
+    job.data = body.data;
+    updateExportJob(job, "done", String(body.message || "Done.").slice(0, 2000));
     sendJson(response, 200, { ok: true });
     return true;
   }
@@ -114,12 +131,31 @@ function createExportJob(body) {
       // false skips the PDF: a data-only bundle needs no headless Chrome.
       pdf: body?.pdf !== false,
       // true downloads uploaded and generated files into assets/files/; off by default.
-      files: body?.files === true
+      files: body?.files === true,
+      // Exports this conversation instead of the one open in the tab, so one tab can run a batch.
+      conversationId: normalizeConversationId(body?.conversationId),
+      // Asks for a list of conversations instead of an export: { project, limit }.
+      list: normalizeListRequest(body?.list)
     },
-    result: null
+    result: null,
+    data: null
   };
   exportJobs.set(jobId, job);
   return { ok: true, jobId, options: job.options };
+}
+
+function normalizeConversationId(value) {
+  const id = String(value || "");
+  return /^[a-z0-9_-]{8,}$/i.test(id) ? id : "";
+}
+
+function normalizeListRequest(value) {
+  if (!value || typeof value !== "object") return null;
+  const limit = Math.floor(Number(value.limit));
+  return {
+    project: String(value.project || "").trim().slice(0, 200),
+    limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 2000) : 200
+  };
 }
 
 function updateExportJob(job, state, message) {
@@ -146,6 +182,7 @@ function describeExportJob(job) {
     ageMs: Date.now() - job.createdAt,
     idleMs: Date.now() - job.updatedAt,
     options: job.options,
+    data: job.data || null,
     result: job.result
       ? {
         filename: job.result.filename,

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.11.10-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.12.0-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.11.10`
+当前版本：`0.12.0`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -152,11 +152,16 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
 node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
 node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
+node cli/convo-vault.mjs export <链接1> <链接2> <链接3>             # 一次导出多个，只开一个浏览器标签页
+node cli/convo-vault.mjs list --project "Working"                  # 查看项目里有哪些对话（id、日期、标题）
+node cli/convo-vault.mjs export --project "Working"                # 导出项目里的所有对话
+node cli/convo-vault.mjs export --project "Working" --files-for "二手衣物,PPT"   # 只有这两个带附件
 ```
 
 | 命令 | 作用 |
 | --- | --- |
 | `setup` | 安装依赖、构建扩展、安装 skill |
+| `list` | 列出对话（最近的，或 `--project 名称` 里的）；`--json` 输出数据 |
 | `verify` | 确认浏览器里的扩展有响应 |
 | `doctor` | 自检：依赖、扩展构建、浏览器、skill |
 | `update` | 拉取最新版本、重新安装并重新加载扩展（git 克隆） |
@@ -210,6 +215,8 @@ npm run package           # 生成 dist/convo-vault-<版本>.zip 发布包
 ## 更新日志
 
 完整历史见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)，英文版见 [CHANGELOG.md](CHANGELOG.md)。
+
+`0.12.0` 一次导出多个对话（只开一个标签页）、按项目列出和导出、只给指定对话下载附件；标题改用接口里的真实标题。
 
 `0.11.10` 导出前自动重新加载过期的扩展，更新后不用再手动刷新；Agensi skill 增加更新步骤。
 

@@ -8,8 +8,9 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const source = await readFile(path.join(repoRoot, "extension", "content", "auto-export.js"), "utf8");
 const JOB_ID = "a".repeat(48);
 
-function load({ claim, exportConversation, hash = `#convo-vault-job=${JOB_ID}` }) {
+function load({ claim, exportConversation, listConversations, hash = `#convo-vault-job=${JOB_ID}` }) {
   const sent = [];
+  const contexts = [];
   const listeners = {};
   const location = { hash, pathname: "/c/abc12345", search: "?x=1" };
   const sandbox = {
@@ -21,7 +22,7 @@ function load({ claim, exportConversation, hash = `#convo-vault-job=${JOB_ID}` }
         lastError: null,
         sendMessage: (message, callback) => {
           sent.push(message);
-          callback(message.action === "claim" ? claim : { ok: true });
+          callback(message.action === "claim" ? (typeof claim === "function" ? claim(message) : claim) : { ok: true });
         }
       }
     },
@@ -30,10 +31,12 @@ function load({ claim, exportConversation, hash = `#convo-vault-job=${JOB_ID}` }
     console,
     Date,
     Promise,
-    exportCurrentConversation: exportConversation
+    exportCurrentConversation: exportConversation,
+    listConversations,
+    setActiveExportContext: (context) => { contexts.push(context); }
   };
   vm.runInNewContext(source, sandbox);
-  return { sent, location, listeners };
+  return { sent, location, listeners, contexts };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -126,4 +129,61 @@ test("a reload job closes its tab and asks the extension to reload without expor
 
   assert.deepEqual(harness.sent.map((message) => message.action), ["claim", "status", "close-tab", "reload-extension"]);
   assert.equal(exported, false);
+});
+
+const JOB_B = "b".repeat(48);
+const JOB_C = "c".repeat(48);
+
+test("a batch runs every job in one tab, each for its own conversation, and closes the tab once at the end", async () => {
+  const exported = [];
+  const harness = load({
+    hash: `#convo-vault-job=${JOB_ID},${JOB_B},${JOB_C}`,
+    claim: (message) => ({
+      ok: true,
+      options: { conversationId: `conv-${message.jobId[0]}-12345`, closeTab: message.jobId === JOB_C, files: message.jobId === JOB_B }
+    }),
+    exportConversation: async (options) => { exported.push({ jobId: options.jobId[0], files: options.downloadFiles }); return { ok: true }; }
+  });
+  await settle();
+
+  assert.equal(harness.location.hash, "");
+  assert.deepEqual(exported, [{ jobId: "a", files: false }, { jobId: "b", files: true }, { jobId: "c", files: false }]);
+  assert.deepEqual(
+    harness.contexts.filter(Boolean).map((context) => context.conversationId),
+    ["conv-a-12345", "conv-b-12345", "conv-c-12345"],
+    "each export names its own conversation"
+  );
+  assert.equal(harness.contexts.at(-1), null, "the context is cleared afterwards");
+  assert.equal(harness.sent.filter((message) => message.action === "close-tab").length, 1);
+  assert.equal(harness.sent.at(-1).action, "close-tab");
+});
+
+test("a failed conversation in a batch is reported and the next one still runs", async () => {
+  const exported = [];
+  const harness = load({
+    hash: `#convo-vault-job=${JOB_ID},${JOB_B}`,
+    claim: { ok: true, options: { conversationId: "conv-12345", closeTab: true } },
+    exportConversation: async (options) => {
+      exported.push(options.jobId[0]);
+      if (options.jobId === JOB_ID) throw new Error("Capture is incomplete");
+      return { ok: true };
+    }
+  });
+  await settle();
+
+  assert.deepEqual(exported, ["a", "b"]);
+  assert.ok(harness.sent.some((message) => message.state === "error" && /incomplete/.test(message.message)));
+});
+
+test("a list job sends the conversation list back as a result", async () => {
+  const harness = load({
+    claim: { ok: true, options: { closeTab: true, list: { project: "Working", limit: 50 } } },
+    listConversations: async (request) => ({ conversations: [{ id: "x", title: request.project }], notes: [] }),
+    exportConversation: async () => { throw new Error("a list job must not export"); }
+  });
+  await settle();
+
+  const result = harness.sent.find((message) => message.action === "result");
+  assert.deepEqual(result.data.conversations, [{ id: "x", title: "Working" }]);
+  assert.equal(harness.sent.at(-1).action, "close-tab");
 });

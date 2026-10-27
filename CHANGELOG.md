@@ -4,6 +4,20 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.12.0
+
+Batch export without a pop-up per conversation, and a way to say "the whole Working project" instead of handing over links.
+
+- **Several conversations in one tab.** `export <link> <link> ...` creates one job per conversation but opens ONE ChatGPT tab for all of them. Each job names its conversation, so the tab never navigates; it exports them one after another, then closes. Results are printed per conversation, a failed one does not stop the rest, and the exit code is 1 if any failed. A tab that stops processing the batch (closed by hand, signed out) fails the remaining jobs after about 50 s instead of waiting 15 minutes each. On macOS the tab opens without bringing the browser to the front (`open -g`); on Windows and Linux the browser may still come forward, but only once per batch.
+- **`list`.** `list [--project NAME|ID|URL] [--limit N] [--json]` prints the id, date and title of the account's recent conversations or one project's. ChatGPT's list endpoints are undocumented, so the answers are read by shape (an object with a UUID id and a title) and the links on the page are the fallback; the output says when it had to fall back.
+- **`export --project NAME`.** Lists the project, then exports every conversation in it (plus any links given) in one tab.
+- **`--files-for "A,B"`.** Downloads uploaded and generated files only for the conversations whose title contains A or B (or whose id is given); `--files` still means all.
+- **The conversation title comes from ChatGPT's API.** An export started in a background tab could get the placeholder "New chat" from the tab title. The API title is preferred, placeholders are ignored, and a batch never borrows the tab's title for another conversation.
+- **Both skills know it.** The agent is told to list a project instead of asking for links, to pass several links to one command, and to use `--files-for` when only some conversations need files.
+- Under the hood: jobs take a `conversationId` and a `list` request, the renderer has a `/jobs/:id/result` route for jobs that return data, and the content script claims several job ids from `#convo-vault-job=a,b,c`.
+
+Not verified against a real ChatGPT account when this was written: the list endpoints (`/backend-api/gizmos/snorlax/sidebar`, `/backend-api/gizmos/<project>/conversations`, `/backend-api/conversations`) and that the conversation API returns a `title`. Tests use simulated answers.
+
 ## 0.11.10
 
 Nobody should have to click reload on the Extensions page after an update.
