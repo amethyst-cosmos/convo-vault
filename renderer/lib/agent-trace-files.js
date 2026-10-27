@@ -7,6 +7,7 @@
 
 const MD_OUTPUT_LIMIT = 2000;
 const MD_INPUT_LIMIT = 4000;
+const { getProvider } = require("./provider.js");
 
 const HIDDEN_INPUT_NOTE = "ChatGPT stores web.run and functions.* calls with empty text, so search queries and those arguments are not recoverable; queries appear only when a search result group names them.";
 
@@ -16,14 +17,14 @@ function buildAgentTraceFile(payload) {
     schema: "convo-vault/agent-trace",
     version: 2,
     conversation: {
-      title: payload.title || "ChatGPT Conversation",
+      title: payload.title || `${getProvider(payload).name} Conversation`,
       source: payload.source || "",
       exportedAt: payload.exportedAt || "",
       exporterVersion: payload.exporterVersion || ""
     },
     notes: [
-      "Events follow ChatGPT's conversation tree order; offsetSeconds counts from the first event of the turn.",
-      "thought events are ChatGPT's stored reasoning summaries, not hidden chain-of-thought.",
+      `Events follow ${getProvider(payload).name}'s conversation order; offsetSeconds counts from the first event of the turn.`,
+      `thought events are ${getProvider(payload).name}'s stored reasoning summaries, not hidden chain-of-thought.`,
       HIDDEN_INPUT_NOTE
     ],
     turns,

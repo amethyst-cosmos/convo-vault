@@ -45,6 +45,7 @@
     return {
       title: getConversationTitle(),
       source: getExportSourceUrl(),
+      provider: getProviderId(),
       exportedAt,
       exporterVersion: EXPORTER_VERSION,
       messageCount: messages.length
@@ -63,6 +64,7 @@
     return {
       schemaVersion: 1,
       exporterVersion: EXPORTER_VERSION,
+      provider: getProviderId(),
       title: getConversationTitle(),
       source: getExportSourceUrl(),
       exportedAt: exportedAt.toISOString(),
@@ -86,7 +88,8 @@
 
     // Files are fetched only when the job asks for them. The references are
     // always in the payload, so the manifest says what was left out.
-    const fileDownloads = options.downloadFiles
+    // ChatGPT only: Grok's attachments are not downloaded yet (the export lists them).
+    const fileDownloads = options.downloadFiles && getProviderId() === "chatgpt"
       ? await downloadChatGptFiles(payload.messages, {
         debugLog: options.debugLog,
         onProgress: options.onProgress

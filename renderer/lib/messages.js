@@ -3,13 +3,15 @@ const path = require("path");
 const { CJK_STRONG_CLOSE, CJK_STRONG_OPEN, extractMarkdownFootnotes, hashFootnoteId, protectCjkStrongRuns } = require("./markdown.js");
 const { escapeAttr, escapeHtml } = require("./util.js");
 const { renderAttachmentLead } = require("./images.js");
+const { getProvider } = require("./provider.js");
 const { cleanMarkdownForHtml, formatRole, formatTurnHeading, formatTurnNumber, getMessageAnchorId, getTocLabel, stripAttachmentOnlyLines } = require("./text.js");
 
 const ASSET_DIR = path.resolve(__dirname, "..", "static");
 
 const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
-  assistant: loadPngDataUri("artificial-intelligence.png")
+  assistant: loadPngDataUri("artificial-intelligence.png"),
+  grok: loadSvgDataUri("grok-avatar.svg")
 };
 
 function renderMessage(md, message, index, imageRegistry) {
@@ -69,12 +71,12 @@ function serializeScriptJson(value) {
 // turn heading above stays in the DOM (visually hidden) for PDF accessibility.
 function renderMessageMeta(message, index, time) {
   const isUser = message.role === "user";
-  const speaker = isUser ? "" : `<span class="meta-speaker">${escapeHtml(formatRole(message.role))}</span>`;
+  const speaker = isUser ? "" : `<span class="meta-speaker">${escapeHtml(formatRole(message.role, message.provider))}</span>`;
   const number = `<span class="meta-turn">#${escapeHtml(String(formatTurnNumber(message, index)).replace(/^Turn\s+/, ""))}</span>`;
   const details = [speaker, number, time].filter(Boolean).join('<span class="meta-dot">·</span>');
   return isUser
     ? `<div class="message-meta user-meta"><span class="meta-text">${details}</span>${renderUserAvatar()}</div>`
-    : `<div class="message-meta assistant-meta">${renderAssistantAvatar()}<span class="meta-text">${details}</span></div>`;
+    : `<div class="message-meta assistant-meta">${renderAssistantAvatar(message.provider)}<span class="meta-text">${details}</span></div>`;
 }
 
 function renderTurnHeading(message, index) {
@@ -87,9 +89,10 @@ function renderUserAvatar() {
   </div>`;
 }
 
-function renderAssistantAvatar() {
+function renderAssistantAvatar(providerId) {
+  const provider = getProvider(providerId);
   return `<div class="assistant-avatar" aria-label="Assistant">
-    ${renderAvatarImage(AVATAR_IMAGES.assistant, "ChatGPT")}
+    ${renderAvatarImage(AVATAR_IMAGES[provider.id] || AVATAR_IMAGES.assistant, provider.name)}
   </div>`;
 }
 
@@ -173,6 +176,15 @@ function buildTocRows(messages) {
   });
 
   return rows;
+}
+
+function loadSvgDataUri(filename) {
+  try {
+    const text = fs.readFileSync(path.join(ASSET_DIR, filename), "utf8");
+    return `data:image/svg+xml;base64,${Buffer.from(text).toString("base64")}`;
+  } catch (_) {
+    return "";
+  }
 }
 
 function loadPngDataUri(filename) {

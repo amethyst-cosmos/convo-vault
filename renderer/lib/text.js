@@ -1,3 +1,4 @@
+const { getProvider } = require("./provider.js");
 const { slugify } = require("./util.js");
 const { extractLeadingAttachments } = require("./images.js");
 
@@ -31,7 +32,7 @@ function getMessageLabel(message, index) {
   }
   const source = markdownSource || cleanMarkdownForHtml(message.preview || message.thinkingMarkdown || "");
   const text = stripMarkdown(source).replace(/\s+/g, " ").trim();
-  return `${formatTurnNumber(message, index)}. ${text.slice(0, 82) || attachmentDescription || formatRole(message.role)}`;
+  return `${formatTurnNumber(message, index)}. ${text.slice(0, 82) || attachmentDescription || formatRole(message.role, message.provider)}`;
 }
 
 // An image-only prompt says nothing by itself; its answer names the content.
@@ -69,9 +70,9 @@ function getThinkingLabel(markdown) {
   return stripMarkdown(firstHeading || markdown).replace(/\s+/g, " ").trim().slice(0, 86) || "Thinking";
 }
 
-function formatRole(role) {
+function formatRole(role, provider) {
   const value = String(role || "Message").toLowerCase();
-  if (value === "assistant") return "ChatGPT";
+  if (value === "assistant") return getProvider(provider).name;
   if (value === "user") return "User";
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -83,7 +84,7 @@ function formatTurnNumber(message, index) {
 }
 
 function formatTurnHeading(message, index) {
-  return `${formatTurnNumber(message, index)} - ${formatRole(message.role)}`;
+  return `${formatTurnNumber(message, index)} - ${formatRole(message.role, message.provider)}`;
 }
 
 function cleanMarkdownForHtml(markdown) {

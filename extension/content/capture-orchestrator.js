@@ -49,6 +49,15 @@
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
     const debugLog = createDebugLog({ captureMode: "fast" });
 
+    if (getProviderId() === "grok") {
+      try {
+        return await collectGrokConversationMessages(debugLog, { onProgress });
+      } catch (error) {
+        debugLog.event("grokCapture.failed", { error: error?.message || String(error) });
+        throw new Error(`Could not read the conversation from Grok. Details: ${error?.message || error}`);
+      }
+    }
+
     try {
       const { messages, manifest } = await collectFastCanonicalMessages(debugLog, onProgress, {
         finishDebug: true

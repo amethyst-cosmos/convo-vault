@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { buildOutputObjectIndex } = require("./assets");
 const { buildAgentTraceFile, buildAgentTraceMarkdown } = require("./agent-trace-files");
+const { getProvider } = require("./provider.js");
 
 function normalizePayload(body) {
   const payload = body.exportPayload || body.payload || body;
@@ -19,7 +20,8 @@ function normalizePayload(body) {
   return {
     schemaVersion: payload.schemaVersion || 1,
     exporterVersion: payload.exporterVersion || "",
-    title: payload.title || "ChatGPT Conversation",
+    provider: getProvider(payload).id,
+    title: payload.title || `${getProvider(payload).name} Conversation`,
     source: payload.source || "",
     exportedAt: payload.exportedAt || new Date().toISOString(),
     language: payload.language || payload.locale || payload.documentLanguage || "",
@@ -98,7 +100,7 @@ function buildDataBundle(payload, options = {}) {
   const conversation = {
     schemaVersion: 1,
     exporterVersion: payload.exporterVersion || "",
-    title: payload.title || "ChatGPT Conversation",
+    title: payload.title || `${getProvider(payload).name} Conversation`,
     source: payload.source || "",
     exportedAt: payload.exportedAt || new Date().toISOString(),
     generatedAt: new Date().toISOString(),
@@ -255,7 +257,7 @@ function countBy(items, getKey) {
 
 function buildMarkdownDocument(payload) {
   const lines = [
-    `# ${payload.title || "ChatGPT Conversation"}`,
+    `# ${payload.title || `${getProvider(payload).name} Conversation`}`,
     "",
     `**Exporter:** Convo Vault ${payload.exporterVersion || ""}`.trim(),
     `**Exported:** ${formatMarkdownDateTime(payload.exportedAt)}`,

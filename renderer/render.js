@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { buildDocumentHtml } = require("./lib/document.js");
 const { cleanText, sanitizeFilename } = require("./lib/util.js");
+const { getProvider } = require("./lib/provider.js");
 const { addPdfOutlines, buildPdfOutlineItems, findChromeExecutable, renderPdfWithChrome } = require("./lib/pdf.js");
 
 const DEFAULT_OUTPUT_DIR = path.resolve(process.cwd(), "output", "pdf");
@@ -24,7 +25,7 @@ async function main() {
 
   const inputPath = path.resolve(args.input);
   const payload = loadExportPayload(inputPath);
-  const title = cleanText(payload.title || "ChatGPT Conversation");
+  const title = cleanText(payload.title || `${getProvider(payload).name} Conversation`);
   const safeBase = sanitizeFilename(args.name || title || "chatgpt-conversation");
   const outputPath = path.resolve(args.out || path.join(DEFAULT_OUTPUT_DIR, `${safeBase}.pdf`));
   const htmlPath = path.resolve(args.html || path.join(DEFAULT_HTML_DIR, `${safeBase}.html`));
@@ -46,7 +47,7 @@ async function main() {
     chromePath: args.chrome || findChromeExecutable()
   });
 
-  const outlineResult = addPdfOutlines(outputPath, buildPdfOutlineItems(payload.messages));
+  const outlineResult = addPdfOutlines(outputPath, buildPdfOutlineItems(payload.messages, payload));
   const sizeMb = fs.statSync(outputPath).size / 1024 / 1024;
   console.log(`[renderer] PDF written: ${outputPath} (${sizeMb.toFixed(2)} MB)`);
   if (outlineResult.count) {

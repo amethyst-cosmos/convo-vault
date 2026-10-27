@@ -38,7 +38,7 @@ async function startCli(t, args) {
   // The job ids of the next browser tab the CLI opened.
   run.nextTab = async () => {
     const urls = await waitFor(() => {
-      const all = [...run.stderr.matchAll(/(https:\/\/chatgpt\.com\/[^\s#]*)#convo-vault-job=([a-f0-9,]+)/g)];
+      const all = [...run.stderr.matchAll(/(https:\/\/[^\s#]+)#convo-vault-job=([a-f0-9,]+)/g)];
       const fresh = all.find((match) => !run.seen.has(match[2]));
       return fresh || null;
     }, () => run.stderr);
@@ -163,6 +163,77 @@ test("export --project lists the project first, then exports everything in one t
   assert.deepEqual(files, [false, true, true], "only the two named conversations download files");
   assert.equal(await run.exited, 0, run.stderr);
   assert.match(run.stdout, /Exported 3 of 3 conversation/);
+});
+
+const GROK_A = "8cf3ca89-1360-4ff5-ba2c-5133f69e1a23";
+const GROK_B = "0f1e2d3c-4b5a-4968-8776-655443322110";
+
+test("a Grok link opens a grok.com tab, without the ?rid anchor, and exports like any other", async (t) => {
+  const run = await startCli(t, ["export", `https://grok.com/c/${GROK_A}?rid=7eb01f11-a913`, "--no-pdf", "--no-extract"]);
+  const tab = await run.nextTab();
+
+  assert.equal(tab.url, `https://grok.com/c/${GROK_A}`);
+  const claimed = await run.claim(tab.jobIds[0]);
+  assert.equal(claimed.options.pdf, false);
+  await run.finishExport(tab.jobIds[0], claimed, "Grok chat.zip");
+
+  assert.equal(await run.exited, 0, run.stderr);
+  assert.match(run.stdout, /Exported: https:\/\/grok\.com\/c\//);
+  assert.deepEqual(await readdir(run.outDir), ["Grok chat.zip"]);
+});
+
+test("several Grok links run in one grok.com tab, each job naming its conversation", async (t) => {
+  const run = await startCli(t, ["export", `https://grok.com/c/${GROK_A}`, `https://grok.com/c/${GROK_B}`, "--no-pdf", "--no-extract"]);
+  const tab = await run.nextTab();
+
+  assert.equal(tab.jobIds.length, 2);
+  assert.equal(tab.url, `https://grok.com/c/${GROK_A}`);
+  const options = [];
+  for (const [index, jobId] of tab.jobIds.entries()) {
+    const claimed = await run.claim(jobId);
+    options.push(claimed.options);
+    await run.finishExport(jobId, claimed, `Grok ${index + 1}.zip`);
+  }
+
+  assert.deepEqual(options.map((option) => option.conversationId), [GROK_A, GROK_B]);
+  assert.equal(await run.exited, 0, run.stderr);
+  assert.match(run.stdout, /Exported 2 of 2 conversation/);
+});
+
+test("ChatGPT and Grok links given together get one tab per site", async (t) => {
+  const run = await startCli(t, ["export", "--browser", "chrome", "fixture-conv-aaaa", `https://grok.com/c/${GROK_A}`, "fixture-conv-bbbb", "--no-pdf", "--no-extract"]);
+  const tabs = [];
+
+  while (tabs.length < 2) {
+    const tab = await run.nextTab();
+    const claimed = await run.claim(tab.jobIds[0]);
+
+    if (claimed.options.ping) {
+      await rawRequest(run.port, "POST", `/jobs/${tab.jobIds[0]}/status`, claimed.headers, JSON.stringify({ state: "working", message: `Extension ${manifestVersion} is installed and responding.` }));
+      continue;
+    }
+
+    tabs.push({ url: tab.url, jobs: tab.jobIds.length });
+    await run.finishExport(tab.jobIds[0], claimed, `Site ${tabs.length}.zip`);
+    for (const jobId of tab.jobIds.slice(1)) {
+      await run.finishExport(jobId, await run.claim(jobId), `Site ${tabs.length} more.zip`);
+    }
+  }
+
+  assert.equal(tabs[0].url, "https://chatgpt.com/c/fixture-conv-aaaa");
+  assert.equal(tabs[0].jobs, 2, "both ChatGPT links share the first tab");
+  assert.equal(tabs[1].url, `https://grok.com/c/${GROK_A}`);
+  assert.equal(tabs[1].jobs, 1);
+  assert.equal(await run.exited, 0, run.stderr);
+  assert.match(run.stdout, /Exported 2 of 2 conversation/);
+  assert.match(run.stdout, /Exported 1 of 1 conversation/);
+});
+
+test("a link from another site is refused and names the supported ones", async (t) => {
+  const run = await startCli(t, ["export", "https://gemini.google.com/app/ee7a64284d74cdd1"]);
+
+  assert.equal(await run.exited, 1);
+  assert.match(run.stderr, /Only chatgpt\.com and grok\.com conversations are supported \(got gemini\.google\.com\)/);
 });
 
 test("export without a link or a project explains what to give", async (t) => {

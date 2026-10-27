@@ -30,7 +30,7 @@ test("MCP server answers the handshake, lists tools and reports bad links as too
 
     const bad = await request("tools/call", { name: "export_conversation", arguments: { url: "https://example.com/c/abcdefgh" } });
     assert.equal(bad.result.isError, true);
-    assert.match(bad.result.content[0].text, /Only chatgpt\.com conversations/);
+    assert.match(bad.result.content[0].text, /Only chatgpt\.com and grok\.com conversations/);
 
     const unknown = await request("nope");
     assert.equal(unknown.error.code, -32601);

@@ -23,6 +23,8 @@ node "{{SKILL_DIR}}/scripts/run.mjs" list --project "Research"
    It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
 5. Otherwise ask the user once for the link. Do not guess an id from a conversation title.
 
+Grok conversations work too: a `grok.com/c/<id>` link is exported the same way (and several links run in one tab). For Grok, `list`, `--project` and `--files` do not apply yet.
+
 ## 2. Ask once about files
 
 The conversation, its thinking and tool trace and its images are always exported. **Files** are different: Word, PDF, zip and other documents the user uploaded to the conversation or ChatGPT generated in it. They can be many and large, so by default they are **not** downloaded; the export only lists them in `*.assets.manifest.json` as "not requested".

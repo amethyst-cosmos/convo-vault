@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.12.1-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.13.0-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.12.1`
+当前版本：`0.13.0`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -127,6 +127,12 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 ### 也可以在 Agensi 上找到
 
 同一个 skill 已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，这是一个通过 MCP 把 skill 交给 Agent 的市场。上架的是纯文字版（`skills/convo-vault-agensi`）：第一次使用时 Agent 会先征求你的同意，再把本项目从 GitHub 安装到 `~/convo-vault`，你只需要加载一次扩展。两种方式用的是同一份开源代码，Agensi 只是多一个找到它的入口。
+
+### Grok
+
+Grok 的对话用法一样：把 `https://grok.com/c/<id>` 链接给 Agent，或运行 `node cli/convo-vault.mjs export https://grok.com/c/<id>`。扩展用浏览器里已登录的会话读取 Grok 自己的对话接口（不要令牌、不滚动页面），导出前核对每条消息是否都取回。PDF 和数据文件的样式和 ChatGPT 的导出一致，只是名称标成 Grok；Grok 的搜索步骤成为思考记录，引用变成脚注。
+
+Grok 暂不支持：下载附件和生成的图片（只列出链接）、`list` 和 `--project`。有重新生成的回答时导出最新的分支，并说明跳过了几个备选回答。多个 Grok 链接在同一个 grok.com 标签页里依次导出，ChatGPT 和 Grok 的链接混在一起时每个网站一个标签页。
 
 ## 导出的内容
 

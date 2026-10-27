@@ -24,11 +24,11 @@ const exports = new Map();
 const TOOLS = [
   {
     name: "export_conversation",
-    description: "Export a ChatGPT conversation to a local folder (Markdown, PDF, structured JSON, thinking trace). Needs the conversation link (https://chatgpt.com/c/<id>), which is visible in the address bar of a screenshot. The user's browser must have the Convo Vault extension and be signed in to ChatGPT. If the result says it is still running, call export_status with the id until it finishes.",
+    description: "Export a ChatGPT or Grok conversation to a local folder (Markdown, PDF, structured JSON, thinking trace). Needs the conversation link (https://chatgpt.com/c/<id> or https://grok.com/c/<id>), which is visible in the address bar of a screenshot. The user's browser must have the Convo Vault extension and be signed in to ChatGPT or Grok. If the result says it is still running, call export_status with the id until it finishes.",
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "Conversation link like https://chatgpt.com/c/<id>, or the bare conversation id." },
+        url: { type: "string", description: "Conversation link like https://chatgpt.com/c/<id> or https://grok.com/c/<id>, or a bare ChatGPT conversation id." },
         out_dir: { type: "string", description: "Folder to save into. Default: ~/Downloads/convo-vault." },
         pdf: { type: "boolean", description: "Set false to skip the PDF and export data only (faster). Default true." },
         files: { type: "boolean", description: "Set true to also download the files uploaded to and generated in the conversation (Word, PDF, zip...) into assets/files/. Default false: ask the user first; if they do not clearly say yes, leave it off." }

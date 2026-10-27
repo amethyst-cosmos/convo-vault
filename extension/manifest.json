@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Convo Vault",
-  "version": "0.12.1",
-  "description": "Export ChatGPT conversations into searchable Markdown, JSON, and PDF bundles.",
+  "version": "0.13.0",
+  "description": "Export ChatGPT and Grok conversations into searchable Markdown, JSON, and PDF bundles.",
   "permissions": [
     "activeTab",
     "downloads",
@@ -12,6 +12,7 @@
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
+    "https://grok.com/*",
     "<all_urls>"
   ],
   "icons": {
@@ -37,7 +38,8 @@
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://grok.com/*"
       ],
       "js": [
         "content.js"
