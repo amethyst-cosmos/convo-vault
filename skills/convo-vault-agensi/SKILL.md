@@ -24,7 +24,14 @@ Get one `chatgpt.com/c/<id>` link (or a bare conversation id) from the first of 
 1. The user's message: a pasted link or id.
 2. A screenshot: read the address bar. Ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`; read them carefully.
 3. A browser tool you already have: read the URL of the open ChatGPT tab.
-4. Otherwise ask the user once for the link. Never guess an id from a conversation title.
+4. The user names a project or some titles instead of giving links ("everything in my Working project"): list them, do not ask for links.
+
+```bash
+node "$HOME/convo-vault/cli/convo-vault.mjs" list --project "Working"
+```
+
+   It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
+5. Otherwise ask the user once for the link. Never guess an id from a conversation title.
 
 ## 2. First time only: set up Convo Vault
 
@@ -87,7 +94,7 @@ Ask the user one short question in their language, with the default stated, for 
 - A clear yes ("yes", "all of them", "include the attachments", "连文件一起下") adds `--files`.
 - Anything else leaves `--files` off. Do not ask twice.
 - Skip the question when the user already said it in the request.
-- With several links, ask once and apply the answer to all of them.
+- With several conversations, ask once; if the user wants files for only some of them, use `--files-for` with their names.
 
 ## 4. Export
 
@@ -100,7 +107,9 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place; then add `--out "<dir>"`.
 - Add `--files` only when the user said yes in section 3.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster.
-- For several conversations, run the command once per link, one after another.
+- Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
+- A whole project: `export --project "Working"` exports every conversation in it (add links to include others).
+- Files for only some: `--files-for "二手衣物,PPT"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 
 ## 5. After it finishes
 

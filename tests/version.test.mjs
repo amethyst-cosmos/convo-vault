@@ -12,7 +12,7 @@ test("project version is synchronized", async () => {
   const backendPackage = await readJson(path.join("renderer", "package.json"));
   const content = await buildContentScript(repoRoot);
 
-  assert.equal(rootPackage.version, "0.11.10");
+  assert.equal(rootPackage.version, "0.12.0");
   assert.equal(manifest.version, rootPackage.version);
   assert.equal(backendPackage.version, rootPackage.version);
   assert.match(content, new RegExp(`EXPORTER_VERSION = "${escapeRegExp(rootPackage.version)}"`));

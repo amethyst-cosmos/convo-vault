@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.11.10";
+  const EXPORTER_VERSION = "0.12.0";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -48,6 +48,7 @@
   // @convo-vault-include chatgpt-markup
   // @convo-vault-include chatgpt-dom
   // @convo-vault-include conversation-manifest
+  // @convo-vault-include conversation-list
 
   // @convo-vault-include agent-trace
   // @convo-vault-include capture-fast

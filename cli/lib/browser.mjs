@@ -46,8 +46,12 @@ function windowsExecutableCandidates(browser) {
   return relative ? roots.map((root) => path.join(root, relative)) : [];
 }
 
-/** Opens a URL in the given browser (or the system default when none is given). */
-export function openInBrowser(url, browser) {
+/**
+ * Opens a URL in the given browser (or the system default when none is given).
+ * background: true asks the system not to bring the browser to the front (macOS `open -g`),
+ * for the tabs an export opens so they do not pull the user away from what they are doing.
+ */
+export function openInBrowser(url, browser, options = {}) {
   if (process.env.CONVO_VAULT_NO_OPEN) {
     process.stderr.write(`[convo-vault] (not opening a browser) ${url}\n`);
     return;
@@ -58,7 +62,8 @@ export function openInBrowser(url, browser) {
 
   if (process.platform === "darwin") {
     command = "open";
-    args = browser ? ["-a", browser.mac, url] : [url];
+    const background = options.background ? ["-g"] : [];
+    args = browser ? [...background, "-a", browser.mac, url] : [...background, url];
   } else if (process.platform === "win32") {
     command = "cmd";
     args = browser?.win ? ["/c", "start", "", browser.win, url] : ["/c", "start", "", url];

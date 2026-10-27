@@ -1,5 +1,22 @@
   const FAST_CONVERSATION_API_PAGE_SIZE = 100;
   const FAST_CONVERSATION_API_MAX_PAGES = 200;
+  const DEFAULT_CONVERSATION_TITLE_RE = /^(?:new chat|新聊天|chatgpt)$/i;
+
+  // The conversation the running job exports: { conversationId, title }. A batch exports several
+  // conversations from one tab, so the id and title cannot come from the page's URL and title.
+  let activeExportContext = null;
+  // The title ChatGPT's conversation API gave for the last capture. The tab title can still be the
+  // placeholder "New chat" when the export starts, so this is preferred.
+  let lastApiConversationTitle = "";
+
+  function setActiveExportContext(context) {
+    activeExportContext = context || null;
+  }
+
+  function cleanApiConversationTitle(title) {
+    const text = String(title || "").replace(/\s+/g, " ").trim();
+    return text && !DEFAULT_CONVERSATION_TITLE_RE.test(text) ? text : "";
+  }
 
   async function collectFastConversationMessages(debugLog = null, options = {}) {
     const signal = options.signal || null;
@@ -17,6 +34,7 @@
       onProgress: options.onProgress
     });
     throwIfCaptureCancelled(signal);
+    lastApiConversationTitle = cleanApiConversationTitle(data?.title);
     const messages = buildMessagesFromConversationApi(data, debugLog);
     const manifest = buildConversationManifest(data);
 
@@ -886,6 +904,10 @@
   }
 
   function getCurrentConversationId() {
+    if (activeExportContext?.conversationId) {
+      return activeExportContext.conversationId;
+    }
+
     const pathParts = location.pathname.split("/").map(decodePathPart).filter(Boolean);
     const conversationSegmentIndex = pathParts.findIndex((part) => part === "c");
     const id = conversationSegmentIndex >= 0 ? pathParts[conversationSegmentIndex + 1] : "";

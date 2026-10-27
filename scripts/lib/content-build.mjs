@@ -21,6 +21,7 @@ export const INCLUDE_FILES = {
   "chatgpt-dom": "chatgpt-dom.js",
   "chatgpt-markup": "chatgpt-markup.js",
   "conversation-manifest": "conversation-manifest.js",
+  "conversation-list": "conversation-list.js",
   "dom-serializer": "dom-serializer.js"
 };
 

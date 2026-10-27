@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.10-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.12.0-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.11.10`
+Current version: `0.12.0`
 
 **Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -165,11 +165,18 @@ node cli/convo-vault.mjs export <link> --out ./archive            # choose where
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
 node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
+node cli/convo-vault.mjs export <link1> <link2> <link3>           # several at once, in one browser tab
+node cli/convo-vault.mjs list --project "Working"                 # see what is in a project (id, date, title)
+node cli/convo-vault.mjs export --project "Working"               # every conversation in the project
+node cli/convo-vault.mjs export --project "Working" --files-for "Used clothes,PPT"   # files only for those
 ```
+
+Several conversations run **in one tab, one after another**, so nothing pops up per conversation (on macOS the tab also opens without bringing the browser to the front). Each result is printed, a failed conversation does not stop the rest, and the exit code is 1 if any failed. `--files-for` takes words from titles (or ids); `--files` means all.
 
 | Command | What it does |
 | --- | --- |
 | `setup` | Install dependencies, build the extension, install the skill |
+| `list` | List conversations (all recent ones, or `--project NAME`); `--json` for data |
 | `verify` | Confirm the extension in your browser answers |
 | `doctor` | Check dependencies, extension build, browsers and skills |
 | `update` | Pull the latest version, reinstall and reload the extension (git checkouts) |

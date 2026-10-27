@@ -44,7 +44,7 @@
   function createExportMetadata(messages, exportedAt = new Date()) {
     return {
       title: getConversationTitle(),
-      source: location.href,
+      source: getExportSourceUrl(),
       exportedAt,
       exporterVersion: EXPORTER_VERSION,
       messageCount: messages.length
@@ -64,7 +64,7 @@
       schemaVersion: 1,
       exporterVersion: EXPORTER_VERSION,
       title: getConversationTitle(),
-      source: location.href,
+      source: getExportSourceUrl(),
       exportedAt: exportedAt.toISOString(),
       captureMode,
       messageCount: messages.length,
