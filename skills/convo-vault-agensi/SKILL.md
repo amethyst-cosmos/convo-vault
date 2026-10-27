@@ -68,6 +68,16 @@ cd "$HOME/convo-vault" && node cli/convo-vault.mjs setup --no-skill
 cd "$HOME/convo-vault" && node cli/convo-vault.mjs verify
 ```
 
+### Updating later
+
+When the user asks to update Convo Vault, or an export fails after a ChatGPT change, run:
+
+```bash
+cd "$HOME/convo-vault" && node cli/convo-vault.mjs update --no-skill
+```
+
+It pulls the latest version, rebuilds the extension and reloads it in the browser by itself. The user does not need to open the Extensions page or click anything. Exports also reload an out-of-date extension on their own once the project has been updated, so there is nothing to tell the user to refresh. Only if the output says the extension did not take the reload, ask the user to click the reload icon on the Extensions page once.
+
 ## 3. Ask once about files
 
 The conversation, the model's thinking and tool trace, and its images are always exported. **Files** (Word, PDF, zip and other documents uploaded to the conversation or generated in it) can be many and large, so by default they are not downloaded; the export only lists them as "not requested".
