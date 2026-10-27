@@ -4,6 +4,13 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.11.9
+
+Two leaks found by checking a real export (a 70-message conversation with an uploaded PDF) against the ChatGPT page. Messages, order, first and last message and thinking all matched; these two did not.
+
+- **Document page previews no longer end up in the answer.** When ChatGPT reads an uploaded PDF, its reader tool hands the model one image per page (`sediment://<id>#file_<id>#p_<n>.<hash>.jpg`). The filter only knew the old tool names (`file_search`, `myfiles_browser`); current ChatGPT calls the tool `api_tool`, so 50 page previews leaked into two answers as broken image links and inflated the image and "degraded object" counts. They are now recognised by the pointer itself, in the capture and in the completeness manifest, so the tool name no longer matters. Real generated and uploaded images are untouched.
+- **`<FileCite ... />` tags no longer show up as raw text.** Current ChatGPT cites an uploaded document with an inline tag instead of the old `fileciteturn0file0` token. With a citation record it becomes the same footnote as before; without one it is removed.
+
 ## 0.11.8
 
 The popup no longer pushes manual export; the user decides.

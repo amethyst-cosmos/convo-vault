@@ -81,6 +81,29 @@ test("manifest counts DIL fallback Markdown and tool images as answer content", 
   assert.deepEqual(Array.from(manifest.gaps, (gap) => gap.status), ["empty"]);
 });
 
+test("manifest does not count document page previews from api_tool as answer content", async () => {
+  const api = await loadManifestModule();
+  const preview = { content_type: "image_asset_pointer", asset_pointer: "sediment://2c0ae403df893c#file_0000000096a481fa915be0997a64bf8e#p_0.4f9c5c1b4c.jpg" };
+  const manifest = api.buildConversationManifest(linearConversation([
+    user("u1", "Read my PDF"),
+    {
+      id: "t1",
+      author: { role: "tool", name: "api_tool" },
+      content: { content_type: "multimodal_text", parts: ["[L1] page text", preview] },
+      recipient: "all",
+      metadata: {}
+    },
+    user("u2", "Anything?"),
+    assistant("a2", "Yes.", { channel: "final" })
+  ]));
+
+  assert.deepEqual(Array.from(manifest.entries, (entry) => entry.identity), [
+    "message:u1",
+    "message:u2",
+    "reply:a2"
+  ]);
+});
+
 test("manifest completeness passes a complete export and explains same-role adjacencies", async () => {
   const api = await loadManifestModule();
   const manifest = api.buildConversationManifest(linearConversation([

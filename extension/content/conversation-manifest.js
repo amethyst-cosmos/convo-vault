@@ -232,7 +232,19 @@
     }
 
     const pointer = String(part.asset_pointer || part.assetPointer || "");
-    return Boolean(pointer) && /image|file-service|sediment/i.test(`${part.content_type || ""} ${pointer}`);
+    return Boolean(pointer)
+      && !isDocumentPagePreviewPointer(pointer)
+      && /image|file-service|sediment/i.test(`${part.content_type || ""} ${pointer}`);
+  }
+
+  /**
+   * A document-reading tool hands every page of an uploaded document to the
+   * model as an image (sediment://<id>#file_<id>#p_<n>.<hash>.jpg). Those pages
+   * are never part of the answer, whatever the tool is called: current ChatGPT
+   * names it api_tool, older versions file_search or myfiles_browser.
+   */
+  function isDocumentPagePreviewPointer(pointer) {
+    return /#file_[0-9a-f]+#p_\d+(?:\.[0-9a-f]+)?\.(?:jpe?g|png|webp)$/i.test(String(pointer || ""));
   }
 
   function hasManifestThinkingContent(message) {
