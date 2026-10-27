@@ -124,6 +124,10 @@ flowchart LR
 
 skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到任何地方，或运行 `node cli/convo-vault.mjs skill install --dir <文件夹>`。它自带的启动脚本会自己找到项目，第一次用时自动从 GitHub 安装。
 
+### 也可以在 Agensi 上找到
+
+同一个 skill 已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，这是一个通过 MCP 把 skill 交给 Agent 的市场。上架的是纯文字版（`skills/convo-vault-agensi`）：第一次使用时 Agent 会先征求你的同意，再把本项目从 GitHub 安装到 `~/convo-vault`，你只需要加载一次扩展。两种方式用的是同一份开源代码，Agensi 只是多一个找到它的入口。
+
 ## 导出的内容
 
 每次导出得到一个文件夹，同时保留 `.zip`。

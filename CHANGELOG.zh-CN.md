@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 未发布
+
+- **上架 Agensi**：skill 的纯文字版已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，源文件是 `skills/convo-vault-agensi`；安装本项目前会先征求用户同意。用户会安装到的代码没有改动，所以不升版本号
+
 ## 0.11.7
 
 可选的文件下载。导出的重点是对话和模型的思考，所以文件默认不下，用户要了才下：
