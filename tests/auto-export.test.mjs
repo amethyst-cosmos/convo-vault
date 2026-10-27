@@ -177,13 +177,13 @@ test("a failed conversation in a batch is reported and the next one still runs",
 
 test("a list job sends the conversation list back as a result", async () => {
   const harness = load({
-    claim: { ok: true, options: { closeTab: true, list: { project: "Working", limit: 50 } } },
+    claim: { ok: true, options: { closeTab: true, list: { project: "Research", limit: 50 } } },
     listConversations: async (request) => ({ conversations: [{ id: "x", title: request.project }], notes: [] }),
     exportConversation: async () => { throw new Error("a list job must not export"); }
   });
   await settle();
 
   const result = harness.sent.find((message) => message.action === "result");
-  assert.deepEqual(result.data.conversations, [{ id: "x", title: "Working" }]);
+  assert.deepEqual(result.data.conversations, [{ id: "x", title: "Research" }]);
   assert.equal(harness.sent.at(-1).action, "close-tab");
 });

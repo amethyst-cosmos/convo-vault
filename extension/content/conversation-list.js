@@ -1,4 +1,4 @@
-  // Lists conversations for the `list` job, so an agent can be told "all of the Working project"
+  // Lists conversations for the `list` job, so an agent can be told "all of the Research project"
   // instead of being handed a link per conversation. ChatGPT's list endpoints are not documented
   // and change, so answers are read by shape (an object with an id and a title) rather than by
   // exact field names, and the page's own links are the fallback.

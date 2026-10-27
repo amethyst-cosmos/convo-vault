@@ -109,38 +109,38 @@ test("one failing conversation is reported, the others are kept, and the exit co
 });
 
 test("list asks the extension for a project's conversations and prints them", async (t) => {
-  const run = await startCli(t, ["list", "--project", "Working", "--json"]);
+  const run = await startCli(t, ["list", "--project", "Research", "--json"]);
   const tab = await run.nextTab();
   assert.equal(tab.jobIds.length, 1);
 
   const claimed = await run.claim(tab.jobIds[0]);
-  assert.equal(claimed.options.list.project, "Working");
+  assert.equal(claimed.options.list.project, "Research");
   assert.equal(claimed.options.conversationId, "", "a list job exports nothing");
   await run.sendResult(tab.jobIds[0], claimed, {
     source: "api",
-    project: { id: "g-p-" + "1".repeat(32), name: "Working" },
-    conversations: [{ id: "6ad34ccd-d3f0-83ec-a4d8-786273002c00", title: "制作PPT第一页", updatedAt: "2026-10-22T00:03:02Z" }],
+    project: { id: "g-p-" + "1".repeat(32), name: "Research" },
+    conversations: [{ id: "11111111-2222-4333-8444-555555555555", title: "季度报告初稿", updatedAt: "2026-10-22T00:03:02Z" }],
     notes: []
   });
 
   assert.equal(await run.exited, 0, run.stderr);
   const printed = JSON.parse(run.stdout);
-  assert.equal(printed.project.name, "Working");
-  assert.equal(printed.conversations[0].title, "制作PPT第一页");
+  assert.equal(printed.project.name, "Research");
+  assert.equal(printed.conversations[0].title, "季度报告初稿");
 });
 
 test("export --project lists the project first, then exports everything in one tab with files only where named", async (t) => {
-  const run = await startCli(t, ["export", "--project", "Working", "--files-for", "二手衣物,PPT", "--no-pdf", "--no-extract"]);
+  const run = await startCli(t, ["export", "--project", "Research", "--files-for", "发票,报告", "--no-pdf", "--no-extract"]);
 
   const listTab = await run.nextTab();
   const listClaim = await run.claim(listTab.jobIds[0]);
-  assert.equal(listClaim.options.list.project, "Working");
+  assert.equal(listClaim.options.list.project, "Research");
   await run.sendResult(listTab.jobIds[0], listClaim, {
-    project: { id: "g-p-" + "1".repeat(32), name: "Working" },
+    project: { id: "g-p-" + "1".repeat(32), name: "Research" },
     conversations: [
-      { id: "00000000-0000-4000-8000-000000000001", title: "解读商业合作邀请" },
-      { id: "00000000-0000-4000-8000-000000000002", title: "二手衣物测量广告整理" },
-      { id: "00000000-0000-4000-8000-000000000003", title: "制作PPT第一页" }
+      { id: "00000000-0000-4000-8000-000000000001", title: "会议纪要整理" },
+      { id: "00000000-0000-4000-8000-000000000002", title: "发票对账" },
+      { id: "00000000-0000-4000-8000-000000000003", title: "季度报告初稿" }
     ],
     notes: []
   });

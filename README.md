@@ -166,9 +166,9 @@ node cli/convo-vault.mjs export <link> --no-pdf                   # data only: f
 node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <link1> <link2> <link3>           # several at once, in one browser tab
-node cli/convo-vault.mjs list --project "Working"                 # see what is in a project (id, date, title)
-node cli/convo-vault.mjs export --project "Working"               # every conversation in the project
-node cli/convo-vault.mjs export --project "Working" --files-for "Used clothes,PPT"   # files only for those
+node cli/convo-vault.mjs list --project "Research"                 # see what is in a project (id, date, title)
+node cli/convo-vault.mjs export --project "Research"               # every conversation in the project
+node cli/convo-vault.mjs export --project "Research" --files-for "invoice,report"   # files only for those
 ```
 
 Several conversations run **in one tab, one after another**, so nothing pops up per conversation (on macOS the tab also opens without bringing the browser to the front). Each result is printed, a failed conversation does not stop the rest, and the exit code is 1 if any failed. `--files-for` takes words from titles (or ids); `--files` means all.

@@ -14,10 +14,10 @@ Get one `chatgpt.com/c/<id>` link (or a bare conversation id), from the first of
 1. The user's message: a pasted link or id.
 2. A screenshot: read the address bar. The URL is usually visible; read the `/c/<id>` part carefully, ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`.
 3. A browser tool you already have (Claude in Chrome, a browser MCP): read the URL of the open ChatGPT tab.
-4. The user names a project or some titles instead of giving links ("everything in my Working project"): list them, do not ask for links.
+4. The user names a project or some titles instead of giving links ("everything in my Research project"): list them, do not ask for links.
 
 ```bash
-node "{{SKILL_DIR}}/scripts/run.mjs" list --project "Working"
+node "{{SKILL_DIR}}/scripts/run.mjs" list --project "Research"
 ```
 
    It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
@@ -47,8 +47,8 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster and needs no PDF renderer.
 - The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
-- A whole project: `export --project "Working"` exports every conversation in it (add links to include others).
-- Files for only some: `--files-for "二手衣物,PPT"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
+- A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
+- Files for only some: `--files-for "invoice,report"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 
 ## 4. After it finishes
 
