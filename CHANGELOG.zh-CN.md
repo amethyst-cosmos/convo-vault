@@ -2,9 +2,12 @@
 
 [English](CHANGELOG.md)
 
-## 未发布
+## 0.11.8
 
-- **上架 Agensi**：skill 的纯文字版已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，源文件是 `skills/convo-vault-agensi`；安装本项目前会先征求用户同意。用户会安装到的代码没有改动，所以不升版本号
+弹窗不再默认推手动导出，由用户自己决定。
+
+- **弹窗新增“手动控制”开关，默认关闭**：关闭时弹窗只是个连接器，说明导出由 Agent 发起，没有要点的东西；打开后和以前一样（Export this conversation、后端文件夹、Check、Copy Start、Stop）。选择保存在 `convoVaultSettings.manualControls`，渲染服务发给扩展的本地令牌两种情况下都保留。Agent、命令行和 MCP 发起的导出不受开关影响。以前用弹窗按钮的用户需要打开一次开关
+- **上架 Agensi**：skill 的纯文字版已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，源文件是 `skills/convo-vault-agensi`；安装本项目前会先征求用户同意。
 
 ## 0.11.7
 

@@ -8,26 +8,35 @@
   </head>
   <body>
     <main class="popup">
-      <h1>Convo Vault <span style="font-size: 11px; font-weight: normal; color: #64748b;">v0.11.7</span></h1>
-      <button id="exportButton" type="button">Export this conversation</button>
-      <section class="settings" aria-label="Local backend settings">
-        <h2>Local setup</h2>
-        <label class="field">
-          <span>Backend folder</span>
-          <input id="backendRootInput" type="text" placeholder="Path containing scripts folder">
+      <h1>Convo Vault <span style="font-size: 11px; font-weight: normal; color: #64748b;">v0.11.8</span></h1>
+      <section class="mode" aria-label="How exports are started">
+        <label class="switch">
+          <input id="manualToggle" type="checkbox">
+          <span>Manual controls</span>
         </label>
+        <p id="modeHint" class="mode-hint"></p>
       </section>
-      <section class="backend" aria-label="Local renderer controls">
-        <div class="backend-status">
-          <span id="backendDot" class="backend-dot" aria-hidden="true"></span>
-          <span id="backendStatus">Checking local renderer...</span>
-        </div>
-        <div class="backend-actions">
-          <button id="checkBackendButton" class="secondary" type="button">Check</button>
-          <button id="copyStartButton" class="secondary" type="button">Copy Start</button>
-          <button id="stopBackendButton" class="danger" type="button" disabled>Stop</button>
-        </div>
-      </section>
+      <div id="manualControls" class="manual" hidden>
+        <button id="exportButton" type="button">Export this conversation</button>
+        <section class="settings" aria-label="Local backend settings">
+          <h2>Local setup</h2>
+          <label class="field">
+            <span>Backend folder</span>
+            <input id="backendRootInput" type="text" placeholder="Path containing scripts folder">
+          </label>
+        </section>
+        <section class="backend" aria-label="Local renderer controls">
+          <div class="backend-status">
+            <span id="backendDot" class="backend-dot" aria-hidden="true"></span>
+            <span id="backendStatus">Checking local renderer...</span>
+          </div>
+          <div class="backend-actions">
+            <button id="checkBackendButton" class="secondary" type="button">Check</button>
+            <button id="copyStartButton" class="secondary" type="button">Copy Start</button>
+            <button id="stopBackendButton" class="danger" type="button" disabled>Stop</button>
+          </div>
+        </section>
+      </div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </main>
     <script src="popup.js"></script>

@@ -4,9 +4,18 @@ const DEFAULT_SETTINGS = {
   port: 38474,
   cacheDir: "",
   browserPath: "",
-  backendToken: ""
+  backendToken: "",
+  manualControls: false
 };
 
+const MODE_HINTS = {
+  agent: "Your agent starts exports (Claude, Codex, MCP or the command line). Nothing to click here.",
+  manual: "You can export the open conversation from this window. Your agent can still start exports."
+};
+
+const manualToggle = document.getElementById("manualToggle");
+const manualControls = document.getElementById("manualControls");
+const modeHint = document.getElementById("modeHint");
 const exportButton = document.getElementById("exportButton");
 const statusEl = document.getElementById("status");
 const backendDot = document.getElementById("backendDot");
@@ -28,8 +37,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     await saveSettings(currentSettings);
   }
   renderSettings(currentSettings);
-  checkBackend();
+  applyMode(currentSettings.manualControls);
+
+  if (currentSettings.manualControls) {
+    checkBackend();
+  }
 });
+
+manualToggle.addEventListener("change", async () => {
+  currentSettings = { ...currentSettings, manualControls: manualToggle.checked };
+  await saveSettings(currentSettings);
+  applyMode(currentSettings.manualControls);
+  setStatus("");
+
+  if (currentSettings.manualControls) {
+    checkBackend();
+  }
+});
+
+function applyMode(manual) {
+  manualToggle.checked = manual;
+  manualControls.hidden = !manual;
+  modeHint.textContent = manual ? MODE_HINTS.manual : MODE_HINTS.agent;
+}
 
 exportButton.addEventListener("click", async () => {
   setBusy(true, "Exporting. Keep this window open...");
@@ -155,7 +185,8 @@ function readSettingsFromForm() {
     port: DEFAULT_SETTINGS.port,
     cacheDir: DEFAULT_SETTINGS.cacheDir,
     browserPath: DEFAULT_SETTINGS.browserPath,
-    backendToken: currentSettings.backendToken || createLocalApiToken()
+    backendToken: currentSettings.backendToken || createLocalApiToken(),
+    manualControls: manualToggle.checked
   };
 }
 
@@ -185,7 +216,8 @@ function normalizeSettings(settings = {}) {
     port: DEFAULT_SETTINGS.port,
     cacheDir: DEFAULT_SETTINGS.cacheDir,
     browserPath: DEFAULT_SETTINGS.browserPath,
-    backendToken: normalizeLocalApiToken(settings.backendToken)
+    backendToken: normalizeLocalApiToken(settings.backendToken),
+    manualControls: settings.manualControls === true
   };
 }
 

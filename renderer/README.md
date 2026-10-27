@@ -17,7 +17,7 @@ do not support pnpm symlinks.
 
 ## Start the service
 
-Start it from the extension popup with **Copy Start**. The copied command sets
+Start it from the extension popup (turn on **Manual controls** first) with **Copy Start**. The copied command sets
 `CGCE_LOCAL_API_TOKEN`; browser-origin requests must send that token in
 `X-Convo-Vault-Token`. For local development, from the repository root:
 
