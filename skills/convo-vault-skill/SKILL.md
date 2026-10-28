@@ -23,7 +23,7 @@ node "{{SKILL_DIR}}/scripts/run.mjs" list --project "Research"
    It prints each conversation's id, date and title (`--json` for data; without `--project` it lists recent conversations). Pick the ones the user means by title; if a match is unclear, show the user the candidates and ask.
 5. Otherwise ask the user once for the link. Do not guess an id from a conversation title.
 
-Grok and Gemini conversations work too: a `grok.com/c/<id>` or `gemini.google.com/app/<id>` link is exported the same way. Grok links run several in one tab; each Gemini link gets its own tab. For both, `list`, `--project` and `--files` do not apply yet. Gemini is read from the page (it scrolls to the top first), so it takes longer and the output carries a warning that Gemini gives no message count.
+Grok and Gemini conversations work too: a `grok.com/c/<id>` or `gemini.google.com/app/<id>` link is exported the same way. Grok links run several in one tab; each Gemini link gets its own tab. Images are included for both; other attachments are only listed by name. For both, `list`, `--project` and `--files` do not apply yet. Gemini is read from the page (it scrolls to the top first), so it takes longer and the output carries a warning that Gemini gives no message count.
 
 ## 2. Ask once about files
 

@@ -65,7 +65,7 @@ async function loadGemini({ pathname = "/app/ee7a64284d74cdd1" } = {}) {
   });
   vm.runInContext(`${await read("provider.js")}\n${await read("capture-fast.js")}\n${await read("capture-gemini.js")}\nglobalThis.__g = {
     collect: collectGeminiConversationMessages, id: getGeminiConversationId, md: geminiHtmlToMarkdown,
-    turn: extractGeminiTurn, user: geminiUserMarkdown, title: () => lastApiConversationTitle,
+    turn: extractGeminiTurn, user: geminiUserMarkdown, title: () => lastApiConversationTitle, images: getGeminiPageImages,
     set(name, value) { globalThis[name] = value; }
   };`, context);
   return context.__g;
@@ -209,4 +209,41 @@ test("a conversation that never stops growing hits the scroll limit and says so,
 
   assert.ok(result.completeness.warnings.some((warning) => warning.code === "load-limit"));
   assert.equal(g.title(), "", "the placeholder is not used as a title");
+});
+
+// ---- pictures ----
+const PICTURE = '<single-image><div class="image-container"><img class="image" src="blob:https://gemini.google.com/4208e61f" alt="A modern screenshot of a specialized interview assistant window shown on a video call, with a transcript panel and live suggestions and many more details that go on and on and on"></div></single-image>';
+
+test("a picture the page can draw is kept as an image, under a made-up address, with the start of its prompt as alt", async () => {
+  const g = await loadGemini();
+  g.set("geminiImageToDataUri", () => "data:image/png;base64,QUJD");
+
+  const markdown = g.md(parse(`<div class="markdown"><p>Here you go.</p>${PICTURE}</div>`));
+
+  assert.match(markdown, /^Here you go\.\n\n!\[A modern screenshot of a specialized interview assistant window shown on a video…\]\(https:\/\/gemini\.google\.com\/__convo_vault_image\/1\)$/);
+  assert.deepEqual({ ...g.images() }, { "https://gemini.google.com/__convo_vault_image/1": "data:image/png;base64,QUJD" });
+});
+
+test("a picture the page does not let a script read stays a link, and the warning says how many", async () => {
+  const g = await loadGemini();
+  g.set("geminiImageToDataUri", () => "");
+  const markdown = g.md(parse('<div class="markdown"><img src="https://lh3.googleusercontent.com/abc" alt="Chart"></div>'));
+  pretendPage(g, { totals: [1, 1, 1, 1], replyFor: () => '<img src="https://lh3.googleusercontent.com/abc" alt="Chart">' });
+
+  assert.equal(markdown, "🖼️ **Chart** (link, not downloaded): https://lh3.googleusercontent.com/abc");
+  const result = await g.collect(null, {});
+  assert.deepEqual(Object.keys(g.images()), []);
+  assert.match(result.completeness.warnings.find((warning) => warning.code === "images-not-embedded").message, /1 image\(s\) could not be read/);
+});
+
+test("a picture in a prompt is kept too, and every capture starts with an empty store", async () => {
+  const g = await loadGemini();
+  g.set("geminiImageToDataUri", () => "data:image/png;base64,QUJD");
+  const prompt = parse('<user-query><div class="file-preview-container"><img src="blob:https://gemini.google.com/up" alt="my photo"></div><div class="query-text"><p class="query-text-line">what is this?</p></div></user-query>');
+
+  assert.equal(g.user(prompt), "what is this?\n\n![my photo](https://gemini.google.com/__convo_vault_image/1)");
+
+  pretendPage(g, { totals: [1, 1, 1, 1] });
+  await g.collect(null, {});
+  assert.deepEqual(Object.keys(g.images()), [], "the earlier export's pictures are gone");
 });

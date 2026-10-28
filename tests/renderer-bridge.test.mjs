@@ -428,3 +428,62 @@ async function waitFor(predicate) {
   }
   throw new Error("Timed out waiting for background renderer bridge result.");
 }
+
+test("background renderer bridge stages pictures the page handed over under Gemini's made-up address without fetching anything", async () => {
+  const backgroundSource = await readFile(path.join(repoRoot, "extension", "background.js"), "utf8");
+  const runtimeConnectEvent = createEvent();
+  const fetchCalls = [];
+  const stagedBodies = [];
+  const sessionId = "b".repeat(48);
+  const key = "https://gemini.google.com/__convo_vault_image/1";
+  const grokImage = "https://assets.grok.com/users/u/generated/g/image.jpg";
+  const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+  const chrome = {
+    runtime: { id: "provider-image-test", lastError: null, onMessage: createEvent(), onConnect: runtimeConnectEvent },
+    storage: { local: { get(_keys, callback) { callback({ convoVaultSettings: { backendToken: "token" } }); } } },
+    downloads: { download(_options, callback) { callback(5); } }
+  };
+  const context = {
+    AbortController, Blob, URL, TextEncoder, Uint8Array, atob, btoa, chrome, console,
+    crypto: webcrypto, setTimeout, clearTimeout, setInterval: () => 1, clearInterval: () => {},
+    fetch: async (url, options = {}) => {
+      fetchCalls.push(String(url));
+      if (url === "http://127.0.0.1:38474/export-sessions") return jsonResponse({ ok: true, sessionId });
+      if (String(url).startsWith(`http://127.0.0.1:38474/export-sessions/${sessionId}/assets/`)) {
+        stagedBodies.push(options.body);
+        return jsonResponse({ ok: true, sha256: "e".repeat(64), reused: false });
+      }
+      if (url === "http://127.0.0.1:38474/prepare-render-bundle") {
+        return jsonResponse({ ok: true, filename: "provider-images.zip", downloadPath: `/download-bundle/${"8".repeat(48)}`, assetStats: JSON.parse(options.body).exportPayload.assetStats });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+  };
+
+  vm.runInNewContext(backgroundSource, context, { filename: "background.js" });
+  const port = createPort();
+  runtimeConnectEvent.emit(port);
+  const serializedBody = JSON.stringify({
+    exportPayload: {
+      provider: "gemini",
+      source: "https://gemini.google.com/app/abc12345",
+      assetStats: {},
+      messages: [{ id: "a1", role: "assistant", markdown: `![Generated](${key})\n\n![Robot](${grokImage})`, thinkingMarkdown: "" }]
+    },
+    fileName: "provider-images.zip",
+    pageImages: { [key]: `data:image/png;base64,${Buffer.from(imageBytes).toString("base64")}` },
+    pageImageFailures: { [grokImage]: "image download HTTP 403" }
+  });
+
+  port.onMessage.emit({ type: "START", totalCharacters: serializedBody.length, totalBytes: serializedBody.length });
+  port.onMessage.emit({ type: "CHUNK", data: serializedBody });
+  port.onMessage.emit({ type: "END" });
+  await waitFor(() => port.sent.some((message) => message.type === "RESULT"));
+
+  assert.equal(fetchCalls.some((url) => /gemini\.google\.com|assets\.grok\.com/.test(url)), false, "neither made-up address nor a picture the page already failed to fetch is fetched again");
+  assert.equal(stagedBodies.length, 1);
+  assert.equal(stagedBodies[0].size, imageBytes.length);
+  const result = port.sent.find((message) => message.type === "RESULT").result;
+  assert.equal(result.assetStats.imagesEmbedded, 1);
+  assert.equal(result.assetStats.imagesFailed, 1);
+});

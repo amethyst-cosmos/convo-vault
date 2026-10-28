@@ -12,6 +12,8 @@
   const GROK_CITATION_RE = /<grok:render\b[^>]*type="render_inline_citation"[^>]*>\s*<argument name="citation_id">(\d+)<\/argument>\s*<\/grok:render>/g;
   const GROK_RENDER_RE = /<grok:render\b[\s\S]*?<\/grok:render>/g;
   const GROK_TOOL_CARD_RE = /<xai:tool_usage_card>[\s\S]*?<\/xai:tool_usage_card>/g;
+  const GROK_IMAGE_RENDER_RE = /<grok:render\b[^>]*card_id="([^"]+)"[^>]*type="render_generated_image"[^>]*>[\s\S]*?<\/grok:render>/g;
+  const GROK_ASSET_ORIGIN = "https://assets.grok.com/";
 
   async function collectGrokConversationMessages(debugLog = null, options = {}) {
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
@@ -118,12 +120,52 @@
     };
   }
 
+  // Grok keeps its images on assets.grok.com, under a path the API gives without the host. They are
+  // public to fetch, so the extension's background downloads them like any other image link.
+  function grokAssetUrl(path) {
+    const value = String(path || "").trim();
+    if (!value) return "";
+    return /^https?:\/\//i.test(value) ? value : `${GROK_ASSET_ORIGIN}${value.replace(/^\/+/, "")}`;
+  }
+
+  function grokImageMarkdown(url, alt) {
+    const clean = String(alt || "Image").replace(/[\[\]\n]/g, " ").trim() || "Image";
+    return url ? `![${clean}](${url})` : "";
+  }
+
+  function grokCards(response) {
+    return (Array.isArray(response.cardAttachmentsJson) ? response.cardAttachmentsJson : []).map((card) => {
+      try {
+        return typeof card === "string" ? JSON.parse(card) : card;
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean);
+  }
+
   function grokUserMarkdown(response) {
-    const attachments = [...(response.fileAttachmentsMetadata || []), ...(response.fileAttachments || [])]
-      .map((item) => (typeof item === "string" ? "" : item?.fileName || item?.filename || item?.name || ""))
-      .filter(Boolean);
-    const lines = [...new Set(attachments)].map((name) => `📎 **Attachment**: ${name}`);
-    return [String(response.message || "").trim(), ...lines].filter(Boolean).join("\n\n");
+    const images = [];
+    const names = [];
+
+    for (const item of response.fileAttachmentsMetadata || []) {
+      const name = item?.fileName || item?.filename || item?.name || "";
+      if (/^image\//i.test(String(item?.fileMimeType || "")) && item?.fileUri) {
+        images.push(grokImageMarkdown(grokAssetUrl(item.fileUri), name || "Uploaded image"));
+      } else if (name) {
+        names.push(name);
+      }
+    }
+
+    for (const item of response.fileAttachments || []) {
+      if (typeof item !== "string" && (item?.fileName || item?.name)) names.push(item.fileName || item.name);
+    }
+
+    for (const url of response.imageAttachments || []) {
+      if (typeof url === "string" && url) images.push(grokImageMarkdown(grokAssetUrl(url), "Uploaded image"));
+    }
+
+    const lines = [...new Set(names)].map((name) => `📎 **Attachment**: ${name}`);
+    return [String(response.message || "").trim(), ...new Set(images), ...lines].filter(Boolean).join("\n\n");
   }
 
   // Inline citations (<grok:render ... citation_id>N) point at webSearchResults[N]. They become
@@ -142,9 +184,23 @@
       return `[^${number}]`;
     });
 
-    markdown = markdown.replace(GROK_RENDER_RE, "").trim();
-    const generated = Array.isArray(response.generatedImageUrls) ? response.generatedImageUrls.filter((url) => typeof url === "string" && url) : [];
-    const extras = generated.map((url) => `🖼️ **Generated image** (link, not downloaded): ${url}`);
+    // A generated image is a card the text points at; the card holds the picture's path.
+    const imageCards = grokCards(response).filter((card) => card.type === "render_generated_image" && card.image_chunk?.imageUrl);
+    const shown = new Set();
+    markdown = markdown.replace(GROK_IMAGE_RENDER_RE, (_match, cardId) => {
+      const card = imageCards.find((candidate) => candidate.id === cardId);
+      const url = grokAssetUrl(card?.image_chunk?.imageUrl);
+      if (!url || shown.has(url)) return "";
+      shown.add(url);
+      return `\n\n${grokImageMarkdown(url, card.image_chunk.imageTitle || card.prompt)}\n\n`;
+    });
+    markdown = markdown.replace(GROK_RENDER_RE, "").replace(/\n{3,}/g, "\n\n").replace(/\n\n[ \t]+/g, "\n\n").trim();
+
+    // Anything the text did not point at still belongs to the answer.
+    const extras = [
+      ...imageCards.map((card) => [grokAssetUrl(card.image_chunk.imageUrl), card.image_chunk.imageTitle || card.prompt]),
+      ...(Array.isArray(response.generatedImageUrls) ? response.generatedImageUrls : []).filter((url) => typeof url === "string" && url).map((url) => [grokAssetUrl(url), "Generated image"])
+    ].filter(([url]) => url && !shown.has(url) && shown.add(url)).map(([url, alt]) => grokImageMarkdown(url, alt));
     const footnotes = sources.map((source, index) => `[^${index + 1}]: [${source.title}](${source.url})`);
     return [markdown, ...extras, footnotes.join("\n")].filter(Boolean).join("\n\n");
   }

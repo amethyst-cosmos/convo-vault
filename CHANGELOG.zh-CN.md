@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.md)
 
+## 0.15.0
+
+Grok 和 Gemini 的图片会被导出，不再只是链接。起因是用浏览器开发者工具核对了各一张真实的图（Grok 生成的机器人照片，Gemini 生成的界面示意图）。
+
+- **Grok**：生成的图片是一张卡片（`cardAttachmentsJson`，类型 `render_generated_image`），回答正文里用 `<grok:render card_id=…>` 标签指向它；图片路径是 `assets.grok.com` 上的 `image_chunk.imageUrl`。这个标签在 Markdown 里原位变成图片（同一张图只出现一次，即使卡片同时在 `generatedImageUrls` 里）；正文没指向的卡片会加在回答后面。你上传的图片（图片类型的 `fileAttachmentsMetadata`、`imageAttachments`）显示在你的提问里；其他文件仍按名称列出
+- **为什么由页面下载 Grok 的图片**：`assets.grok.com` 对来自 grok.com 的请求回 200，对没有这个来源页的请求回 403，而扩展后台的请求没有这个来源页，所以由内容脚本（带页面的会话）下载，再像 ChatGPT 的图片一样把字节交出去。被拒绝的结果可能被浏览器缓存后重复返回，所以第二次会绕过缓存；第二次仍被拒绝就记为这张图的失败，后台不会再重试
+- **Gemini**：页面上的图片是页面自己生成的 `blob:` 地址。脚本不能 `fetch` 它（页面的内容安全策略拒绝），但能画出它：趁页面开着把图画到画布上，保存成 PNG（超过约 2.6 MB 则改用 JPEG）。Markdown 指向一个虚构的地址（`https://gemini.google.com/__convo_vault_image/<n>`），图片的字节用这个地址交给导出包。图片的 alt 文字是生成它的整段提示词，所以只保留前 80 个字符。页面不让脚本读取的图片（跨域图片会污染画布）仍然是链接，并有一条警告说明有几张。你自己提问里的图片处理方式相同
+- 测试：Grok 图片卡片（位置、只出现一次、多出来的卡片、上传的图）、Gemini 图片（保留、退回链接并警告、在提问里、每次抓取前清空）、页面下载器（会话与绕过缓存、被拒绝、返回的不是图片、Gemini 画出的图、ChatGPT 不受影响），以及后台用页面交来的字节登记虚构地址、不发任何请求
+- 在浏览器里手工核对过：Grok 的图片带页面来源页时下载成功（200，265 KB JPEG，1168×784，能解码），不带来源页被拒绝（403）；Gemini 的图片能画到画布上（1024×559，PNG 872 KB），而 `fetch(blob:)` 被拦。还没有通过扩展本身跑过；第一次带图片的真实导出才是真正的检验
+- 仍然不导出：其他附件（Grok 列出名称；Gemini 在页面显示时列出）、Gemini 的思考面板
+
 ## 0.14.0
 
 可以导出 Gemini（gemini.google.com）的对话，生成和 ChatGPT、Grok 一样的导出包。
