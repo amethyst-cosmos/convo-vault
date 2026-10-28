@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.15.1-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.15.2-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.15.1`
+当前版本：`0.15.2`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -138,7 +138,7 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 
 ### 也可以在 Agensi 上找到
 
-同一个 skill 已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter)，这是一个通过 MCP 把 skill 交给 Agent 的市场。上架的是纯文字版（`skills/convo-vault-agensi`）：第一次使用时 Agent 会先征求你的同意，再把本项目从 GitHub 安装到 `~/convo-vault`，你只需要加载一次扩展。两种方式用的是同一份开源代码，Agensi 只是多一个找到它的入口。
+同一个 skill 已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter)，这是一个通过 MCP 把 skill 交给 Agent 的市场。上架的是纯文字版（`skills/convo-vault-agensi`）：第一次使用时 Agent 会先征求你的同意，再把本项目从 GitHub 安装到 `~/convo-vault`，你只需要加载一次扩展。两种方式用的是同一份开源代码，Agensi 只是多一个找到它的入口。
 
 ### Grok
 

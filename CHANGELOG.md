@@ -4,6 +4,11 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.15.2
+
+- Docs only. The Agensi listing is now "Convo Vault Chat Exporter" and its address is `agensi.io/skills/convo-vault-chat-exporter`; README links point there.
+- The listing's tags, use cases, FAQ and creator bio, and the GitHub description and topics, now name ChatGPT, Grok and Gemini instead of ChatGPT only.
+
 ## 0.15.1
 
 Wording only: Convo Vault is described as a chat exporter for ChatGPT, Grok and Gemini, not as a ChatGPT exporter. No behaviour changes.

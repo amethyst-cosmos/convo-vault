@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Convo Vault",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "A chat exporter for ChatGPT, Grok and Gemini: turn conversations into Markdown, PDF and JSON bundles on your own computer.",
   "permissions": [
     "activeTab",
