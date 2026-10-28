@@ -4,6 +4,17 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.15.1
+
+Wording only: Convo Vault is described as a chat exporter for ChatGPT, Grok and Gemini, not as a ChatGPT exporter. No behaviour changes.
+
+- **README (English and Chinese)**: the intro, the banner text and the privacy section say "chat", a new "Supported chats" table lists each site with the link to give it, how it is read and what the export is checked against, and the places that said "ChatGPT" for everything (sign-in step, the "Where it works" table, the manual export, how it reads a conversation) name the three sites.
+- **INSTALL, SECURITY, renderer README**: the install steps and the agent instructions say "chat conversation" with the three link shapes; the security scope covers the three sites and says whom to report their own bugs to (OpenAI, xAI, Google).
+- **Skills and MCP**: the local skill's name line, description and trigger words, `agents/openai.yaml` and the MCP tool text name ChatGPT, Grok and Gemini. The Agensi skill text is a separate submission and is handled on its own.
+- **Package and extension**: `package.json` description and keywords (`chat-exporter`, `grok`, `gemini`, `ai-chat`) and the extension's description on the Extensions page.
+- **CLI messages**: the help, the "not a conversation link" errors, the sign-in hints in `setup` and `verify` and the MCP reminder say "chat site" instead of ChatGPT.
+- **Images**: the banner (English and Chinese) and the social preview say "A chat exporter: ChatGPT, Grok and Gemini into a knowledge pack"; the social preview PNG is regenerated.
+
 ## 0.15.0
 
 Images from Grok and Gemini are exported, not just linked. Found by checking one real image in each (a robot photo Grok generated, an interface mock-up Gemini generated) in the browser's developer tools.

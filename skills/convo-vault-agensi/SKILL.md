@@ -1,21 +1,21 @@
 ---
-name: Convo Vault ChatGPT Exporter
-description: Export ChatGPT conversations, one, several or a whole project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT conversations, names a ChatGPT project, or gives a chatgpt.com/c/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT 对话。
-summary: Tell your agent to export ChatGPT conversations, one or a whole project. It sets up the free open-source Convo Vault once, then saves each chat locally as Markdown, PDF and structured data. Windows and macOS.
-version: 0.2.0
-tags: chatgpt, export, archive, markdown, pdf, jsonl, knowledge-base, backup
-keywords: chatgpt export, chatgpt backup, conversation archive, chatgpt project export, agent-ready knowledge pack
-use_cases: Back up an important ChatGPT conversation, Export every conversation in a ChatGPT project at once, Turn a long chat into Markdown and PDF, Feed a ChatGPT conversation to another agent, Keep the model's thinking and tool trace with the chat
+name: Convo Vault Chat Exporter
+description: Chat exporter for ChatGPT, Grok and Gemini. Export conversations, one, several or a whole ChatGPT project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT, Grok or Gemini conversations, names a ChatGPT project, or gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT、Grok、Gemini 对话。
+summary: A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it sets up the free open-source Convo Vault once, then saves each chat locally as Markdown, PDF and structured data. Windows and macOS.
+version: 0.3.0
+tags: chat-exporter, chatgpt, grok, gemini, export, archive, markdown, pdf, jsonl, knowledge-base, backup
+keywords: chat exporter, chatgpt export, grok export, gemini export, ai chat backup, conversation archive, agent-ready knowledge pack
+use_cases: Back up an important ChatGPT, Grok or Gemini conversation, Export every conversation in a ChatGPT project at once, Turn a long chat into Markdown and PDF, Feed a conversation to another agent, Keep the model's thinking and tool trace with the chat
 docs_url: https://github.com/amethyst-cosmos/convo-vault
 ---
 
-# Convo Vault ChatGPT Exporter
+# Convo Vault Chat Exporter
 
-This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.com/amethyst-cosmos/convo-vault. Convo Vault runs entirely on the user's computer: a small browser extension reads the ChatGPT tab the user is already signed in to, and a local service writes the files. Nothing is uploaded anywhere.
+This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.com/amethyst-cosmos/convo-vault. Convo Vault runs entirely on the user's computer: a small browser extension reads the chat tab (ChatGPT, Grok or Gemini) the user is already signed in to, and a local service writes the files. Nothing is uploaded anywhere.
 
-Requires: Node.js 20 or newer, git, a Chromium browser (Chrome, Edge, Brave) signed in to ChatGPT, and a terminal the agent can use. It works on macOS, Windows and Linux.
+Requires: Node.js 20 or newer, git, a Chromium browser (Chrome, Edge, Brave) signed in to the chat site, and a terminal the agent can use. It works on macOS, Windows and Linux.
 
-The user only has to say "export this ChatGPT conversation" (or "everything in my Research project") and give a link, a screenshot or a project name. Do the rest, except the one browser step in section 2, which only the user can do.
+The user only has to say "export this conversation" (or "everything in my Research project", for ChatGPT) and give a link, a screenshot or a project name. Do the rest, except the one browser step in section 2, which only the user can do.
 
 ## How to run the commands
 
@@ -25,11 +25,11 @@ Run each command on its own line and wait for it to finish. Do not join commands
 
 ## 1. Find the conversations
 
-Get the `chatgpt.com/c/<id>` links (or bare conversation ids) from the first of these that works:
+Get the conversation links (`chatgpt.com/c/<id>`, `grok.com/c/<id>` or `gemini.google.com/app/<id>`; a bare id is a ChatGPT id) from the first of these that works:
 
 1. The user's message: pasted links or ids.
 2. A screenshot: read the address bar. Ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`; read them carefully.
-3. A browser tool you already have: read the URL of the open ChatGPT tab.
+3. A browser tool you already have: read the URL of the open chat tab.
 4. The user names a project or some titles instead of giving links ("everything in my Research project"): list them, do not ask for links.
 
 ```
@@ -81,7 +81,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" setup --no-skill
 4. Ask the user to load the extension. **This is the one manual step, once per browser.** Browsers do not let a program install an unpublished extension, so do not try to do it for them. Give them the full path of the folder `convo-vault/dist/convo-vault-extension` inside the install folder (for example `C:\Users\<name>\convo-vault\dist\convo-vault-extension` on Windows, `/Users/<name>/convo-vault/dist/convo-vault-extension` on macOS) and tell them:
    1. Open the browser's extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
    2. Click **Load unpacked** and choose that folder.
-   3. Open https://chatgpt.com in that browser and sign in.
+   3. Open the chat site (https://chatgpt.com, https://grok.com or https://gemini.google.com) in that browser and sign in.
 
 5. Verify, then continue once it prints `OK`:
 
@@ -91,7 +91,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" verify
 
 ### Updating later
 
-When the user asks to update Convo Vault, or an export fails after a ChatGPT change, run:
+When the user asks to update Convo Vault, or an export fails after a change on the chat site, run:
 
 ```
 node "$HOME/convo-vault/cli/convo-vault.mjs" update --no-skill
@@ -126,6 +126,10 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Files for only some: `--files-for "invoice,report"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 - On macOS the browser tab opens in the background. On Windows and Linux the browser window may come to the front once per run, not once per conversation.
 
+### Grok and Gemini
+
+A Grok or Gemini link is exported with the same command and gives the same folder. Several Grok links run in one tab; each Gemini link gets its own tab, one after another. Images are included; other attachments are only listed by name. For both, `list`, `--project` and `--files` do not apply yet (they are ChatGPT only). Gemini has no conversation API, so its page is scrolled to the top and read, which takes longer; the output carries a warning that Gemini gives no message count and that its thinking panel is not exported. Treat the warnings as part of the result and tell the user.
+
 ## 5. After it finishes
 
 - Tell the user where the folder is and list the key files: `*.md` (readable), `*.pdf`, `*.summary.md`, `*.agent-trace.md`.
@@ -137,7 +141,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 
 | Message | What to do |
 | --- | --- |
-| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off, or ChatGPT is not signed in in that browser. Repeat the extension step in section 2, or add `--browser "Microsoft Edge"` if they use another browser. |
+| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off, or the chat site is not signed in in that browser. Repeat the extension step in section 2, or add `--browser "Microsoft Edge"` if they use another browser. |
 | `Renderer dependencies are not installed` | Run `node "$HOME/convo-vault/cli/convo-vault.mjs" setup --no-skill`. |
 | `cannot run export jobs` | An old renderer is running. Run `node "$HOME/convo-vault/cli/convo-vault.mjs" backend stop`, then export again. |
 | `Capture is incomplete` | Report the listed issues and ask whether a partial export is acceptable. |
@@ -145,10 +149,10 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 | `node` or `git` not found | Install it as in section 2, then open a new terminal. |
 | Anything else | Run `node "$HOME/convo-vault/cli/convo-vault.mjs" doctor` and show the user its output. |
 
-Never read or ask for the user's ChatGPT cookies, tokens or password. The extension uses the browser's own signed-in session.
+Never read or ask for the user's chat cookies, tokens or password. The extension uses the browser's own signed-in session.
 
 ## Limits
 
 - Needs a desktop Chromium browser with the extension loaded once; it does not work from a phone or from a browser without it.
 - Exports the conversations you name or one project's; it does not export a whole account in one go.
-- ChatGPT can change its internal format. If an export fails after a ChatGPT update, update Convo Vault, then check the project's releases for a fix: https://github.com/amethyst-cosmos/convo-vault/releases
+- The chat sites can change their internal format. If an export fails after an update on the site, update Convo Vault, then check the project's releases for a fix: https://github.com/amethyst-cosmos/convo-vault/releases

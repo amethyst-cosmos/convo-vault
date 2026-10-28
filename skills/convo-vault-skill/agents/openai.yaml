@@ -1,4 +1,4 @@
 interface:
   display_name: "Convo Vault Skill"
-  short_description: "Export a ChatGPT conversation to Markdown, PDF and structured data"
-  default_prompt: "Use $convo-vault-skill to export this ChatGPT conversation: <link or screenshot>."
+  short_description: "Export a ChatGPT, Grok or Gemini conversation to Markdown, PDF and structured data"
+  default_prompt: "Use $convo-vault-skill to export this chat conversation: <link or screenshot>."

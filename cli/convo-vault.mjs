@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Convo Vault command line: export a ChatGPT conversation without touching the
+// Convo Vault command line: export a ChatGPT, Grok or Gemini conversation without touching the
 // selector panel. Agent skills (Claude, Codex) call this same entry point.
 
 import { spawnSync } from "node:child_process";
@@ -53,7 +53,7 @@ Export options:
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
   --files-for A,B      Only for the conversations whose title contains A or B (or whose id is A or B)
   --project NAME       Export every conversation in that project (a name, id or project link)
-  --keep-tab           Leave the ChatGPT tab open after exporting
+  --keep-tab           Leave the chat tab open after exporting
   --allow-incomplete   Export even if the integrity gate reports gaps
   --timeout SECONDS    Give up after this long (default: 900)
 
@@ -119,14 +119,14 @@ function parseArgs(args) {
 // /gem/<gem>/<id>). A bare id is a ChatGPT id; a Grok or Gemini conversation needs its link.
 function parseConversation(input) {
   const text = String(input || "").trim();
-  if (!text) throw new Error("Give a chatgpt.com/c/<id> link or a conversation id.\n\n" + HELP);
+  if (!text) throw new Error("Give a conversation link (chatgpt.com, grok.com or gemini.google.com) or a ChatGPT conversation id.\n\n" + HELP);
 
   if (/^[a-z0-9][a-z0-9-]{7,}$/i.test(text) && !text.includes(".")) {
     return `https://chatgpt.com/c/${text}`;
   }
 
   let url;
-  try { url = new URL(text); } catch { throw new Error(`"${text}" is not a ChatGPT conversation link or id.`); }
+  try { url = new URL(text); } catch { throw new Error(`"${text}" is not a chat conversation link or a ChatGPT conversation id.`); }
   if (!CONVERSATION_HOSTS.includes(url.hostname)) {
     throw new Error(`Only chatgpt.com, grok.com and gemini.google.com conversations are supported (got ${url.hostname}).`);
   }
@@ -179,7 +179,7 @@ async function exportConversation(input, flags) {
     throw new Error([
       "The Convo Vault extension did not pick up the job.",
       "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
-      "(2) that browser is signed in to ChatGPT, and (3) pass --browser NAME if you use a different one."
+      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one."
     ].join("\n"));
   }
 
@@ -227,7 +227,7 @@ async function exportCommand(inputs, flags) {
   }
 
   if (!inputs.length && !flags.project) {
-    throw new Error("Give one or more chatgpt.com/c/<id> links, or --project NAME.\n\n" + HELP);
+    throw new Error("Give one or more conversation links, or --project NAME.\n\n" + HELP);
   }
 
   const targets = [];
@@ -331,7 +331,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
     throw new Error([
       "The Convo Vault extension did not pick up the jobs.",
       "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
-      "(2) that browser is signed in to ChatGPT, and (3) pass --browser NAME if you use a different one."
+      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one."
     ].join("\n"));
   }
 
@@ -508,7 +508,7 @@ async function setup(flags) {
   console.log("One manual step, once: load the extension in your browser.");
   console.log("  1. Open the Extensions page and turn on Developer mode.");
   console.log("  2. Click Load unpacked and choose the Extension folder above.");
-  console.log("  3. Sign in to ChatGPT in that browser.");
+  console.log("  3. Sign in to your chat site (ChatGPT, Grok or Gemini) in that browser.");
   console.log("Then check it: node cli/convo-vault.mjs verify");
   console.log("After that, ask your agent to export a conversation, or run: convo-vault export <link>");
 
@@ -572,7 +572,7 @@ async function verify(flags) {
       } else if (!version) {
         console.log("This is an older extension that does not report its version. Reload it once on the Extensions page to update it.");
       }
-      console.log("Exports also need that browser to be signed in to ChatGPT.");
+      console.log("Exports also need that browser to be signed in to the chat site (ChatGPT, Grok or Gemini).");
       return;
     }
   }
@@ -727,7 +727,7 @@ async function doctor() {
 
   console.log(rows.join("\n"));
   console.log(`\nConfig: ${CONFIG_DIR}`);
-  console.log("The extension itself cannot be checked from here: if exports time out, load dist/convo-vault-extension and sign in to ChatGPT.");
+  console.log("The extension itself cannot be checked from here: if exports time out, load dist/convo-vault-extension and sign in to your chat site.");
   if (rows.some((row) => row.startsWith("FAIL"))) process.exitCode = 1;
 }
 
@@ -736,7 +736,7 @@ async function mcpCommand(action, flags) {
   if (action === "install" && (flags.client || "claude-desktop") === "claude-desktop") {
     const file = await installClaudeDesktopMcp();
     console.log(`Added the convo-vault MCP server to ${file} (previous file saved as .bak).`);
-    console.log("Fully quit and reopen Claude desktop, then say: export this ChatGPT conversation <link or screenshot>.");
+    console.log("Fully quit and reopen Claude desktop, then say: export this chat conversation <link or screenshot>.");
   } else if (action === "config" || action === "install") {
     console.log(mcpSnippets());
   } else {

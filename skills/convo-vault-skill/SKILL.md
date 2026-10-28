@@ -1,19 +1,19 @@
 ---
 name: convo-vault-skill
-description: Export a ChatGPT conversation into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, agent trace) with no manual clicking. Use when the user asks to download, save, archive, back up, export or import a ChatGPT conversation or chat history, gives a chatgpt.com/c/... link or conversation id, or shares a screenshot of a ChatGPT conversation and wants its full content. 触发词：下载/导出/保存/归档 ChatGPT 对话、把这段对话存下来、这个对话的链接或截图。
+description: Chat exporter. Export a conversation from ChatGPT, Grok or Gemini into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, agent trace) with no manual clicking. Use when the user asks to download, save, archive, back up, export or import a ChatGPT, Grok or Gemini conversation or chat history, gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link or a ChatGPT conversation id, or shares a screenshot of such a conversation and wants its full content. 触发词：下载/导出/保存/归档 ChatGPT、Grok、Gemini 的对话、把这段对话存下来、这个对话的链接或截图。
 ---
 
-# Convo Vault: export a ChatGPT conversation
+# Convo Vault: export a chat conversation
 
-Convo Vault turns a ChatGPT conversation into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the model's full thinking and tool trace. This skill runs it end to end. **Do not ask the user to open the extension, pick Fast/Hybrid/Full, click Start Scan or export by hand.** Run the command below.
+Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the model's full thinking and tool trace. This skill runs it end to end. **Do not ask the user to open the extension, pick Fast/Hybrid/Full, click Start Scan or export by hand.** Run the command below.
 
 ## 1. Find the conversation
 
-Get one `chatgpt.com/c/<id>` link (or a bare conversation id), from the first of these that works:
+Get one conversation link (`chatgpt.com/c/<id>`, `grok.com/c/<id>` or `gemini.google.com/app/<id>`; a bare id is a ChatGPT id), from the first of these that works:
 
 1. The user's message: a pasted link or id.
 2. A screenshot: read the address bar. The URL is usually visible; read the `/c/<id>` part carefully, ids are 36 characters like `68f3c1a2-5b7e-4c1d-9a0e-2f6b8d4e7a11`.
-3. A browser tool you already have (Claude in Chrome, a browser MCP): read the URL of the open ChatGPT tab.
+3. A browser tool you already have (Claude in Chrome, a browser MCP): read the URL of the open chat tab.
 4. The user names a project or some titles instead of giving links ("everything in my Research project"): list them, do not ask for links.
 
 ```bash
@@ -69,4 +69,4 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 | `Capture is incomplete` | Report the listed issues and ask whether a partial export is acceptable. |
 | Anything else | Run `node "{{SKILL_DIR}}/scripts/run.mjs" doctor` and show the user its output. |
 
-Never read or ask for the user's ChatGPT cookies, tokens or password. The extension uses the signed-in browser session; nothing leaves the machine.
+Never read or ask for the user's chat cookies, tokens or password. The extension uses the signed-in browser session; nothing leaves the machine.

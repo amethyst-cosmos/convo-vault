@@ -16,13 +16,13 @@ Convo Vault runs a local service and a browser extension, so the interesting bou
 
 - The local renderer on `127.0.0.1`: its token check, its handling of requests that carry a browser `Origin`, and the `Host` check on job endpoints.
 - Export jobs: creating one must be limited to local programs, and claiming one to the extension, once.
-- The extension: what a ChatGPT page, or any other web page, can make it do.
-- The CLI, MCP server and skill: anything that could read, expose or send the user's ChatGPT session, cookies or tokens, or conversation content, outside the machine.
+- The extension: what a chat page (ChatGPT, Grok or Gemini), or any other web page, can make it do.
+- The CLI, MCP server and skill: anything that could read, expose or send the user's chat session, cookies or tokens, or conversation content, outside the machine.
 
 ## What is out of scope
 
 - Anything that needs an attacker who already controls the user's account on the machine.
-- ChatGPT itself and its private API. Report those to OpenAI.
+- ChatGPT, Grok and Gemini themselves and their private APIs. Report those to OpenAI, xAI and Google.
 - Findings against a modified copy of the code.
 
 ## Design rules
@@ -30,5 +30,5 @@ Convo Vault runs a local service and a browser extension, so the interesting bou
 These hold for every change and are reasonable things to test:
 
 - Conversation content is never sent to a remote service.
-- No component reads browser cookies or stores the user's ChatGPT credentials. The extension uses the session already in the page.
+- No component reads browser cookies or stores the user's chat credentials. The extension uses the session already in the page.
 - The renderer only listens on `127.0.0.1`.

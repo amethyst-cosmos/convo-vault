@@ -1,6 +1,6 @@
 # For agents: install and use Convo Vault
 
-When a user asks you to install this project, follow these steps. The goal: afterwards the user only has to say "export this ChatGPT conversation <link or screenshot>".
+When a user asks you to install this project, follow these steps. The goal: afterwards the user only has to say "export this chat conversation <link or screenshot>" (ChatGPT, Grok or Gemini).
 
 A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
 
@@ -25,16 +25,16 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
 5. **Ask the user to load the extension. This is the only manual step, and it happens once.**
    1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
    2. Click **Load unpacked** and choose `<location>/dist/convo-vault-extension`.
-   3. Sign in to ChatGPT in that browser.
+   3. Sign in to the chat site (ChatGPT, Grok or Gemini) in that browser.
 
    Browsers do not let programs install unpublished extensions, so do not pretend you can do this for the user.
-6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a ChatGPT page and confirms the extension answers, printing `OK: Extension <version> answered in <browser>`. If that version differs from this project's (`extension/manifest.json`), it suggests running `node cli/convo-vault.mjs reload`, or reloading the extension on the extensions page. If it fails, relay the message, let the user finish step 5, and try again.
+6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a chat page and confirms the extension answers, printing `OK: Extension <version> answered in <browser>`. If that version differs from this project's (`extension/manifest.json`), it suggests running `node cli/convo-vault.mjs reload`, or reloading the extension on the extensions page. If it fails, relay the message, let the user finish step 5, and try again.
 7. **Optional, for Claude desktop's normal chat (not the Code tab).** Run `node cli/convo-vault.mjs mcp install`, then ask the user to fully quit and reopen Claude desktop. For other MCP clients, use the settings printed by `node cli/convo-vault.mjs mcp config`.
 8. **Tell the user** to open a new session: a newly installed skill is only picked up by sessions started afterwards.
 
 ## Use
 
-When the user gives a conversation link or a screenshot (the address bar shows `chatgpt.com/c/<id>`), run:
+When the user gives a conversation link or a screenshot (the address bar shows `chatgpt.com/c/<id>`, `grok.com/c/<id>` or `gemini.google.com/app/<id>`), run:
 
 ```bash
 node <location>/cli/convo-vault.mjs export "<link>"
@@ -60,6 +60,6 @@ An agent that is sandboxed to its working folder will need the user's approval t
 
 ## Do not
 
-- Do not read, ask for or paste the user's ChatGPT cookies, tokens or password. The extension uses the session already in the browser.
+- Do not read, ask for or paste the user's chat cookies, tokens or password. The extension uses the session already in the browser.
 - Do not upload conversation content to any online service. Everything stays on the machine.
 - Do not export an incomplete capture with `--allow-incomplete` unless the user agrees.
