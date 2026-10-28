@@ -1,8 +1,8 @@
 {
   "name": "convo-vault",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
-  "description": "Local-first ChatGPT, Grok and Gemini export vault: a Chrome extension, a CLI and an agent skill that turn conversations into Markdown, PDF and structured knowledge packs.",
+  "description": "A local-first chat exporter for ChatGPT, Grok and Gemini: a Chrome extension, a CLI and an agent skill that turn conversations into Markdown, PDF and structured knowledge packs.",
   "author": "amethyst-cosmos",
   "license": "MIT",
   "homepage": "https://github.com/amethyst-cosmos/convo-vault#readme",
@@ -16,6 +16,10 @@
   "keywords": [
     "chatgpt",
     "chatgpt-exporter",
+    "chat-exporter",
+    "grok",
+    "gemini",
+    "ai-chat",
     "export",
     "archive",
     "markdown",

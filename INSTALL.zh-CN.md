@@ -2,7 +2,7 @@
 
 [English](INSTALL.md)
 
-用户让你“安装这个项目”时，按下面的步骤做。目标：装好后，用户只需对你说“导出这个 ChatGPT 对话 <链接或截图>”。
+用户让你“安装这个项目”时，按下面的步骤做。目标：装好后，用户只需对你说“导出这个聊天对话 <链接或截图>”（ChatGPT、Grok 或 Gemini 都行）。
 
 ## 安装
 
@@ -25,16 +25,16 @@
 5. **让用户在浏览器里加载扩展（只此一步需要人手，一次性）**：
    1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”；
    2. 点“加载已解压的扩展程序”，选择 `<位置>/dist/convo-vault-extension`；
-   3. 在这个浏览器里登录 ChatGPT。
+   3. 在这个浏览器里登录聊天网站（ChatGPT、Grok 或 Gemini）。
 
    浏览器不允许程序自动安装未上架的扩展，所以这一步不要假装能替用户完成。
-6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个 ChatGPT 页面并确认扩展有响应，通过会输出 `OK: Extension <版本> answered in <浏览器>`；如果这个版本和本项目（`extension/manifest.json`）的不同，它会建议运行 `node cli/convo-vault.mjs reload` 或在扩展页面点重新加载。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
+6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个聊天页面并确认扩展有响应，通过会输出 `OK: Extension <版本> answered in <浏览器>`；如果这个版本和本项目（`extension/manifest.json`）的不同，它会建议运行 `node cli/convo-vault.mjs reload` 或在扩展页面点重新加载。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
 7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node cli/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node cli/convo-vault.mjs mcp config` 打印的配置。
 8. **告诉用户**：新装的 skill 要在新开的会话里才会生效，请重开一个会话。
 
 ## 使用
 
-用户给出对话链接或截图（地址栏里有 `chatgpt.com/c/<id>`），运行：
+用户给出对话链接或截图（地址栏里有 `chatgpt.com/c/<id>`、`grok.com/c/<id>` 或 `gemini.google.com/app/<id>`），运行：
 
 ```bash
 node <位置>/cli/convo-vault.mjs export "<链接>"
@@ -60,6 +60,6 @@ node <位置>/cli/convo-vault.mjs export "<链接>"
 
 ## 不要做
 
-- 不要读取、索要或粘贴用户的 ChatGPT Cookie、令牌或密码；扩展使用浏览器里已登录的会话。
+- 不要读取、索要或粘贴用户的聊天网站 Cookie、令牌或密码；扩展使用浏览器里已登录的会话。
 - 不要把对话内容上传到任何在线服务；一切都在本机。
 - 用户没同意前，不要用 `--allow-incomplete` 导出不完整的抓取。

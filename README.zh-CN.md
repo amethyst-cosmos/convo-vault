@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/images/banner.zh-CN.svg" alt="Convo Vault：把 ChatGPT 对话，变成真正属于你的本地知识包" width="100%">
+  <img src="docs/images/banner.zh-CN.svg" alt="Convo Vault，聊天导出工具：把 ChatGPT、Grok、Gemini 的对话变成真正属于你的本地知识包" width="100%">
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.15.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.15.1-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,11 +23,21 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.15.0`
+当前版本：`0.15.1`
 
-一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
+**Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
-Convo Vault 在你自己的电脑上，把对话导出成一个文件夹：排好版的 Markdown 和 PDF，加上能直接交给 Codex、Claude、Cursor、知识库或 RAG 流程的结构化数据。你只需要对 Agent 说一句话，或者发一张对话截图。
+Convo Vault 在你自己的电脑上，把对话导出成一个文件夹（它读的是你已经登录的聊天页面）：排好版的 Markdown 和 PDF，加上能直接交给 Codex、Claude、Cursor、知识库或 RAG 流程的结构化数据。你只需要对 Agent 说一句话，或者发一张对话截图。
+
+## 支持的聊天网站
+
+| 聊天网站 | 给它这样的链接 | 怎么读取 | 导出时拿什么核对 |
+| --- | --- | --- | --- |
+| **ChatGPT** | `chatgpt.com/c/<id>` | 它的对话接口 | 它自己的消息清单，按消息 id |
+| **Grok** | `grok.com/c/<id>` | 它的对话接口 | 它的回复树 |
+| **Gemini** | `gemini.google.com/app/<id>` | 页面本身，先滚到最上面 | 只能看页面上显示的内容（较弱，会用警告说明） |
+
+每个网站得到的是同一个文件夹：可读的 Markdown、排好版的 PDF、`messages.jsonl`、问答对、摘要、该网站有的思考记录，以及图片。各网站暂时做不到的（附件、`list`、`--project`）写在下面的 Grok 和 Gemini 两节里；ChatGPT 全都支持。
 
 <p align="center">
   <img src="docs/images/agent-demo.zh-CN.svg" alt="对 Agent 说一句话，就得到完整的导出文件夹" width="860">
@@ -43,7 +53,7 @@ Convo Vault 在你自己的电脑上，把对话导出成一个文件夹：排�
     </td>
     <td width="33%" valign="top">
       <h3>内容不丢</h3>
-      以 ChatGPT 接口的消息清单为准逐条核对，缺一条就拒绝导出并说明原因。图片、引用、思考过程、生成式界面都保留。
+      以聊天网站自己的消息清单为准逐条核对（ChatGPT、Grok；Gemini 只能核对页面上显示的内容，并会说明），缺一条就拒绝导出并说明原因。图片、引用、思考过程、生成式界面都保留。
     </td>
     <td width="33%" valign="top">
       <h3>全部在本机</h3>
@@ -70,13 +80,15 @@ Agent 会克隆项目、安装依赖、构建扩展、安装 skill，并运行�
 
 1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”
 2. 点“加载已解压的扩展程序”，选择 `~/convo-vault/dist/convo-vault-extension`
-3. 在这个浏览器里登录 ChatGPT
+3. 在这个浏览器里登录你的聊天网站（ChatGPT、Grok 或 Gemini）
 
 ### 三、开始用
 
 重开一个会话，然后说：
 
 > 把这个对话导出来：https://chatgpt.com/c/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+Grok（`https://grok.com/c/…`）和 Gemini（`https://gemini.google.com/app/…`）的链接用法完全一样。
 
 或者发一张对话截图，说“帮我把这段对话完整下载下来”。Agent 会从截图的地址栏读出链接。导出的文件夹在 `~/Downloads/convo-vault/`。
 
@@ -102,7 +114,7 @@ node cli/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里�
 | --- | :---: | --- |
 | Claude Code、Claude 桌面版的 Code 标签、Codex | ✅ | skill，`setup` 自动安装 |
 | Claude 桌面版的普通聊天、Cursor 等支持本地 MCP 的客户端 | ✅ | `node cli/convo-vault.mjs mcp install`，在聊天里发链接或截图 |
-| claude.ai 网页、ChatGPT 网页（含 Agent 模式） | ❌ | 它们跑在云端沙盒里，碰不到你电脑上的浏览器和本地服务 |
+| claude.ai、ChatGPT、Grok、Gemini 的网页（含 Agent 模式） | ❌ | 它们跑在云端沙盒里，碰不到你电脑上的浏览器和本地服务 |
 
 ## 它是怎么做到不用点的
 
@@ -110,7 +122,7 @@ node cli/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里�
 flowchart LR
     A["你 / Agent"] -->|"export 链接"| B["命令行"]
     B -->|"创建任务"| C["本地渲染服务<br/>127.0.0.1"]
-    B -->|"打开对话页"| D["浏览器里的扩展<br/>用你已登录的 ChatGPT"]
+    B -->|"打开对话页"| D["浏览器里的扩展<br/>用你已登录的聊天网站"]
     D -->|"认领任务，抓取，完整性检查"| D
     D -->|"提交对话和图片"| C
     C -->|"渲染 Markdown / PDF / 数据"| C
@@ -147,7 +159,7 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 | 文件 | 内容 |
 | --- | --- |
 | `*.md` | 可读的 Markdown 档案，引用是可点击的脚注 |
-| `*.pdf` | 本地渲染的 PDF，排版接近 ChatGPT 页面；生成式界面、公式、Mermaid、图表都静态绘制 |
+| `*.pdf` | 本地渲染的 PDF，排版接近聊天页面；生成式界面、公式、Mermaid、图表都静态绘制 |
 | `*.summary.md` | 摘要索引 |
 | `*.messages.jsonl` | 逐条消息，适合检索和 RAG |
 | `*.qa-pairs.json` | 问答配对 |
@@ -161,7 +173,7 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 ## 命令行
 
 ```bash
-node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接或对话 id 都行
+node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接（ChatGPT、Grok、Gemini）或 ChatGPT 的对话 id 都行
 node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
 node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <链接1> <链接2> <链接3>             # 一次导出多个，只开一个浏览器标签页
@@ -188,22 +200,22 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 
 扩展默认只是一个连接器：导出由 Agent 或命令行发起，弹窗里没有要点的东西。想自己手动导出的话，点浏览器工具栏的 Convo Vault 图标，打开 **Manual controls**（手动控制）。这个选择会被记住，不管开不开，Agent 都照样能发起导出。
 
-打开手动控制后，打开 ChatGPT 对话，按 **Export this conversation**。它会导出整段对话，没有选择消息这一步。需要先启动本地渲染服务：`node cli/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start**。
+打开手动控制后，打开对话（ChatGPT、Grok 或 Gemini），按 **Export this conversation**。它会导出整段对话，没有选择消息这一步。需要先启动本地渲染服务：`node cli/convo-vault.mjs backend start`，或在弹窗里点 **Copy Start**。
 
 ## 它怎么读取对话
 
-Convo Vault 读的是 ChatGPT 自己的对话接口，也就是页面画出来的那份数据。它不会滚动或点击页面，所以很长的对话几秒就读完，标签页放在后台也行。读完后会按消息 id 对照 ChatGPT 的消息清单，缺任何一条都会拦截并说明。
+ChatGPT 和 Grok：Convo Vault 读的是网站自己的对话接口，也就是页面画出来的那份数据。它不会滚动或点击页面，所以很长的对话几秒就读完，标签页放在后台也行。读完后会对照网站的消息清单（ChatGPT 按消息 id，Grok 按回复树），缺任何一条都会拦截并说明。Gemini 没有这样的接口，所以读的是页面本身，并且要先滚动（见上面的 Gemini 一节）。
 
 导出的是对话里有的一切：每条消息、模型的思考步骤和工具调用（按顺序，含完整返回内容）、它看过和引用过的每个网页、图片和生成式界面。上传和生成的文件会列在清单里，只有你要求时才下载（`--files`，Agent 会问一次，默认不下）。留下哪些，由你导出后自己决定。
 
 ## 安全与隐私
 
-- 扩展只读取当前打开的 ChatGPT 页面，不使用任何远程转换服务
+- 扩展只读取当前打开的聊天页面（chatgpt.com、grok.com 或 gemini.google.com），不使用任何远程转换服务
 - PDF、Markdown 和 zip 都在本机生成；运行时数据放在 `.convo-vault/`，不会进 Git
 - 渲染服务只监听 `127.0.0.1`，请求要带令牌；没有令牌时，带浏览器 Origin 的请求会被拒绝
 - 自动导出任务用 192 位随机 id 标识，只能被扩展认领一次，令牌在认领时直接交给扩展，不经过网页
 - 创建任务和读取结果只接受不带浏览器 Origin 的本机请求，并校验 Host，网页和 DNS 重绑定调用不了
-- Agent 不需要也拿不到你的 ChatGPT 登录状态，扩展用的是浏览器里已登录的会话
+- Agent 不需要也拿不到你的聊天登录状态，扩展用的是浏览器里已登录的会话
 
 ## 多语言与输出类型
 

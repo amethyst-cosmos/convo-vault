@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Convo Vault: turn ChatGPT conversations into a knowledge pack you own" width="100%">
+  <img src="docs/images/banner.svg" alt="Convo Vault, a chat exporter: turn ChatGPT, Grok and Gemini chats into a knowledge pack you own" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.15.0-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.15.1-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,11 +23,21 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.15.0`
+Current version: `0.15.1`
 
-**Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
+**Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
-Everything runs on your machine. The extension reads the ChatGPT tab you are already signed in to, and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
+Everything runs on your machine. The extension reads the chat tab you are already signed in to, and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
+
+## Supported chats
+
+| Chat | Give it a link like | How it is read | What the export is checked against |
+| --- | --- | --- | --- |
+| **ChatGPT** | `chatgpt.com/c/<id>` | its conversation API | its own message list, by message id |
+| **Grok** | `grok.com/c/<id>` | its conversation API | its response tree |
+| **Gemini** | `gemini.google.com/app/<id>` | the page itself, scrolled to the top first | only what the page shows (a weaker check, stated in a warning) |
+
+Every chat gets the same folder: readable Markdown, a typeset PDF, `messages.jsonl`, question-and-answer pairs, a summary, the thinking trace where the site has one, and the images. What each site cannot do yet (attachments, `list`, `--project`) is listed under Grok and Gemini below; ChatGPT does everything.
 
 <p align="center">
   <img src="docs/images/agent-demo.svg" alt="Tell an agent once and get the full export folder" width="860">
@@ -43,7 +53,7 @@ Everything runs on your machine. The extension reads the ChatGPT tab you are alr
     </td>
     <td width="33%" valign="top">
       <h3>Nothing silently lost</h3>
-      Every export is checked message by message against ChatGPT's own message list. A gap blocks the export and tells you what is missing. Images, citations, thinking steps and generative UI are kept.
+      Every export is checked message by message against the chat's own message list (ChatGPT and Grok; Gemini can only be checked against what its page shows, and says so). A gap blocks the export and tells you what is missing. Images, citations, thinking steps and generative UI are kept.
     </td>
     <td width="33%" valign="top">
       <h3>Local by design</h3>
@@ -70,13 +80,15 @@ This is the only manual step, because browsers do not let programs install unpub
 
 1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and choose `~/convo-vault/dist/convo-vault-extension`.
-3. Sign in to ChatGPT in that browser.
+3. Sign in to your chat site (ChatGPT, Grok or Gemini) in that browser.
 
 ### 3. Use it
 
 Start a new agent session and say:
 
 > Export this conversation: https://chatgpt.com/c/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+A Grok (`https://grok.com/c/…`) or Gemini (`https://gemini.google.com/app/…`) link works the same way.
 
 Or send a screenshot of the conversation and say "download this whole conversation". The agent reads the link from the address bar. The folder appears in `~/Downloads/convo-vault/`.
 
@@ -102,7 +114,7 @@ Requires Node 20 or newer.
 | --- | :---: | --- |
 | Claude Code, the Code tab of the Claude desktop app, Codex | ✅ | Skill, installed by `setup` |
 | Claude desktop chat, Cursor and other clients with local MCP | ✅ | `node cli/convo-vault.mjs mcp install`, then send a link or screenshot in chat |
-| claude.ai and chatgpt.com in the browser (including ChatGPT agent mode) | ❌ | They run in a cloud sandbox and cannot reach your browser or local services |
+| claude.ai, chatgpt.com, grok.com and gemini.google.com in the browser (including ChatGPT agent mode) | ❌ | They run in a cloud sandbox and cannot reach your browser or local services |
 
 The skill is the self-contained folder `skills/convo-vault-skill`. Copy it anywhere, or run `node cli/convo-vault.mjs skill install --dir <folder>`. Its launcher finds the project, or installs it from GitHub the first time.
 
@@ -124,7 +136,7 @@ Honest limits: Gemini does not say how many messages a conversation has, so the 
 
 ## What you get
 
-Each export is a folder (and a `.zip`), including a PDF that reads like the ChatGPT page.
+Each export is a folder (and a `.zip`), including a PDF that reads like the chat page.
 
 <table>
   <tr>
@@ -158,7 +170,7 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the Chat
 flowchart LR
     A["You / agent"] -->|"export link"| B["CLI"]
     B -->|"create job"| C["Local renderer<br/>127.0.0.1"]
-    B -->|"open the conversation"| D["Extension in your browser<br/>signed-in ChatGPT"]
+    B -->|"open the conversation"| D["Extension in your browser<br/>signed-in chat site"]
     D -->|"claim job, capture, integrity check"| D
     D -->|"send conversation and images"| C
     C -->|"render Markdown / PDF / data"| C
@@ -172,7 +184,7 @@ flowchart LR
 ## CLI
 
 ```bash
-node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link or a conversation id
+node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link (ChatGPT, Grok or Gemini) or a ChatGPT conversation id
 node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
 node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
@@ -203,20 +215,20 @@ Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab op
 
 By default the extension is only a connector: exports are started by your agent or the command line, and the popup has nothing to click. If you would rather export by hand, click the Convo Vault icon and turn on **Manual controls**. The choice is remembered, and your agent can still start exports either way.
 
-With manual controls on, open the ChatGPT conversation and press **Export this conversation**. It exports the whole conversation, with no selection step. The local renderer must be running: `node cli/convo-vault.mjs backend start`, or **Copy Start** in the popup.
+With manual controls on, open the conversation (ChatGPT, Grok or Gemini) and press **Export this conversation**. It exports the whole conversation, with no selection step. The local renderer must be running: `node cli/convo-vault.mjs backend start`, or **Copy Start** in the popup.
 
 ## How it reads the conversation
 
-Convo Vault reads ChatGPT's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against ChatGPT's message list by message id; if anything is missing the export is blocked and says what.
+For ChatGPT and Grok, Convo Vault reads the site's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against the site's message list (ChatGPT by message id, Grok by its response tree); if anything is missing the export is blocked and says what. Gemini has no such API, so its page is read and scrolled instead (see Gemini above).
 
 You get everything the conversation has: every message, the model's thinking steps and tool calls in order with their full output, every web page it looked at and cited, images and generative UI. Uploaded and generated files are listed in the manifest and downloaded only when you ask for them (`--files`; the agent asks once, default no). Choosing what to keep is up to you afterwards.
 
 ## Privacy and security
 
-- The extension reads only the ChatGPT page you have open. No remote conversion service is used, and files never leave your machine.
+- The extension reads only the chat page you have open (chatgpt.com, grok.com or gemini.google.com). No remote conversion service is used, and files never leave your machine.
 - The renderer listens on `127.0.0.1` only and requires a token.
 - Export jobs use a 192-bit random id. Only local programs can create them and only the extension can claim them, once.
-- An agent never needs, and never gets, your ChatGPT session: the extension uses the one already in your browser.
+- An agent never needs, and never gets, your chat session: the extension uses the one already in your browser.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 

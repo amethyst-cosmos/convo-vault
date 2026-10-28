@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Convo Vault as an MCP server (stdio, no dependencies). It lets chat apps that
-// run local MCP servers (Claude desktop, Codex, Cursor...) export a ChatGPT
+// run local MCP servers (Claude desktop, Codex, Cursor...) export a ChatGPT, Grok or Gemini
 // conversation from a link or a screenshot, with the same engine as the CLI.
 
 import { spawn } from "node:child_process";

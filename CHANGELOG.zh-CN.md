@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.md)
 
+## 0.15.1
+
+只改文字：Convo Vault 现在被描述为支持 ChatGPT、Grok、Gemini 的聊天导出工具，不再说是 ChatGPT 导出工具。行为没有变化。
+
+- **README（中英文）**：简介、横幅文字和隐私部分改成“聊天”；新增“支持的聊天网站”表格，列出每个网站要给的链接、怎么读取、导出时拿什么核对；原来所有写“ChatGPT”的地方（登录步骤、“在哪里能用”表格、手动导出、怎么读取对话）都改成点名三个网站
+- **INSTALL、SECURITY、renderer README**：安装步骤和给 Agent 的说明改成“聊天对话”，并列出三种链接的样子；安全范围覆盖三个网站，并说明它们自己的问题该报给谁（OpenAI、xAI、Google）
+- **Skill 和 MCP**：本地 skill 的名称行、描述和触发词、`agents/openai.yaml` 以及 MCP 工具的说明都写 ChatGPT、Grok、Gemini。Agensi 上的 skill 文字是单独的提交，另外处理
+- **包和扩展**：`package.json` 的描述和关键词（`chat-exporter`、`grok`、`gemini`、`ai-chat`），以及扩展在“扩展程序”页面上的描述
+- **命令行提示**：帮助、“不是对话链接”的错误、`setup` 和 `verify` 里的登录提示、MCP 的提醒，把 ChatGPT 改成“聊天网站”
+- **图片**：横幅（中英文）和社交预览图写“A chat exporter: ChatGPT, Grok and Gemini into a knowledge pack”；社交预览 PNG 已重新生成
+
 ## 0.15.0
 
 Grok 和 Gemini 的图片会被导出，不再只是链接。起因是用浏览器开发者工具核对了各一张真实的图（Grok 生成的机器人照片，Gemini 生成的界面示意图）。
