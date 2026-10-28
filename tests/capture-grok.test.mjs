@@ -153,3 +153,43 @@ test("responses are asked for in batches, and a Grok error names the route witho
   const denied = await loadGrok({ "GET /rest/app-chat/conversations_v2/<id>": 401 });
   await assert.rejects(() => denied.collect(null, {}), (error) => /HTTP 401 for \/rest\/app-chat\/conversations_v2\/<id>/.test(error.message) && !error.message.includes(CONVERSATION_ID));
 });
+
+const imageCard = (id, path, title = "Generated Image") => JSON.stringify({ id, type: "render_generated_image", cardType: "generated_image_card", prompt: "A realistic photo of a robot sorting parcels", image_chunk: { imageUuid: "u", imageUrl: path, mimeType: "image/jpeg", imageTitle: title, resolution: { width: 1176, height: 784 } } });
+const ROBOT = "users/e001d77b/generated/356f44f8/image.jpg";
+
+test("a generated image is a card the answer points at: it becomes an image link to assets.grok.com, once", async () => {
+  const responses = [
+    human("u1", "", "2026-07-29T10:00:00.000Z", "Make me a robot photo"),
+    grok("a1", "u1", "2026-07-29T10:00:20.000Z", `Here it is.<grok:render card_id="c1" card_type="generated_image_card" type="render_generated_image"></grok:render> Enjoy.`, {
+      cardAttachmentsJson: [imageCard("c1", ROBOT), imageCard("c2", "users/e001d77b/generated/other/image.jpg", "Second")],
+      generatedImageUrls: [`https://assets.grok.com/${ROBOT}`, "users/e001d77b/generated/third/image.jpg"]
+    })
+  ];
+  const { collect } = await loadGrok(conversation(responses));
+
+  const answer = (await collect(null, {})).messages[1].markdown;
+
+  assert.match(answer, /Here it is\.\n\n!\[Generated Image\]\(https:\/\/assets\.grok\.com\/users\/e001d77b\/generated\/356f44f8\/image\.jpg\)\n\nEnjoy\./);
+  assert.equal((answer.match(/356f44f8/g) || []).length, 1, "the same picture is not shown twice");
+  assert.match(answer, /!\[Second\]\(https:\/\/assets\.grok\.com\/users\/e001d77b\/generated\/other\/image\.jpg\)/, "a card the text did not point at still belongs to the answer");
+  assert.match(answer, /!\[Generated image\]\(https:\/\/assets\.grok\.com\/users\/e001d77b\/generated\/third\/image\.jpg\)/);
+  assert.ok(!answer.includes("grok:render"));
+});
+
+test("an image the user uploaded is shown, any other file is listed by name", async () => {
+  const responses = [
+    human("u1", "", "2026-07-29T10:00:00.000Z", "Look at these", {
+      fileAttachmentsMetadata: [
+        { fileName: "robot.png", fileMimeType: "image/png", fileUri: "users/e001d77b/robot-upload/content" },
+        { fileName: "plans.pdf", fileMimeType: "application/pdf", fileUri: "users/e001d77b/pdf/content" }
+      ],
+      imageAttachments: ["users/e001d77b/robot-upload/content"]
+    }),
+    grok("a1", "u1", "2026-07-29T10:00:05.000Z", "Nice.")
+  ];
+  const { collect } = await loadGrok(conversation(responses));
+
+  const prompt = (await collect(null, {})).messages[0].markdown;
+
+  assert.equal(prompt, "Look at these\n\n![robot.png](https://assets.grok.com/users/e001d77b/robot-upload/content)\n\n![Uploaded image](https://assets.grok.com/users/e001d77b/robot-upload/content)\n\n📎 **Attachment**: plans.pdf");
+});

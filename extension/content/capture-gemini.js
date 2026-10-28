@@ -16,6 +16,19 @@
   const GEMINI_TITLE_TIMEOUT_MS = 8000;
   const GEMINI_SKIPPED_TAGS = new Set(["style", "script", "svg", "button", "mat-icon", "gem-icon", "noscript"]);
   const GEMINI_HIDDEN_CLASSES = ["cdk-visually-hidden", "screen-reader-user-query-label", "sr-only"];
+  const GEMINI_IMAGE_KEY_PREFIX = "https://gemini.google.com/__convo_vault_image/";
+  const GEMINI_PNG_LIMIT_CHARS = 3_500_000;
+
+  // Pictures on the page are blob: URLs the page made, which only the page can read, so each one is
+  // drawn to a canvas while the page is open and kept here, under a made-up address that the
+  // markdown points at. bundle-export hands these to the bundle like any other page image.
+  const geminiPageImages = new Map();
+  let geminiImageCounter = 0;
+  let geminiUnreadableImages = 0;
+
+  function getGeminiPageImages() {
+    return Object.fromEntries(geminiPageImages);
+  }
 
   function getGeminiConversationId() {
     // /app/<id>, /u/1/app/<id> (second account) and /gem/<gem>/<id> (a custom Gem).
@@ -33,6 +46,9 @@
       throw new Error("No conversation id was found in the current URL.");
     }
 
+    geminiPageImages.clear();
+    geminiImageCounter = 0;
+    geminiUnreadableImages = 0;
     onProgress("Reading the conversation from Gemini...");
     await geminiWaitFor(() => geminiListTurns().length > 0, GEMINI_READY_TIMEOUT_MS, "Gemini did not show the conversation.");
     const loaded = await geminiLoadAllTurns(onProgress);
@@ -91,6 +107,22 @@
 
   function geminiIsGenerating() {
     return Boolean(document.querySelector('button[aria-label="Stop response"], button[aria-label*="Stop"][class*="stop"], [data-test-id="stop-button"]'));
+  }
+
+  // PNG keeps a screenshot sharp; a very large picture falls back to JPEG so the bundle stays small.
+  function geminiImageToDataUri(image) {
+    try {
+      if (!image.complete || !image.naturalWidth) return "";
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext("2d").drawImage(image, 0, 0);
+      const png = canvas.toDataURL("image/png");
+      return png.length <= GEMINI_PNG_LIMIT_CHARS ? png : canvas.toDataURL("image/jpeg", 0.92);
+    } catch (_) {
+      // A picture the page does not let a script read (a tainted canvas) stays a link.
+      return "";
+    }
   }
 
   function geminiPageTitle() {
@@ -177,8 +209,13 @@
     }
 
     const attachments = [];
+    const pictures = [];
     const previews = geminiFind(userQuery, (node) => geminiHasClass(node, "file-preview-container"));
     if (previews) {
+      geminiFindAll(previews, (node) => geminiTag(node) === "img").forEach((image) => {
+        const markdown = geminiImageMarkdown(image).trim();
+        if (markdown) pictures.push(markdown);
+      });
       geminiFindAll(previews, (node) => geminiHasClass(node, "file-name") || geminiHasClass(node, "file-title"))
         .forEach((node) => {
           const name = geminiInline(node).trim();
@@ -196,7 +233,7 @@
       }
     });
 
-    return [text.trim(), ...attachments.map((name) => `📎 **Attachment**: ${name}`)].filter(Boolean).join("\n\n");
+    return [text.trim(), ...pictures, ...attachments.map((name) => `📎 **Attachment**: ${name}`)].filter(Boolean).join("\n\n");
   }
 
   // ---- HTML to Markdown ----
@@ -292,10 +329,8 @@
         return `${geminiList(node, tag === "ol")}\n\n`;
       case "table":
         return `${geminiTable(node)}\n\n`;
-      case "img": {
-        const src = node.getAttribute("src") || "";
-        return src ? `\n\n🖼️ **${node.getAttribute("alt") || "Image"}** (link, not downloaded): ${src}\n\n` : "";
-      }
+      case "img":
+        return geminiImageMarkdown(node);
       default: {
         const math = node.getAttribute("data-math");
         if (math) {
@@ -306,6 +341,25 @@
         return ["div", "section", "response-element", "table-block"].includes(tag) && out && !out.endsWith("\n") ? `${out}\n\n` : out;
       }
     }
+  }
+
+  // The picture itself when the page lets a script read it; otherwise a link to it. The alt text of a
+  // generated picture is the whole prompt that made it, so only its start is kept.
+  function geminiImageMarkdown(node) {
+    const rawAlt = String(node.getAttribute("alt") || "").replace(/[\[\]\n]/g, " ").replace(/\s+/g, " ").trim();
+    const alt = rawAlt.length > 80 ? `${rawAlt.slice(0, 80)}…` : rawAlt || "Image";
+    const dataUri = geminiImageToDataUri(node);
+
+    if (dataUri) {
+      geminiImageCounter += 1;
+      const key = `${GEMINI_IMAGE_KEY_PREFIX}${geminiImageCounter}`;
+      geminiPageImages.set(key, dataUri);
+      return `\n\n![${alt}](${key})\n\n`;
+    }
+
+    const src = node.getAttribute("src") || "";
+    if (src) geminiUnreadableImages += 1;
+    return /^https?:/i.test(src) ? `\n\n🖼️ **${alt}** (link, not downloaded): ${src}\n\n` : "";
   }
 
   function geminiWrapEmphasis(text, mark) {
@@ -406,6 +460,10 @@
 
     warnings.push({ code: "no-message-count", message: `Gemini does not report how many messages a conversation has, so this export holds the ${turns.length} turn(s) the page showed.` });
     warnings.push({ code: "thinking-not-captured", message: "Gemini's collapsed thinking panel and source chips are not part of the export." });
+
+    if (geminiUnreadableImages) {
+      warnings.push({ code: "images-not-embedded", message: `${geminiUnreadableImages} image(s) could not be read from the page and appear as links only.` });
+    }
 
     return {
       complete: issues.length === 0,

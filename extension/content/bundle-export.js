@@ -86,6 +86,10 @@
       onProgress: options.onProgress
     });
 
+    const providerImages = await downloadProviderPageImages(payload.messages, { onProgress: options.onProgress });
+    Object.assign(pageImageDownloads.images, providerImages.images);
+    Object.assign(pageImageDownloads.failures, providerImages.failures);
+
     // Files are fetched only when the job asks for them. The references are
     // always in the payload, so the manifest says what was left out.
     // ChatGPT only: Grok's attachments are not downloaded yet (the export lists them).

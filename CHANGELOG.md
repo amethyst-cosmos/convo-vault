@@ -4,6 +4,17 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.15.0
+
+Images from Grok and Gemini are exported, not just linked. Found by checking one real image in each (a robot photo Grok generated, an interface mock-up Gemini generated) in the browser's developer tools.
+
+- **Grok.** A generated image is a card (`cardAttachmentsJson`, type `render_generated_image`) that the answer text points at with a `<grok:render card_id=…>` tag; the picture's path is `image_chunk.imageUrl` on `assets.grok.com`. The tag becomes an image in the Markdown at the place it stood (once, even if the card is also in `generatedImageUrls`); a card the text did not point at is added after the answer. Images you uploaded (`fileAttachmentsMetadata` of an image type, `imageAttachments`) are shown in your prompt; other files are still listed by name.
+- **Why the page downloads Grok's images.** `assets.grok.com` answers 200 to a request from grok.com and 403 to one without it as referrer, and a fetch from the extension's background has no such referrer, so the content script fetches them (with the page's session) and hands the bytes over like it does for ChatGPT's images. A refused answer can be kept by the browser's cache and served again, so the second try bypasses the cache; a second refusal is recorded as that image's failure and is not retried by the background.
+- **Gemini.** A picture on the page is a `blob:` URL the page made. A script cannot `fetch` it (the page's CSP refuses) but can draw it: the image is drawn to a canvas while the page is open and kept as PNG (JPEG if it would be over about 2.6 MB). The Markdown points at a made-up address (`https://gemini.google.com/__convo_vault_image/<n>`) and the bytes go to the bundle under it. The picture's alt text is the whole prompt that made it, so only its first 80 characters are kept. A picture the page does not let a script read (a cross-origin image would taint the canvas) stays a link, and a warning counts them. Pictures in your own prompt are handled the same way.
+- Tests: Grok image cards (position, once, extra cards, uploads), Gemini pictures (kept, link fallback with the warning, in a prompt, store emptied per capture), the page downloader (session and cache bypass, a refusal, a non-image answer, Gemini's drawn pictures, ChatGPT untouched), and the background staging a made-up address from the page's bytes while fetching nothing.
+- Verified by hand in the browser: Grok's image fetched (200, 265 KB JPEG, 1168×784, decodes) with the page's referrer and refused (403) without it; Gemini's image drawn to a canvas (1024×559, PNG 872 KB) while `fetch(blob:)` was blocked. Not yet run through the extension itself; the first real export with an image is the real test.
+- Still not exported: other attachments (Grok lists their names; Gemini where the page shows them), Gemini's thinking panel.
+
 ## 0.14.0
 
 Gemini (gemini.google.com) conversations can be exported, with the same bundle as ChatGPT and Grok.

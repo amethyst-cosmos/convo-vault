@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.14.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.15.0-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.14.0`
+当前版本：`0.15.0`
 
 一段重要的 ChatGPT 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -132,13 +132,13 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 
 Grok 的对话用法一样：把 `https://grok.com/c/<id>` 链接给 Agent，或运行 `node cli/convo-vault.mjs export https://grok.com/c/<id>`。扩展用浏览器里已登录的会话读取 Grok 自己的对话接口（不要令牌、不滚动页面），导出前核对每条消息是否都取回。PDF 和数据文件的样式和 ChatGPT 的导出一致，只是名称标成 Grok；Grok 的搜索步骤成为思考记录，引用变成脚注。
 
-Grok 暂不支持：下载附件和生成的图片（只列出链接）、`list` 和 `--project`。有重新生成的回答时导出最新的分支，并说明跳过了几个备选回答。多个 Grok 链接在同一个 grok.com 标签页里依次导出，ChatGPT 和 Grok 的链接混在一起时每个网站一个标签页。
+图片（Grok 生成的和你上传的）会下载进导出包；其他附件只列出名称。Grok 暂不支持：下载附件、`list` 和 `--project`。有重新生成的回答时导出最新的分支，并说明跳过了几个备选回答。多个 Grok 链接在同一个 grok.com 标签页里依次导出，ChatGPT 和 Grok 的链接混在一起时每个网站一个标签页。
 
 ### Gemini
 
 Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 Agent。Gemini 没有扩展能调用的对话接口，所以读的是页面本身：扩展把对话滚到最上面，直到不再出现更早的内容，再把每条回答的 HTML 还原成 Markdown（列表、表格、带语言的代码、公式、链接），导出同样的导出包，名称标成 Gemini。多个 Gemini 链接各开一个标签页，依次导出。
 
-如实说明的限制：Gemini 不告诉你一个对话有多少条消息，所以核对只能看页面上显示的内容（每个提问都有回答、没有还在生成的回答、加载时没有丢轮次），导出时会用警告说明。折叠的思考面板、来源标签、附件和图片不会导出（页面上有的图片和附件名只以链接或名称形式出现）。这是三个网站里最脆弱的一个：Gemini 改版就可能失效。
+如实说明的限制：Gemini 不告诉你一个对话有多少条消息，所以核对只能看页面上显示的内容（每个提问都有回答、没有还在生成的回答、加载时没有丢轮次），导出时会用警告说明。图片（包括 Gemini 生成的）会从页面里读出来嵌进导出包；如果页面不让脚本读取某张图，它会以链接出现，导出时会说明有几张。折叠的思考面板、来源标签和附件不会导出（页面上有附件名时会列出名称）。这是三个网站里最脆弱的一个：Gemini 改版就可能失效。
 
 ## 导出的内容
 
