@@ -69,7 +69,7 @@ exportButton.addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab?.id || !isChatGptUrl(tab.url)) {
-      throw new Error("Open a ChatGPT or Grok conversation tab first.");
+      throw new Error("Open a ChatGPT, Grok or Gemini conversation tab first.");
     }
 
     const response = await sendExportMessage(tab.id);
@@ -306,7 +306,7 @@ function setBackendBusy(isBusy) {
 function isChatGptUrl(url = "") {
   try {
     const { hostname } = new URL(url);
-    return hostname === "chatgpt.com" || hostname === "chat.openai.com" || hostname === "grok.com";
+    return hostname === "chatgpt.com" || hostname === "chat.openai.com" || hostname === "grok.com" || hostname === "gemini.google.com";
   } catch {
     return false;
   }

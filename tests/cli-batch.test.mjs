@@ -230,10 +230,56 @@ test("ChatGPT and Grok links given together get one tab per site", async (t) => 
 });
 
 test("a link from another site is refused and names the supported ones", async (t) => {
-  const run = await startCli(t, ["export", "https://gemini.google.com/app/ee7a64284d74cdd1"]);
+  const run = await startCli(t, ["export", "https://claude.ai/chat/ee7a64284d74cdd1"]);
 
   assert.equal(await run.exited, 1);
-  assert.match(run.stderr, /Only chatgpt\.com and grok\.com conversations are supported \(got gemini\.google\.com\)/);
+  assert.match(run.stderr, /Only chatgpt\.com, grok\.com and gemini\.google\.com conversations are supported \(got claude\.ai\)/);
+});
+
+const GEMINI_A = "ee7a64284d74cdd1";
+const GEMINI_B = "9f8e7d6c5b4a3210";
+
+test("a Gemini link opens a gemini.google.com tab and keeps the account part of the path", async (t) => {
+  const run = await startCli(t, ["export", `https://gemini.google.com/u/1/app/${GEMINI_A}?hl=en`, "--no-pdf", "--no-extract"]);
+  const tab = await run.nextTab();
+
+  assert.equal(tab.url, `https://gemini.google.com/u/1/app/${GEMINI_A}`);
+  const claimed = await run.claim(tab.jobIds[0]);
+  await run.finishExport(tab.jobIds[0], claimed, "Gemini chat.zip");
+
+  assert.equal(await run.exited, 0, run.stderr);
+  assert.match(run.stdout, /Exported: https:\/\/gemini\.google\.com\/u\/1\/app\//);
+});
+
+test("several Gemini links each get their own tab, one after another, with a summary", async (t) => {
+  const run = await startCli(t, ["export", `https://gemini.google.com/app/${GEMINI_A}`, `https://gemini.google.com/app/${GEMINI_B}`, "--no-pdf", "--no-extract"]);
+  const tabs = [];
+
+  while (tabs.length < 2) {
+    const tab = await run.nextTab();
+    const claimed = await run.claim(tab.jobIds[0]);
+
+    // After the first export the CLI knows the browser and checks the extension version once.
+    if (claimed.options.ping) {
+      await rawRequest(run.port, "POST", `/jobs/${tab.jobIds[0]}/status`, claimed.headers, JSON.stringify({ state: "working", message: `Extension ${manifestVersion} is installed and responding.` }));
+      continue;
+    }
+
+    tabs.push(tab);
+    assert.equal(tab.jobIds.length, 1, "a page-based site cannot share one tab between conversations");
+    await run.finishExport(tab.jobIds[0], claimed, `Gemini ${tabs.length}.zip`);
+  }
+
+  assert.deepEqual(tabs.map((tab) => tab.url), [`https://gemini.google.com/app/${GEMINI_A}`, `https://gemini.google.com/app/${GEMINI_B}`]);
+  assert.equal(await run.exited, 0, run.stderr);
+  assert.match(run.stdout, /Exported 2 of 2 conversation\(s\) from gemini\.google\.com/);
+});
+
+test("a Gemini link that is not a conversation is refused", async (t) => {
+  const run = await startCli(t, ["export", "https://gemini.google.com/app"]);
+
+  assert.equal(await run.exited, 1);
+  assert.match(run.stderr, /not a Gemini conversation \(it needs \/app\/<id>/);
 });
 
 test("export without a link or a project explains what to give", async (t) => {

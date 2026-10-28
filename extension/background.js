@@ -112,7 +112,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (!isTrustedExporterSender(port.sender)) {
     port.postMessage({
       type: "RESULT",
-      result: { ok: false, error: "Local renderer requests are only accepted from ChatGPT and Grok conversation tabs." }
+      result: { ok: false, error: "Local renderer requests are only accepted from ChatGPT, Grok and Gemini conversation tabs." }
     });
     disconnectPortSoon(port);
     return;
@@ -639,7 +639,7 @@ function isTrustedExporterSender(sender) {
 
   try {
     const { hostname } = new URL(senderUrl);
-    return hostname === "chatgpt.com" || hostname === "chat.openai.com" || hostname === "grok.com";
+    return hostname === "chatgpt.com" || hostname === "chat.openai.com" || hostname === "grok.com" || hostname === "gemini.google.com";
   } catch (_) {
     return false;
   }

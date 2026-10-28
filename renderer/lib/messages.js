@@ -11,7 +11,8 @@ const ASSET_DIR = path.resolve(__dirname, "..", "static");
 const AVATAR_IMAGES = {
   user: loadPngDataUri("user.png"),
   assistant: loadPngDataUri("artificial-intelligence.png"),
-  grok: loadSvgDataUri("grok-avatar.svg")
+  grok: loadSvgDataUri("grok-avatar.svg"),
+  gemini: loadSvgDataUri("gemini-avatar.svg")
 };
 
 function renderMessage(md, message, index, imageRegistry) {

@@ -2,7 +2,8 @@
 // payload without it is ChatGPT. The name labels the cover, the answers and the outline.
 const PROVIDERS = {
   chatgpt: { id: "chatgpt", name: "ChatGPT" },
-  grok: { id: "grok", name: "Grok" }
+  grok: { id: "grok", name: "Grok" },
+  gemini: { id: "gemini", name: "Gemini" }
 };
 
 function getProvider(value) {

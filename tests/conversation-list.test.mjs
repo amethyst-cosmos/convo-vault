@@ -112,7 +112,7 @@ test("the title of the conversation comes from the API, not from a tab that stil
   });
   const fast = await read("capture-fast.js");
   const pageUtils = await read("page-utils.js");
-  vm.runInContext(`${fast}\n${pageUtils}`, context);
+  vm.runInContext(`${await read("provider.js")}\n${fast}\n${pageUtils}`, context);
   const run = (code) => vm.runInContext(code, context);
 
   assert.equal(run("getConversationTitle()"), "新聊天", "no API title yet: the old behaviour");

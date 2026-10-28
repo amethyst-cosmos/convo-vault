@@ -1,6 +1,6 @@
   const FAST_CONVERSATION_API_PAGE_SIZE = 100;
   const FAST_CONVERSATION_API_MAX_PAGES = 200;
-  const DEFAULT_CONVERSATION_TITLE_RE = /^(?:new chat|新聊天|chatgpt)$/i;
+  const DEFAULT_CONVERSATION_TITLE_RE = /^(?:new chat|新聊天|chatgpt|gemini|google gemini)$/i;
 
   // The conversation the running job exports: { conversationId, title }. A batch exports several
   // conversations from one tab, so the id and title cannot come from the page's URL and title.
@@ -906,6 +906,10 @@
   function getCurrentConversationId() {
     if (activeExportContext?.conversationId) {
       return activeExportContext.conversationId;
+    }
+
+    if (getProviderId() === "gemini") {
+      return getGeminiConversationId();
     }
 
     const pathParts = location.pathname.split("/").map(decodePathPart).filter(Boolean);

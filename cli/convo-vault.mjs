@@ -27,12 +27,13 @@ import { extractZip, readZip } from "./lib/zip-reader.mjs";
 const CLAIM_TIMEOUT_MS = 25_000;
 const EXPORT_TIMEOUT_MS = 15 * 60_000;
 const POLL_INTERVAL_MS = 700;
-const CONVERSATION_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com"];
+const CONVERSATION_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com", "gemini.google.com"];
+const GEMINI_ORIGIN = "https://gemini.google.com";
 
 const HELP = `Convo Vault CLI
 
 Usage:
-  convo-vault export <chatgpt-or-grok-url|conversation-id>... [options]
+  convo-vault export <chatgpt-grok-or-gemini-url|conversation-id>... [options]
   convo-vault export --project NAME [options]
   convo-vault list [--project NAME|ID|URL] [--limit N] [--json]
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
@@ -114,7 +115,8 @@ function parseArgs(args) {
 }
 
 // ChatGPT accepts /c/<id> on chatgpt.com and the older chat.openai.com, also under /g/... projects.
-// Grok uses /c/<id> on grok.com. A bare id is a ChatGPT id; a Grok conversation needs its link.
+// Grok uses /c/<id> on grok.com. Gemini uses /app/<id> (also /u/1/app/<id> for a second account, and
+// /gem/<gem>/<id>). A bare id is a ChatGPT id; a Grok or Gemini conversation needs its link.
 function parseConversation(input) {
   const text = String(input || "").trim();
   if (!text) throw new Error("Give a chatgpt.com/c/<id> link or a conversation id.\n\n" + HELP);
@@ -126,9 +128,13 @@ function parseConversation(input) {
   let url;
   try { url = new URL(text); } catch { throw new Error(`"${text}" is not a ChatGPT conversation link or id.`); }
   if (!CONVERSATION_HOSTS.includes(url.hostname)) {
-    throw new Error(`Only chatgpt.com and grok.com conversations are supported (got ${url.hostname}).`);
+    throw new Error(`Only chatgpt.com, grok.com and gemini.google.com conversations are supported (got ${url.hostname}).`);
   }
-  if (!/\/c\/[a-z0-9-]{8,}/i.test(url.pathname)) {
+  if (url.hostname === "gemini.google.com") {
+    if (!/^\/(?:u\/\d+\/)?(?:app\/[a-z0-9_-]{8,}|gem\/[^/]+\/[a-z0-9_-]{8,})\/?$/i.test(url.pathname)) {
+      throw new Error("That link is not a Gemini conversation (it needs /app/<id> in the address).");
+    }
+  } else if (!/\/c\/[a-z0-9-]{8,}/i.test(url.pathname)) {
     throw new Error("That link is not a conversation (it needs /c/<id> in the address).");
   }
   return `${url.origin}${url.pathname}`;
@@ -231,7 +237,8 @@ async function exportCommand(inputs, flags) {
 
   for (const input of inputs) {
     const url = new URL(parseConversation(input));
-    addTarget(url.origin, url.pathname.match(/\/c\/([a-z0-9_-]{8,})/i)[1], "");
+    // Gemini is read from the page, so each conversation needs its own page: the path is its id.
+    addTarget(url.origin, url.origin === GEMINI_ORIGIN ? url.pathname : url.pathname.match(/\/c\/([a-z0-9_-]{8,})/i)[1], "");
   }
 
   if (flags.project) {
@@ -246,12 +253,33 @@ async function exportCommand(inputs, flags) {
   const origins = [...new Set(targets.map((target) => target.origin))];
   for (const origin of origins) {
     try {
-      await exportBatch(targets.filter((target) => target.origin === origin), flags, origin);
+      const group = targets.filter((target) => target.origin === origin);
+      if (origin === GEMINI_ORIGIN) await exportOneByOne(group, flags);
+      else await exportBatch(group, flags, origin);
     } catch (error) {
       console.log(`\nFAILED (${new URL(origin).hostname}): ${error.message}`);
       process.exitCode = 1;
     }
   }
+}
+
+// Gemini conversations are read from the page, so a tab cannot move from one to the next the way a
+// batch does for the API-based sites: each opens its own tab, one after another.
+async function exportOneByOne(group, flags) {
+  let exported = 0;
+
+  for (const [index, target] of group.entries()) {
+    console.log(`[${index + 1}/${group.length}] ${GEMINI_ORIGIN}${target.id}`);
+    try {
+      await exportConversation(`${GEMINI_ORIGIN}${target.id}`, flags);
+      exported += 1;
+    } catch (error) {
+      console.log(`  FAILED: ${error.message}`);
+      process.exitCode = 1;
+    }
+  }
+
+  console.log(`\nExported ${exported} of ${group.length} conversation(s) from gemini.google.com.`);
 }
 
 // True when --files-for names this conversation: by id, or by a word from its title.

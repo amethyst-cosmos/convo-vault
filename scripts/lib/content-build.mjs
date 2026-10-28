@@ -18,6 +18,7 @@ export const INCLUDE_FILES = {
   "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",
   "capture-grok": "capture-grok.js",
+  "capture-gemini": "capture-gemini.js",
   "provider": "provider.js",
   "message-discovery": "message-discovery.js",
   "chatgpt-dom": "chatgpt-dom.js",
