@@ -27,11 +27,12 @@ import { extractZip, readZip } from "./lib/zip-reader.mjs";
 const CLAIM_TIMEOUT_MS = 25_000;
 const EXPORT_TIMEOUT_MS = 15 * 60_000;
 const POLL_INTERVAL_MS = 700;
+const CONVERSATION_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com"];
 
 const HELP = `Convo Vault CLI
 
 Usage:
-  convo-vault export <chatgpt-url|conversation-id>... [options]
+  convo-vault export <chatgpt-or-grok-url|conversation-id>... [options]
   convo-vault export --project NAME [options]
   convo-vault list [--project NAME|ID|URL] [--limit N] [--json]
   convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
@@ -113,6 +114,7 @@ function parseArgs(args) {
 }
 
 // ChatGPT accepts /c/<id> on chatgpt.com and the older chat.openai.com, also under /g/... projects.
+// Grok uses /c/<id> on grok.com. A bare id is a ChatGPT id; a Grok conversation needs its link.
 function parseConversation(input) {
   const text = String(input || "").trim();
   if (!text) throw new Error("Give a chatgpt.com/c/<id> link or a conversation id.\n\n" + HELP);
@@ -123,8 +125,8 @@ function parseConversation(input) {
 
   let url;
   try { url = new URL(text); } catch { throw new Error(`"${text}" is not a ChatGPT conversation link or id.`); }
-  if (!["chatgpt.com", "chat.openai.com"].includes(url.hostname)) {
-    throw new Error(`Only chatgpt.com conversations are supported (got ${url.hostname}).`);
+  if (!CONVERSATION_HOSTS.includes(url.hostname)) {
+    throw new Error(`Only chatgpt.com and grok.com conversations are supported (got ${url.hostname}).`);
   }
   if (!/\/c\/[a-z0-9-]{8,}/i.test(url.pathname)) {
     throw new Error("That link is not a conversation (it needs /c/<id> in the address).");
@@ -223,22 +225,33 @@ async function exportCommand(inputs, flags) {
   }
 
   const targets = [];
-  const addTarget = (id, title) => {
-    if (!targets.some((target) => target.id === id)) targets.push({ id, title: title || "" });
+  const addTarget = (origin, id, title) => {
+    if (!targets.some((target) => target.id === id && target.origin === origin)) targets.push({ origin, id, title: title || "" });
   };
 
   for (const input of inputs) {
-    addTarget(new URL(parseConversation(input)).pathname.match(/\/c\/([a-z0-9_-]{8,})/i)[1], "");
+    const url = new URL(parseConversation(input));
+    addTarget(url.origin, url.pathname.match(/\/c\/([a-z0-9_-]{8,})/i)[1], "");
   }
 
   if (flags.project) {
     const listing = await requestConversationList({ project: String(flags.project), limit: 2000 }, flags);
     log(`Project "${listing.project?.name || flags.project}": ${listing.conversations.length} conversation(s).`);
-    for (const conversation of listing.conversations) addTarget(conversation.id, conversation.title);
+    for (const conversation of listing.conversations) addTarget("https://chatgpt.com", conversation.id, conversation.title);
   }
 
   if (!targets.length) throw new Error("There is no conversation to export.");
-  await exportBatch(targets, flags);
+
+  // One browser tab per site: a batch runs inside the tab of the site its conversations belong to.
+  const origins = [...new Set(targets.map((target) => target.origin))];
+  for (const origin of origins) {
+    try {
+      await exportBatch(targets.filter((target) => target.origin === origin), flags, origin);
+    } catch (error) {
+      console.log(`\nFAILED (${new URL(origin).hostname}): ${error.message}`);
+      process.exitCode = 1;
+    }
+  }
 }
 
 // True when --files-for names this conversation: by id, or by a word from its title.
@@ -247,7 +260,7 @@ function matchesFilesFor(filesFor, target) {
   return terms.some((term) => target.id.toLowerCase() === term || (target.title && target.title.toLowerCase().includes(term)));
 }
 
-async function exportBatch(targets, flags) {
+async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
   const config = await readConfig();
   const outDir = path.resolve(flags.out || config.outDir || path.join(os.homedir(), "Downloads", "convo-vault"));
   const candidates = await browserCandidates(flags.browser || config.browser);
@@ -275,8 +288,8 @@ async function exportBatch(targets, flags) {
 
   let started = false;
   for (const browser of candidates) {
-    log(`Opening one ChatGPT tab in ${browser?.name || "the default browser"} for ${jobs.length} conversation(s)...`);
-    openInBrowser(`https://chatgpt.com/c/${jobs[0].id}#convo-vault-job=${jobs.map((job) => job.jobId).join(",")}`, browser, { background: true });
+    log(`Opening one ${new URL(origin).hostname} tab in ${browser?.name || "the default browser"} for ${jobs.length} conversation(s)...`);
+    openInBrowser(`${origin}/c/${jobs[0].id}#convo-vault-job=${jobs.map((job) => job.jobId).join(",")}`, browser, { background: true });
 
     if (await waitForClaim(jobs[0].jobId, candidates.length > 1 ? CLAIM_TIMEOUT_MS : CLAIM_TIMEOUT_MS * 2)) {
       if (browser && browser.name !== config.browser) await writeConfig({ browser: browser.name });
@@ -302,7 +315,7 @@ async function exportBatch(targets, flags) {
     try {
       const done = await waitForBatchJob(job.jobId, timeoutMs, () => lastProgressAt, label);
       const saved = await saveJobBundle(job.jobId, done, outDir, flags);
-      console.log(`${label}\n  Exported: https://chatgpt.com/c/${job.id}${job.files ? " (with files)" : ""}`);
+      console.log(`${label}\n  Exported: ${origin}/c/${job.id}${job.files ? " (with files)" : ""}`);
       printSaved(saved, "  ");
       outcomes.push({ ...job, ok: true, saved });
     } catch (error) {

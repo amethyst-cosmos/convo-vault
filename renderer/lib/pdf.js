@@ -2,6 +2,7 @@ const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { chromium } = require("playwright-core");
 const { cleanMarkdownForHtml, describeAttachmentOnlyMessage, formatTurnHeading, getMessageAnchorId, normalizeMessage, stripAttachmentOnlyLines, stripMarkdown } = require("./text.js");
+const { getProvider } = require("./provider.js");
 
 async function renderPdfWithChrome({ htmlPath, outputPath, chromePath }) {
   if (!chromePath) {
@@ -52,10 +53,10 @@ async function renderPdfWithChrome({ htmlPath, outputPath, chromePath }) {
   }
 }
 
-function buildPdfOutlineItems(messages) {
+function buildPdfOutlineItems(messages, provider) {
   return messages
     .map((message, index) => {
-      const normalized = normalizeMessage(message, index);
+      const normalized = normalizeMessage({ ...message, provider: getProvider(provider).id }, index);
       return {
         title: getMessageOutlineTitle(normalized, index),
         destName: getMessageAnchorId(normalized, index)

@@ -4,6 +4,19 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.13.0
+
+Grok conversations (grok.com) can be exported, with the same bundle as ChatGPT.
+
+- **Capture from Grok's own API.** On grok.com the extension reads `conversations_v2` (title), `response-node` (the tree) and `load-responses` (the messages) with the browser's session, the way it reads ChatGPT's API. No token is read and the page is never scrolled. Grok's inline citations become numbered footnotes (one per distinct page), its search and open-page steps become the thinking trace with the time it worked, and its own widget tags are dropped. User attachments are listed by name; generated images are listed as links.
+- **An integrity check against Grok's tree.** The export is blocked when a response in the tree did not come back, when Grok is still writing one, or when a response on the path is unfinished. A regenerated or edited branch exports the newest path and is reported as a warning ("N alternative response(s) skipped"), not as a gap.
+- **Renderer labels follow the site.** The payload now carries `provider`. A Grok export says "Grok conversation" on the cover, "Grok" on every answer and in the PDF outline, and has an avatar of its own; defaults such as "Grok Conversation" and the agent-trace notes follow it. A payload without `provider` is ChatGPT, exactly as before.
+- **Command line.** `export` takes grok.com links (the `?rid=` anchor is dropped). Several Grok links run in one grok.com tab; ChatGPT and Grok links given together get one tab per site. Other sites are refused with a message naming the supported ones. The MCP tool's description says so too. A bare id is still a ChatGPT id.
+- **Extension.** The content script and the host permission cover `https://grok.com/*` (the extension already had `<all_urls>`, so Chrome asks for nothing new). The popup's manual export accepts a Grok tab.
+- **Not yet for Grok:** downloading attachments and generated images, `list`, `--project`, and `--files` (ignored). Tests use simulated Grok answers; the endpoints were checked by hand against one real conversation, so the first real export through the extension is the real test.
+
+The Agensi skill text is unchanged and still describes ChatGPT only.
+
 ## 0.12.1
 
 Release tooling and a lighter download. Nothing changes for someone who already exports.

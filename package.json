@@ -1,8 +1,8 @@
 {
   "name": "convo-vault",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "private": true,
-  "description": "Local-first ChatGPT export vault: a Chrome extension, a CLI and an agent skill that turn conversations into Markdown, PDF and structured knowledge packs.",
+  "description": "Local-first ChatGPT and Grok export vault: a Chrome extension, a CLI and an agent skill that turn conversations into Markdown, PDF and structured knowledge packs.",
   "author": "amethyst-cosmos",
   "license": "MIT",
   "homepage": "https://github.com/amethyst-cosmos/convo-vault#readme",

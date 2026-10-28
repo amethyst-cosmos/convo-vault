@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { getProvider } = require("./provider.js");
 
 const DATA_URI_RE = /^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,([a-z0-9+/=\r\n]+)$/i;
 const GENERIC_BINARY_MIME_TYPES = new Set([
@@ -68,7 +69,7 @@ function buildAssetManifest(payload, options = {}) {
       failed: fileAssets.filter((asset) => asset.download.state === "failed").length
     },
     conversation: {
-      title: payload?.title || "ChatGPT Conversation",
+      title: payload?.title || `${getProvider(payload).name} Conversation`,
       source: payload?.source || "",
       exportedAt: payload?.exportedAt || "",
       captureMode: payload?.captureMode || ""

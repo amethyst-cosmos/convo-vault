@@ -17,6 +17,8 @@ export const INCLUDE_FILES = {
   "debug-log": "debug-log.js",
   "agent-trace": "agent-trace.js",
   "capture-fast": "capture-fast.js",
+  "capture-grok": "capture-grok.js",
+  "provider": "provider.js",
   "message-discovery": "message-discovery.js",
   "chatgpt-dom": "chatgpt-dom.js",
   "chatgpt-markup": "chatgpt-markup.js",

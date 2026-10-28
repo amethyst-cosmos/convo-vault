@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.12.1-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.13.0-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.12.1`
+Current version: `0.13.0`
 
 **Convo Vault turns a ChatGPT conversation into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -109,6 +109,12 @@ The skill is the self-contained folder `skills/convo-vault-skill`. Copy it anywh
 ### Also on Agensi
 
 The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter), a marketplace that serves skills to your agent over MCP. It is a text-only version (`skills/convo-vault-agensi`): on first use the agent asks your permission, installs this project from GitHub into `~/convo-vault`, and you load the extension once. It is the same open-source code either way; the Agensi listing is only another way to find it.
+
+### Grok
+
+Grok conversations work the same way: give the agent a `https://grok.com/c/<id>` link, or run `node cli/convo-vault.mjs export https://grok.com/c/<id>`. The extension reads Grok's own conversation API with the session your browser already has (no token, no scrolling) and checks that every message came back before it exports. The PDF and data files look the same as a ChatGPT export, labelled Grok; Grok's search steps become the thinking trace and its citations become footnotes.
+
+Not yet for Grok: downloading attachments and generated images (they are listed as links), `list` and `--project`. A conversation with regenerated answers exports its newest branch and says how many alternatives it skipped. Links to several Grok conversations run in one grok.com tab, and a mix of ChatGPT and Grok links gets one tab per site.
 
 ## What you get
 

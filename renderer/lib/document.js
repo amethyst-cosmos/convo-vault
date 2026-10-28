@@ -6,6 +6,7 @@ const { escapeAttr, escapeHtml, formatDateTime } = require("./util.js");
 const { buildPaginationScript } = require("./pagination.js");
 const { buildImageRegistry } = require("./images.js");
 const { normalizeMessage } = require("./text.js");
+const { getProvider } = require("./provider.js");
 const RENDER_CSS = fs.readFileSync(path.join(__dirname, "..", "static", "render.css"), "utf8");
 
 const DIL_RUNTIME = fs.readFileSync(path.join(__dirname, "dil-runtime.js"), "utf8");
@@ -16,7 +17,8 @@ const PAGE_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src file: data: bl
 
 function buildDocumentHtml(payload) {
   const md = createMarkdownRenderer();
-  const messages = payload.messages.map((message, index) => normalizeMessage(message, index));
+  const provider = getProvider(payload);
+  const messages = payload.messages.map((message, index) => normalizeMessage({ ...message, provider: provider.id }, index));
   const exportedAt = formatDateTime(payload.exportedAt);
   const imageRegistry = buildImageRegistry(messages);
   const tocRows = buildTocRows(messages);
@@ -66,7 +68,7 @@ function renderIntroPages(payload, messages, exportedAt, tocRows) {
 function renderCoverCard(payload, messages, exportedAt) {
   const prompts = messages.filter((message) => message.role === "user").length;
   return `<header class="cover-card">
-    <div class="cover-eyebrow">ChatGPT conversation</div>
+    <div class="cover-eyebrow">${escapeHtml(getProvider(payload).name)} conversation</div>
     <h1>${escapeHtml(payload.title)}</h1>
     <p class="cover-meta">${escapeHtml(exportedAt)}<span class="meta-dot">·</span>${prompts} prompts<span class="meta-dot">·</span>${messages.length} messages</p>
     ${payload.source ? `<p class="source"><a href="${escapeAttr(payload.source)}">${escapeHtml(payload.source)}</a></p>` : ""}
