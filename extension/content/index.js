@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.13.0";
+  const EXPORTER_VERSION = "0.14.0";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (
@@ -53,6 +53,7 @@
   // @convo-vault-include agent-trace
   // @convo-vault-include capture-fast
   // @convo-vault-include capture-grok
+  // @convo-vault-include capture-gemini
   // @convo-vault-include provider
   // @convo-vault-include date-format
 

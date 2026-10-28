@@ -35,7 +35,7 @@ async function loadGrok(api) {
         : { ok: true, status: 200, json: async () => (typeof answer === "function" ? answer(options) : answer) };
     }
   });
-  const source = [await read("capture-validation.js"), await read("date-format.js"), await read("capture-fast.js"), await read("capture-grok.js")].join("\n");
+  const source = [await read("provider.js"), await read("capture-validation.js"), await read("date-format.js"), await read("capture-fast.js"), await read("capture-grok.js")].join("\n");
   vm.runInContext(`${source}\nglobalThis.__grok = { collect: collectGrokConversationMessages, title: () => lastApiConversationTitle };`, context);
   return { collect: context.__grok.collect, title: context.__grok.title, requests };
 }

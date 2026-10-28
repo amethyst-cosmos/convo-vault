@@ -49,6 +49,15 @@
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
     const debugLog = createDebugLog({ captureMode: "fast" });
 
+    if (getProviderId() === "gemini") {
+      try {
+        return await collectGeminiConversationMessages(debugLog, { onProgress });
+      } catch (error) {
+        debugLog.event("geminiCapture.failed", { error: error?.message || String(error) });
+        throw new Error(`Could not read the conversation from Gemini. Details: ${error?.message || error}`);
+      }
+    }
+
     if (getProviderId() === "grok") {
       try {
         return await collectGrokConversationMessages(debugLog, { onProgress });

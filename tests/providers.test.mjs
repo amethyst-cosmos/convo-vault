@@ -55,12 +55,30 @@ test("the data files carry the provider and name an untitled Grok conversation b
   assert.equal(typeof buildDataBundle, "function");
 });
 
-test("the extension is allowed on grok.com, and only there besides ChatGPT", async () => {
+test("the content script runs on ChatGPT, Grok and Gemini, and nowhere else", async () => {
   const manifest = JSON.parse(await readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8"));
 
-  assert.ok(manifest.host_permissions.includes("https://grok.com/*"));
-  assert.ok(manifest.content_scripts[0].matches.includes("https://grok.com/*"));
-  assert.ok(!manifest.content_scripts[0].matches.some((match) => match === "<all_urls>" || /gemini|google/.test(match)), "no other site gets the content script");
+  for (const site of ["https://grok.com/*", "https://gemini.google.com/*"]) {
+    assert.ok(manifest.host_permissions.includes(site), site);
+  }
+  assert.deepEqual([...manifest.content_scripts[0].matches].sort(), [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://grok.com/*"
+  ]);
+});
+
+test("a Gemini export says Gemini on the cover, the answers and the outline, with its own avatar", () => {
+  const html = buildDocumentHtml(payload("gemini"));
+
+  assert.match(html, /cover-eyebrow">Gemini conversation</);
+  assert.match(html, /meta-speaker">Gemini</);
+  assert.match(html, /Turn 02 - Gemini/);
+  assert.match(html, /<img src="data:image\/svg\+xml;base64,[^"]+" alt="Gemini">/);
+  assert.ok(!/ChatGPT|Grok/.test(visible(html)), "nothing in the page names another site");
+  assert.ok(buildPdfOutlineItems(messages, "gemini").some((item) => /Gemini/.test(item.title)));
+  assert.equal(normalizePayload({ ...payload("gemini"), title: "" }).title, "Gemini Conversation");
 });
 
 test("the background accepts export jobs from a Grok tab and still refuses other sites", async () => {
@@ -79,6 +97,8 @@ test("the background accepts export jobs from a Grok tab and still refuses other
 
   assert.equal(handle("https://grok.com/c/8cf3ca89-1360-4ff5-ba2c-5133f69e1a23"), true);
   assert.equal(handle("https://chatgpt.com/c/abc"), true);
+  assert.equal(handle("https://gemini.google.com/app/ee7a64284d74cdd1"), true);
   assert.equal(handle("https://evil.example/c/abc"), false);
+  assert.equal(handle("https://gemini.google.com.evil.example/app/abc"), false);
   assert.equal(handle("https://grok.com.evil.example/c/abc"), false);
 });

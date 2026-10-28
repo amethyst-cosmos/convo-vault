@@ -4,6 +4,19 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.14.0
+
+Gemini (gemini.google.com) conversations can be exported, with the same bundle as ChatGPT and Grok.
+
+- **Read from the page.** Gemini has no conversation API the extension can call, so each turn (`.conversation-container`: a `<user-query>` and a `<model-response>`) is read from the page. Gemini loads older turns only when the page is scrolled up, so for Gemini alone the page is scrolled to the top until the turn count stops growing (a few stable rounds, at most 80). The scroll limit and a page that drops turns while loading are reported.
+- **HTML back to Markdown.** A reply's HTML becomes Markdown: headings, emphasis, links, nested lists, blockquotes, tables, code with its language (and any backticks inside it), inline code, math (`data-math` as `$…$` / `$$…$$`), rules; images become links (not downloaded); buttons, icons and hidden screen-reader text are dropped. What Gemini draws is what is exported, including its own odd bold around CJK quotes. A prompt is rebuilt from its lines and numbered list (the hidden screen-reader copy of it is skipped) and attachment names are listed when the page shows them (the class names for those were not seen on a real attachment, so treat it as best effort).
+- **A weaker check, stated as such.** Nothing tells how many messages a Gemini conversation has, so the gate blocks on what the page can show: no turns, a prompt without a reply, a reply still being written, or turns lost while loading. A warning on every export says the count is only what the page showed, and that the collapsed thinking panel and source chips are not exported.
+- **Title, id and labels.** The title is the tab title once Gemini has set it (the placeholder "Google Gemini" is ignored); the id comes from `/app/<id>`, `/u/1/app/<id>` (second account) or `/gem/<gem>/<id>`. Renderer: "Gemini conversation", "Gemini" on every answer and in the outline, an avatar of its own; defaults and agent-trace notes follow.
+- **Command line.** `export` takes `gemini.google.com/app/<id>` links (the account part of the path is kept). Because a page-based site cannot move one tab from conversation to conversation, each Gemini link opens its own tab, one after another, with a summary; ChatGPT, Grok and Gemini links given together are grouped by site. Other sites are refused with a message naming the three. The MCP tool's description says so too.
+- **Extension.** The content script and host permission cover `https://gemini.google.com/*` (already within `<all_urls>`, so Chrome asks for nothing new); the background and the popup accept Gemini tabs.
+- **Not for Gemini:** attachments and images are not downloaded, no thinking trace, no timestamps (Gemini shows none), `list`, `--project`, `--files`.
+- Verified by hand against one real Gemini conversation (3 turns): the page structure, the prompt rebuilt from a pasted multi-line text with a numbered list, and the replies' lists, links, quotes and bold. Tests use a small HTML parser and a pretend page; the first real export through the extension is the real test, and whether Gemini keeps `#convo-vault-job=…` in the address long enough to be read is the main thing to confirm.
+
 ## 0.13.0
 
 Grok conversations (grok.com) can be exported, with the same bundle as ChatGPT.
