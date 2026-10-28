@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.15.1-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.15.2-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.15.1`
+Current version: `0.15.2`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -120,7 +120,7 @@ The skill is the self-contained folder `skills/convo-vault-skill`. Copy it anywh
 
 ### Also on Agensi
 
-The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-vault-chatgpt-exporter), a marketplace that serves skills to your agent over MCP. It is a text-only version (`skills/convo-vault-agensi`): on first use the agent asks your permission, installs this project from GitHub into `~/convo-vault`, and you load the extension once. It is the same open-source code either way; the Agensi listing is only another way to find it.
+The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter), a marketplace that serves skills to your agent over MCP. It is a text-only version (`skills/convo-vault-agensi`): on first use the agent asks your permission, installs this project from GitHub into `~/convo-vault`, and you load the extension once. It is the same open-source code either way; the Agensi listing is only another way to find it.
 
 ### Grok
 

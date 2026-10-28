@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md)
 
+## 0.15.2
+
+- 仅文档。Agensi 上的 skill 改名为 “Convo Vault Chat Exporter”，地址变为 `agensi.io/skills/convo-vault-chat-exporter`，README 里的链接已指向新地址。
+- Agensi 的标签、用途、常见问题、作者简介，以及 GitHub 的仓库描述和话题，都改成同时写 ChatGPT、Grok、Gemini，不再只写 ChatGPT。
+
 ## 0.15.1
 
 只改文字：Convo Vault 现在被描述为支持 ChatGPT、Grok、Gemini 的聊天导出工具，不再说是 ChatGPT 导出工具。行为没有变化。
