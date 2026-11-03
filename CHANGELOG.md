@@ -4,11 +4,15 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.16.2
+
+Wording only. The changelog, the Agensi skill text and a code comment no longer quote the sizes of the conversation used for testing; they say the result matches the extension. No behaviour changes.
+
 ## 0.16.1
 
-Checked on one real ChatGPT conversation (320 messages, 119 images, 1 uploaded file), exported in Chrome with the extension and in ego lite without it, with and without `--files`. Both browsers give the same bundle apart from the export time, and every message matches ChatGPT's API by id, role, order and text.
+Checked on a real ChatGPT conversation with images and an uploaded file, exported in Chrome with the extension and in ego lite without it, with and without `--files`. Both browsers give the same bundle apart from the export time, and every message matches ChatGPT's API by id, role, order and text.
 
-- **Images retry once**: a ChatGPT image whose download fails is tried again, one at a time, after the others. In 1 of 7 runs one image of 119 had failed once and stayed a link; the same image downloaded on every other run.
+- **Images retry once**: a ChatGPT image whose download fails is tried again, one at a time, after the others. Now and then a single image failed once and stayed a link, although the same image downloaded on every other run.
 - **The CLI reports images**: after each export it prints how many images were embedded and how many could not be downloaded, so a missing image is never silent.
 - **Skill**: says ego lite needs no extension, suggests `--browser ego` when no browser picks up the job, and explains the new image line.
 - **Agensi skill text 0.4.0** (`skills/convo-vault-agensi`): recommends ego lite for one-step exports with no extension, and skips the extension step when `ego-browser` is found.
@@ -21,7 +25,7 @@ Exports run in ego lite without the extension. ego lite is a Chromium browser th
 - **Browser order**: ego lite is tried first when no browser has been chosen, and remembered once it answers. `setup` with ego lite skips the "load the extension" instructions.
 - **Renderer**: a job can now be claimed by a local program as well as by the extension. Web pages still cannot claim, because they always send an Origin.
 - **Content script**: the popup message listener is registered only when `chrome.runtime.onMessage` exists.
-- Checked on real conversations in ego lite with the extension removed: a 320-message chat with 119 images (0 failed) and a chat with a thinking trace and generative UI, compared field by field with a 0.15.2 extension export.
+- Checked on real conversations in ego lite with the extension removed (a long chat with many images, and a chat with a thinking trace and generative UI), compared field by field with a 0.15.2 extension export.
 
 ## 0.15.2
 
