@@ -207,7 +207,7 @@
   }
 
   // Images the ChatGPT page shows from its own origin (estuary content and
-  // file downloads captured by Full mode) are signed for the page session.
+  // file download URLs) are signed for the page session.
   function isChatGptSessionImageUrl(source) {
     try {
       const url = new URL(source);

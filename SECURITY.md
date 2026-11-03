@@ -12,10 +12,10 @@ Only the latest release receives fixes.
 
 ## What is in scope
 
-Convo Vault runs a local service and a browser extension, so the interesting boundaries are:
+Convo Vault runs a local service and a browser extension (or, in ego lite, the same code run in the page by the CLI), so the interesting boundaries are:
 
 - The local renderer on `127.0.0.1`: its token check, its handling of requests that carry a browser `Origin`, and the `Host` check on job endpoints.
-- Export jobs: creating one must be limited to local programs, and claiming one to the extension, once.
+- Export jobs: creating one must be limited to local programs, and claiming one to the extension or a local program (the ego lite driver), once. A web page must never be able to claim one.
 - The extension: what a chat page (ChatGPT, Grok or Gemini), or any other web page, can make it do.
 - The CLI, MCP server and skill: anything that could read, expose or send the user's chat session, cookies or tokens, or conversation content, outside the machine.
 
@@ -30,5 +30,5 @@ Convo Vault runs a local service and a browser extension, so the interesting bou
 These hold for every change and are reasonable things to test:
 
 - Conversation content is never sent to a remote service.
-- No component reads browser cookies or stores the user's chat credentials. The extension uses the session already in the page.
+- No component reads browser cookies or stores the user's chat credentials. The exporter uses the session already in the page.
 - The renderer only listens on `127.0.0.1`.

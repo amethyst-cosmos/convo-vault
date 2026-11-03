@@ -24,7 +24,7 @@ const exports = new Map();
 const TOOLS = [
   {
     name: "export_conversation",
-    description: "Export a ChatGPT, Grok or Gemini conversation to a local folder (Markdown, PDF, structured JSON, thinking trace). Needs the conversation link (https://chatgpt.com/c/<id>, https://grok.com/c/<id> or https://gemini.google.com/app/<id>), which is visible in the address bar of a screenshot. The user's browser must have the Convo Vault extension and be signed in to that site. If the result says it is still running, call export_status with the id until it finishes.",
+    description: "Export a ChatGPT, Grok or Gemini conversation to a local folder (Markdown, PDF, structured JSON, thinking trace). Needs the conversation link (https://chatgpt.com/c/<id>, https://grok.com/c/<id> or https://gemini.google.com/app/<id>), which is visible in the address bar of a screenshot. The user's browser must be signed in to that site, and be either ego lite (no extension needed) or a browser with the Convo Vault extension. If the result says it is still running, call export_status with the id until it finishes.",
     inputSchema: {
       type: "object",
       properties: {

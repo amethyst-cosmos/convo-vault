@@ -5,7 +5,7 @@ description: Chat exporter. Export a conversation from ChatGPT, Grok or Gemini i
 
 # Convo Vault: export a chat conversation
 
-Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the model's full thinking and tool trace. This skill runs it end to end. **Do not ask the user to open the extension, pick Fast/Hybrid/Full, click Start Scan or export by hand.** Run the command below.
+Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the model's full thinking and tool trace. This skill runs it end to end. **Do not ask the user to open the extension or export by hand.** Run the command below.
 
 ## 1. Find the conversation
 
@@ -42,8 +42,8 @@ Before exporting, ask the user one short question, in their language, with the d
 node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 ```
 
-- `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to the chat site.
-- **ego lite needs no extension.** If the user has ego lite (the `ego-browser` command exists), the CLI uses it first and runs the extension's code in its page directly; nothing has to be installed in the browser. Add `--browser ego` to choose it explicitly. Chrome, Edge and Brave still need the extension loaded once. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
+- `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where it is exported by itself, and closes the tab when done. The user's browser must be signed in to the chat site. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
+- **ego lite needs no extension, and is recommended.** If the user has ego lite (the `ego-browser` command exists), the CLI uses it first and runs the exporter in its page directly; nothing has to be installed in the browser. Add `--browser ego` to choose it explicitly. Chrome, Edge and Brave need the Convo Vault extension loaded once.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
 - Add `--files` only when the user said yes in step 2. It downloads uploaded and generated files into `assets/files/` with the browser's ChatGPT session and records size and SHA-256 in the manifest. Files that cannot be downloaded (ChatGPT has already deleted the conversation's sandbox, a file over 64 MB, more than 120 MB in one export) are listed with the reason; the export itself still succeeds.
