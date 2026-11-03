@@ -2,6 +2,15 @@
 
 [English](CHANGELOG.md)
 
+## 0.16.4
+
+只改文字：剩下那些把扩展说成唯一方式的地方，都补上了 ego lite。行为没有变化。
+
+- **README（中英文）**：“工作原理”流程图和说明、命令行表格（`verify`、`reload`）及 `--browser ego` 示例、安全与隐私说明
+- **INSTALL（中英文）**：ego lite 下 `verify` 的输出；`update` 会自己让扩展重新加载（旧文字还在让用户手动重新加载）
+- **Skill**：本地 skill 去掉已删除的 Fast/Hybrid/Full 和 Start Scan 说法，并把耗时说明放回导出那一条；Agensi skill 的简介与上架页一致，并说明 ego lite 更新后无需任何操作
+- **SECURITY、renderer README、AGENTS.md、MCP 工具说明、命令行提示**：谁能认领任务、ego lite 驱动也是客户端、没有浏览器认领任务时提示 `--browser ego`
+
 ## 0.16.3
 
 仅文档。README（中英文）在靠前位置单独加了“推荐配合 ego lite 使用”一节：说明为什么不需要扩展、与 Chrome、Edge、Brave 的对比，以及 https://lite.ego.app/ 链接。快速开始第二步改为“准备浏览器”，先写 ego lite（只需登录），再写其他浏览器加载扩展的步骤。INSTALL（中英文）让 Agent 先检查是否装了 ego lite，装了就跳过加载扩展，没装就推荐给用户。

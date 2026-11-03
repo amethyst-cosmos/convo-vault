@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.16.3-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.16.4-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.16.3`
+当前版本：`0.16.4`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -141,7 +141,7 @@ node cli/convo-vault.mjs verify    # 加载扩展后运行，确认浏览器里�
 flowchart LR
     A["你 / Agent"] -->|"export 链接"| B["命令行"]
     B -->|"创建任务"| C["本地渲染服务<br/>127.0.0.1"]
-    B -->|"打开对话页"| D["浏览器里的扩展<br/>用你已登录的聊天网站"]
+    B -->|"打开对话页"| D["ego lite 或浏览器里的扩展<br/>用你已登录的聊天网站"]
     D -->|"认领任务，抓取，完整性检查"| D
     D -->|"提交对话和图片"| C
     C -->|"渲染 Markdown / PDF / 数据"| C
@@ -150,7 +150,7 @@ flowchart LR
 ```
 
 - 命令行在本地渲染服务里创建一个任务，再打开 `chatgpt.com/c/<id>#convo-vault-job=<任务 id>`
-- 扩展认领任务，用页面里已登录的会话抓取对话，通过完整性检查后交给渲染服务，完成后自动关掉标签页
+- 扩展（在 ego lite 里是命令行在页面中运行的同一份代码）认领任务，用页面里已登录的会话抓取对话，通过完整性检查后交给渲染服务，完成后自动关掉标签页
 - 抓取不完整时任务会失败并说明缺了什么，不会静默导出残缺内容
 
 skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到任何地方，或运行 `node cli/convo-vault.mjs skill install --dir <文件夹>`。它自带的启动脚本会自己找到项目，第一次用时自动从 GitHub 安装。
@@ -194,6 +194,7 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 ```bash
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接（ChatGPT、Grok、Gemini）或 ChatGPT 的对话 id 都行
 node cli/convo-vault.mjs export <链接> --out ./archive             # 指定保存位置
+node cli/convo-vault.mjs export <链接> --browser ego              # ego lite：不需要扩展
 node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <链接1> <链接2> <链接3>             # 一次导出多个，只开一个浏览器标签页
 node cli/convo-vault.mjs list --project "Research"                  # 查看项目里有哪些对话（id、日期、标题）
@@ -205,10 +206,10 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 | --- | --- |
 | `setup` | 安装依赖、构建扩展、安装 skill |
 | `list` | 列出对话（最近的，或 `--project 名称` 里的）；`--json` 输出数据 |
-| `verify` | 确认浏览器里的扩展有响应 |
+| `verify` | 确认浏览器有响应（ego lite 或扩展） |
 | `doctor` | 自检：依赖、扩展构建、浏览器、skill |
 | `update` | 拉取最新版本、重新安装并重新加载扩展（git 克隆） |
-| `reload` | 重建后让扩展自己重新加载 |
+| `reload` | 重建后让扩展自己重新加载（ego lite 不需要） |
 | `skill install` | 重新安装 Claude 和 Codex 的 skill |
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
 | `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
@@ -229,10 +230,10 @@ ChatGPT 和 Grok：Convo Vault 读的是网站自己的对话接口，也就是�
 
 ## 安全与隐私
 
-- 扩展只读取当前打开的聊天页面（chatgpt.com、grok.com 或 gemini.google.com），不使用任何远程转换服务
+- Convo Vault 只读取当前打开的聊天页面（chatgpt.com、grok.com 或 gemini.google.com），通过扩展，或在 ego lite 里直接读取；不使用任何远程转换服务
 - PDF、Markdown 和 zip 都在本机生成；运行时数据放在 `.convo-vault/`，不会进 Git
 - 渲染服务只监听 `127.0.0.1`，请求要带令牌；没有令牌时，带浏览器 Origin 的请求会被拒绝
-- 自动导出任务用 192 位随机 id 标识，只能被扩展或本地程序（ego lite 驱动）认领一次，网页不能认领，令牌在认领时直接交给扩展，不经过网页
+- 自动导出任务用 192 位随机 id 标识，只能被扩展或本地程序（ego lite 驱动）认领一次，网页不能认领，令牌在认领时直接交给认领方，不经过网页
 - 创建任务和读取结果只接受不带浏览器 Origin 的本机请求，并校验 Host，网页和 DNS 重绑定调用不了
 - Agent 不需要也拿不到你的聊天登录状态，扩展用的是浏览器里已登录的会话
 

@@ -30,7 +30,7 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
    3. Sign in to the chat site (ChatGPT, Grok or Gemini) in that browser.
 
    Browsers do not let programs install unpublished extensions, so do not pretend you can do this for the user.
-6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a chat page and confirms the extension answers, printing `OK: Extension <version> answered in <browser>`. If that version differs from this project's (`extension/manifest.json`), it suggests running `node cli/convo-vault.mjs reload`, or reloading the extension on the extensions page. If it fails, relay the message, let the user finish step 5, and try again.
+6. **Verify.** Run `node cli/convo-vault.mjs verify`. It opens a chat page and confirms the browser answers, printing `OK: Extension <version> answered in <browser>` (in ego lite: `OK: Convo Vault <version> answered in ego lite (no extension needed)`). If that version differs from this project's (`extension/manifest.json`), it suggests running `node cli/convo-vault.mjs reload`, or reloading the extension on the extensions page. If it fails, relay the message, let the user finish step 5, and try again.
 7. **Optional, for Claude desktop's normal chat (not the Code tab).** Run `node cli/convo-vault.mjs mcp install`, then ask the user to fully quit and reopen Claude desktop. For other MCP clients, use the settings printed by `node cli/convo-vault.mjs mcp config`.
 8. **Tell the user** to open a new session: a newly installed skill is only picked up by sessions started afterwards.
 
@@ -56,12 +56,12 @@ An agent that is sandboxed to its working folder will need the user's approval t
 
 ## Update and troubleshoot
 
-- Update: `node <location>/cli/convo-vault.mjs update` pulls the latest code and reinstalls. If the extension is already loaded, ask the user to reload it on the extensions page.
+- Update: `node <location>/cli/convo-vault.mjs update` pulls the latest code, reinstalls and reloads the extension by itself. Only if it says the extension did not take the reload, ask the user to click reload on the extensions page once. ego lite needs nothing: every export runs the current version.
 - Check: `node <location>/cli/convo-vault.mjs doctor`.
 - The renderer starts automatically on export and exits when idle. Its log is `<location>/.convo-vault/backend.log`.
 
 ## Do not
 
-- Do not read, ask for or paste the user's chat cookies, tokens or password. The extension uses the session already in the browser.
+- Do not read, ask for or paste the user's chat cookies, tokens or password. The exporter (the extension, or in ego lite the same code in the page) uses the session already in the browser.
 - Do not upload conversation content to any online service. Everything stays on the machine.
 - Do not export an incomplete capture with `--allow-incomplete` unless the user agrees.

@@ -30,7 +30,7 @@
    3. 在这个浏览器里登录聊天网站（ChatGPT、Grok 或 Gemini）。
 
    浏览器不允许程序自动安装未上架的扩展，所以这一步不要假装能替用户完成。
-6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个聊天页面并确认扩展有响应，通过会输出 `OK: Extension <版本> answered in <浏览器>`；如果这个版本和本项目（`extension/manifest.json`）的不同，它会建议运行 `node cli/convo-vault.mjs reload` 或在扩展页面点重新加载。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
+6. **验证**：`node cli/convo-vault.mjs verify`。它打开一个聊天页面并确认浏览器有响应，通过会输出 `OK: Extension <版本> answered in <浏览器>`（ego lite 输出 `OK: Convo Vault <版本> answered in ego lite (no extension needed)`）；如果这个版本和本项目（`extension/manifest.json`）的不同，它会建议运行 `node cli/convo-vault.mjs reload` 或在扩展页面点重新加载。失败就把输出里的提示转告用户，让用户完成第 5 步后重试。
 7. **可选，给 Claude 桌面版的普通聊天用**（不是 Code 标签）：`node cli/convo-vault.mjs mcp install`，然后让用户完全退出并重开 Claude 桌面版。其他支持 MCP 的客户端用 `node cli/convo-vault.mjs mcp config` 打印的配置。
 8. **告诉用户**：新装的 skill 要在新开的会话里才会生效，请重开一个会话。
 
@@ -56,12 +56,12 @@ node <位置>/cli/convo-vault.mjs export "<链接>"
 
 ## 更新与排错
 
-- 更新：`node <位置>/cli/convo-vault.mjs update`（拉取最新代码并重新安装）；扩展已加载的话，提醒用户在扩展页面点一下重新加载。
+- 更新：`node <位置>/cli/convo-vault.mjs update`（拉取最新代码、重新安装，并让扩展自己重新加载）；只有输出说扩展没有重新加载时，才请用户在扩展页面点一次重新加载。ego lite 什么都不用做：每次导出都运行当前版本。
 - 自检：`node <位置>/cli/convo-vault.mjs doctor`。
 - 渲染服务由导出命令自动启动，日志在 `<位置>/.convo-vault/backend.log`。
 
 ## 不要做
 
-- 不要读取、索要或粘贴用户的聊天网站 Cookie、令牌或密码；扩展使用浏览器里已登录的会话。
+- 不要读取、索要或粘贴用户的聊天网站 Cookie、令牌或密码；导出程序（扩展，或在 ego lite 里页面中运行的同一份代码）使用浏览器里已登录的会话。
 - 不要把对话内容上传到任何在线服务；一切都在本机。
 - 用户没同意前，不要用 `--allow-incomplete` 导出不完整的抓取。

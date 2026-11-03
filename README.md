@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.3-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.4-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.16.3`
+Current version: `0.16.4`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -189,7 +189,7 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the chat
 flowchart LR
     A["You / agent"] -->|"export link"| B["CLI"]
     B -->|"create job"| C["Local renderer<br/>127.0.0.1"]
-    B -->|"open the conversation"| D["Extension in your browser<br/>signed-in chat site"]
+    B -->|"open the conversation"| D["ego lite, or the extension<br/>in your signed-in browser"]
     D -->|"claim job, capture, integrity check"| D
     D -->|"send conversation and images"| C
     C -->|"render Markdown / PDF / data"| C
@@ -197,7 +197,7 @@ flowchart LR
     B -->|"unpack to a folder"| A
 ```
 
-- The CLI creates a job on the local renderer and opens the conversation with the job id in the URL. The extension claims the job, captures the conversation with the session already in your browser, passes the integrity check and hands the data to the renderer.
+- The CLI creates a job on the local renderer and opens the conversation with the job id in the URL. The extension (in ego lite, the same code run in the page by the CLI) claims the job, captures the conversation with the session already in your browser, passes the integrity check and hands the data to the renderer.
 - If the capture is incomplete the job fails and says what is missing. The renderer started for the CLI exits two minutes after its last request.
 
 ## CLI
@@ -207,6 +207,7 @@ node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link (Chat
 node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
 node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
+node cli/convo-vault.mjs export <link> --browser ego              # ego lite: no extension needed
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <link1> <link2> <link3>           # several at once, in one browser tab
 node cli/convo-vault.mjs list --project "Research"                 # see what is in a project (id, date, title)
@@ -220,10 +221,10 @@ Several conversations run **in one tab, one after another**, so nothing pops up 
 | --- | --- |
 | `setup` | Install dependencies, build the extension, install the skill |
 | `list` | List conversations (all recent ones, or `--project NAME`); `--json` for data |
-| `verify` | Confirm the extension in your browser answers |
+| `verify` | Confirm your browser answers (ego lite, or the extension) |
 | `doctor` | Check dependencies, extension build, browsers and skills |
 | `update` | Pull the latest version, reinstall and reload the extension (git checkouts) |
-| `reload` | Make the extension reload itself after a rebuild |
+| `reload` | Make the extension reload itself after a rebuild (not needed in ego lite) |
 | `skill install` | Reinstall the Claude and Codex skills |
 | `mcp install` / `mcp config` | Add the MCP server to Claude desktop; print config for other clients |
 | `backend start` / `stop` / `status` | The local renderer; it starts on demand and exits when idle |
@@ -244,10 +245,10 @@ You get everything the conversation has: every message, the model's thinking ste
 
 ## Privacy and security
 
-- The extension reads only the chat page you have open (chatgpt.com, grok.com or gemini.google.com). No remote conversion service is used, and files never leave your machine.
+- Convo Vault reads only the chat page you have open (chatgpt.com, grok.com or gemini.google.com), through the extension or, in ego lite, directly. No remote conversion service is used, and files never leave your machine.
 - The renderer listens on `127.0.0.1` only and requires a token.
 - Export jobs use a 192-bit random id. Only local programs can create them, and only the extension or a local program (the ego lite driver) can claim them, once. Web pages cannot.
-- An agent never needs, and never gets, your chat session: the extension uses the one already in your browser.
+- An agent never needs, and never gets, your chat session: the exporter uses the one already in your browser.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 

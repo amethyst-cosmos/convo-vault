@@ -37,12 +37,13 @@ changes it; save the same port in the popup settings).
 | `POST /prepare-render-bundle` | Renders the bundle for an `exportPayload` and returns a download path. |
 | `GET /download-bundle/:id` | Downloads a prepared bundle once. |
 | `POST /jobs`, `GET /jobs/:id` | Export jobs for the CLI and agents (local programs only). |
-| `POST /jobs/:id/claim`, `POST /jobs/:id/status` | Used by the extension to claim a job and report progress. |
+| `POST /jobs/:id/claim`, `POST /jobs/:id/status` | Used by the extension (or the ego lite driver) to claim a job and report progress. |
 | `POST /shutdown` | Stops the service. |
 
-The extension's background service worker is the only client: the content
-script downloads ChatGPT images with the page session, the background stages
-them in an export session, then calls `/prepare-render-bundle`.
+The extension's background service worker is the only client (in ego lite the
+CLI runs that same `background.js` in a Node sandbox): the content script
+downloads ChatGPT images with the page session, the background stages them in
+an export session, then calls `/prepare-render-bundle`.
 
 ## Layout
 

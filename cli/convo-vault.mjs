@@ -180,7 +180,8 @@ async function exportConversation(input, flags) {
     throw new Error([
       "The Convo Vault extension did not pick up the job.",
       "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
-      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one."
+      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one.",
+      "With ego lite no extension is needed: pass --browser ego."
     ].join("\n"));
   }
 
@@ -351,7 +352,8 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
     throw new Error([
       "The Convo Vault extension did not pick up the jobs.",
       "Check that (1) the extension is loaded in your browser (run: node \"" + path.join(repoRoot, "cli", "convo-vault.mjs") + "\" setup),",
-      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one."
+      "(2) that browser is signed in to the chat site (ChatGPT, Grok or Gemini), and (3) pass --browser NAME if you use a different one.",
+      "With ego lite no extension is needed: pass --browser ego."
     ].join("\n"));
   }
 
