@@ -22,7 +22,9 @@
    ```
 
    它会装渲染依赖、构建扩展，把 skill 装进 Claude 和 Codex（找到哪个装哪个），并打开浏览器的扩展页面。用户常用的浏览器不是 Chrome 时加 `--browser edge`（或 brave）。
-5. **让用户在浏览器里加载扩展（只此一步需要人手，一次性）**：
+
+   **ego lite（推荐）。** 如果 `ego-browser --version` 能打印出版本号，说明用户装了 [ego lite](https://lite.ego.app/)。`setup` 会选用它并提示，不需要扩展：跳过第 5 步，只请用户在 ego lite 里登录聊天网站。用户还没有 ego lite 时可以推荐给他们：用它就完全没有需要手动的浏览器步骤。
+5. **仅 Chrome、Edge、Brave：让用户在浏览器里加载扩展（只此一步需要人手，一次性）**：
    1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”；
    2. 点“加载已解压的扩展程序”，选择 `<位置>/dist/convo-vault-extension`；
    3. 在这个浏览器里登录聊天网站（ChatGPT、Grok 或 Gemini）。

@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 0.16.3
+
+仅文档。README（中英文）在靠前位置单独加了“推荐配合 ego lite 使用”一节：说明为什么不需要扩展、与 Chrome、Edge、Brave 的对比，以及 https://lite.ego.app/ 链接。快速开始第二步改为“准备浏览器”，先写 ego lite（只需登录），再写其他浏览器加载扩展的步骤。INSTALL（中英文）让 Agent 先检查是否装了 ego lite，装了就跳过加载扩展，没装就推荐给用户。
+
 ## 0.16.2
 
 只改文字。更新日志、Agensi skill 文字和一处代码注释不再写测试所用对话的具体数字，只说结果与扩展相同。行为没有变化。

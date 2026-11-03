@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.2-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.3-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="#recommended-ego-lite">Recommended: ego lite</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-you-get">What you get</a> ·
   <a href="#cli">CLI</a> ·
@@ -23,11 +24,27 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.16.2`
+Current version: `0.16.3`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
-Everything runs on your machine. The extension reads the chat tab you are already signed in to, and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
+Everything runs on your machine. Convo Vault reads the chat tab you are already signed in to (in ego lite directly, in Chrome, Edge or Brave through a small extension), and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
+
+## Recommended: ego lite
+
+> [!TIP]
+> **For the smoothest experience, use Convo Vault with [ego lite](https://lite.ego.app/).** There is no extension to install, no Developer mode and nothing to click. Sign in to your chat site in ego lite once; after that, telling your agent "export this conversation" is all it takes.
+
+ego lite is a Chromium browser that lets local programs work in its pages. Convo Vault uses that to run its exporter right inside the chat tab you are signed in to, so the one manual step other browsers need, loading an unpublished extension by hand, is gone. The exported files are the same either way.
+
+| | ego lite (recommended) | Chrome, Edge, Brave |
+| --- | --- | --- |
+| Browser extension | Not needed | Load it once by hand (Developer mode, Load unpacked) |
+| First time | The agent installs Convo Vault; you sign in to the chat site | The agent installs Convo Vault; you load the extension and sign in |
+| After an update | Runs the new version at once | The extension reloads itself |
+| What you get | The same folder | The same folder |
+
+When ego lite is installed, the CLI and the skill use it automatically; `--browser ego` picks it explicitly. Chrome, Edge and Brave keep working with the extension.
 
 ## Supported chats
 
@@ -57,7 +74,7 @@ Every chat gets the same folder: readable Markdown, a typeset PDF, `messages.jso
     </td>
     <td width="33%" valign="top">
       <h3>Local by design</h3>
-      The renderer listens on <code>127.0.0.1</code> only, jobs can only be claimed by the extension, and your login stays in the browser. Files never leave the machine.
+      The renderer listens on <code>127.0.0.1</code> only, jobs can only be claimed by the extension or a local program (never a web page), and your login stays in the browser. Files never leave the machine.
     </td>
   </tr>
 </table>
@@ -74,15 +91,15 @@ Install https://github.com/amethyst-cosmos/convo-vault for me. Follow INSTALL.md
 
 The agent clones the repository, installs dependencies, builds the extension, installs the skill and runs a check.
 
-### 2. Load the extension once
+### 2. Get your browser ready
 
-This is the only manual step, because browsers do not let programs install unpublished extensions:
+**ego lite (recommended): just sign in.** Sign in to your chat site (ChatGPT, Grok or Gemini) in [ego lite](https://lite.ego.app/). There is nothing to install in the browser; Convo Vault picks ego lite by itself (or pass `--browser ego`).
+
+**Chrome, Edge or Brave: load the extension once.** These browsers do not let programs install unpublished extensions, so this one step is manual:
 
 1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and choose `~/convo-vault/dist/convo-vault-extension`.
 3. Sign in to your chat site (ChatGPT, Grok or Gemini) in that browser.
-
-Using ego lite instead? Skip this step. ego lite lets local programs drive its pages, so the CLI runs the extension's own code there directly: sign in to your chat site in ego lite and export with `--browser ego` (it is remembered after the first export, and tried first when no browser has been chosen).
 
 ### 3. Use it
 
