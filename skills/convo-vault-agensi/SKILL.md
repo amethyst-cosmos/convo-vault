@@ -13,7 +13,7 @@ docs_url: https://github.com/amethyst-cosmos/convo-vault
 
 This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.com/amethyst-cosmos/convo-vault. Convo Vault runs entirely on the user's computer: a small browser extension reads the chat tab (ChatGPT, Grok or Gemini) the user is already signed in to, and a local service writes the files. Nothing is uploaded anywhere.
 
-**Recommended: use it with ego lite.** ego lite is a Chromium browser that lets local programs drive its pages. With ego lite, Convo Vault runs the extension's code in the chat page directly, so there is no extension to install and no Developer mode: the user signs in to the chat site in ego lite and every export is one step. The bundle is the same as with the extension (checked file by file on a 320-message conversation). Chrome, Edge and Brave still work, with the extension loaded once.
+**Recommended: use it with ego lite.** ego lite is a Chromium browser that lets local programs drive its pages. With ego lite, Convo Vault runs the extension's code in the chat page directly, so there is no extension to install and no Developer mode: the user signs in to the chat site in ego lite and every export is one step. The bundle is the same as with the extension. Chrome, Edge and Brave still work, with the extension loaded once.
 
 Requires: Node.js 20 or newer, git, a Chromium browser signed in to the chat site (ego lite recommended, no extension needed; or Chrome, Edge, Brave with the extension), and a terminal the agent can use. It works on macOS, Windows and Linux.
 
