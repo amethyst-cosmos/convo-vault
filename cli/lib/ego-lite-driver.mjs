@@ -42,18 +42,17 @@ export async function runEgoLiteJobs({ taskSpace, url, repoRoot, rendererUrl, lo
     });
 
     // The chat app may drop the hash while it boots; the content script reads its jobs from it.
-    await page.evaluate((hash) => {
-      if (!location.hash.includes(hash.split("=")[0])) history.replaceState(history.state, "", `${location.pathname}${location.search}#${hash}`);
-    }, `${JOB_HASH_KEY}=${jobIds.join(",")}`);
+    const hash = JSON.stringify(`${JOB_HASH_KEY}=${jobIds.join(",")}`);
+    await page.evaluate(`if (!location.hash.includes(${JSON.stringify(JOB_HASH_KEY)})) history.replaceState(history.state, "", location.pathname + location.search + "#" + ${hash}); true;`);
     await page.evaluate(`${PAGE_BRIDGE_SOURCE}\n(function (chrome) {\n${contentScript}\n}).call(window, window.__convoVaultBridge.chrome);\ntrue;`);
 
     const startedAt = Date.now();
     while (!closeRequested && Date.now() - startedAt < RUN_TIMEOUT_MS) {
-      const outgoing = await page.evaluate((maxCharacters) => window.__convoVaultBridge.drain(maxCharacters), MAX_DRAIN_CHARACTERS);
+      const outgoing = await page.evaluate((maxCharacters) => globalThis.__convoVaultBridge.drain(maxCharacters), MAX_DRAIN_CHARACTERS);
       for (const item of outgoing) await background.receive(item);
 
       const deliveries = background.takeDeliveries();
-      if (deliveries.length) await page.evaluate((items) => window.__convoVaultBridge.deliver(items), deliveries);
+      if (deliveries.length) await page.evaluate((items) => globalThis.__convoVaultBridge.deliver(items), deliveries);
 
       if (!outgoing.length && !deliveries.length) {
         if (await allJobsSettled(rendererUrl, jobIds, startedAt) && !background.busy()) break;
