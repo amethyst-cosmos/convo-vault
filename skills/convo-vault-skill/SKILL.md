@@ -42,7 +42,8 @@ Before exporting, ask the user one short question, in their language, with the d
 node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 ```
 
-- `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to ChatGPT. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
+- `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where the Convo Vault extension exports it by itself, and closes the tab when done. The user's browser must be signed in to the chat site.
+- **ego lite needs no extension.** If the user has ego lite (the `ego-browser` command exists), the CLI uses it first and runs the extension's code in its page directly; nothing has to be installed in the browser. Add `--browser ego` to choose it explicitly. Chrome, Edge and Brave still need the extension loaded once. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
 - Add `--files` only when the user said yes in step 2. It downloads uploaded and generated files into `assets/files/` with the browser's ChatGPT session and records size and SHA-256 in the manifest. Files that cannot be downloaded (ChatGPT has already deleted the conversation's sandbox, a file over 64 MB, more than 120 MB in one export) are listed with the reason; the export itself still succeeds.
@@ -63,10 +64,11 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 
 | Message | What to do |
 | --- | --- |
-| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off on the extensions page, or ChatGPT is not signed in in that browser. Tell the user to run `node "{{SKILL_DIR}}/scripts/run.mjs" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
+| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off on the extensions page, or ChatGPT is not signed in in that browser. If the user has ego lite, retry with `--browser ego` (no extension needed). Otherwise tell the user to run `node "{{SKILL_DIR}}/scripts/run.mjs" setup` once, or load `dist/convo-vault-extension` in the browser. Try `--browser "Microsoft Edge"` if they use another browser. |
+| `Images: ... could not be downloaded` | The export succeeded but those images stayed links. Tell the user the number; exporting again usually gets them. |
 | `Renderer dependencies are not installed` | Run `node "{{SKILL_DIR}}/scripts/run.mjs" setup`. |
 | `cannot run export jobs` | An old renderer is running. Run `node "{{SKILL_DIR}}/scripts/run.mjs" backend stop` and export again. |
 | `Capture is incomplete` | Report the listed issues and ask whether a partial export is acceptable. |
 | Anything else | Run `node "{{SKILL_DIR}}/scripts/run.mjs" doctor` and show the user its output. |
 
-Never read or ask for the user's chat cookies, tokens or password. The extension uses the signed-in browser session; nothing leaves the machine.
+Never read or ask for the user's chat cookies, tokens or password. The extension (or, in ego lite, the same code run in the page) uses the signed-in browser session; nothing leaves the machine.

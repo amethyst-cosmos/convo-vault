@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.15.2-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.1-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.15.2`
+Current version: `0.16.1`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -81,6 +81,8 @@ This is the only manual step, because browsers do not let programs install unpub
 1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and choose `~/convo-vault/dist/convo-vault-extension`.
 3. Sign in to your chat site (ChatGPT, Grok or Gemini) in that browser.
+
+Using ego lite instead? Skip this step. ego lite lets local programs drive its pages, so the CLI runs the extension's own code there directly: sign in to your chat site in ego lite and export with `--browser ego` (it is remembered after the first export, and tried first when no browser has been chosen).
 
 ### 3. Use it
 
@@ -209,7 +211,7 @@ Several conversations run **in one tab, one after another**, so nothing pops up 
 | `mcp install` / `mcp config` | Add the MCP server to Claude desktop; print config for other clients |
 | `backend start` / `stop` / `status` | The local renderer; it starts on demand and exits when idle |
 
-Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab open, `--allow-incomplete` exports a capture that failed the integrity check (refused by default). The first export tries each installed Chrome, Edge and Brave and remembers the one with the extension.
+Other options: `--no-extract` keeps only the zip, `--keep-tab` leaves the tab open, `--allow-incomplete` exports a capture that failed the integrity check (refused by default). The first export tries ego lite (if installed), then each installed Chrome, Edge and Brave, and remembers the one that answered.
 
 ## Without an agent
 
@@ -227,7 +229,7 @@ You get everything the conversation has: every message, the model's thinking ste
 
 - The extension reads only the chat page you have open (chatgpt.com, grok.com or gemini.google.com). No remote conversion service is used, and files never leave your machine.
 - The renderer listens on `127.0.0.1` only and requires a token.
-- Export jobs use a 192-bit random id. Only local programs can create them and only the extension can claim them, once.
+- Export jobs use a 192-bit random id. Only local programs can create them, and only the extension or a local program (the ego lite driver) can claim them, once. Web pages cannot.
 - An agent never needs, and never gets, your chat session: the extension uses the one already in your browser.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.

@@ -2,9 +2,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { egoLiteCommand, openInEgoLite } from "./ego-lite.mjs";
 
-// Chromium-family browsers that can load the extension, in the order tried.
+// Chromium-family browsers, in the order tried. ego lite comes first: it needs no extension.
 const BROWSERS = [
+  { name: "ego lite", egoLite: true, mac: "", win: "", linux: [], scheme: "ego" },
   { name: "Google Chrome", mac: "Google Chrome", win: "chrome", linux: ["google-chrome", "google-chrome-stable"], scheme: "chrome" },
   { name: "Microsoft Edge", mac: "Microsoft Edge", win: "msedge", linux: ["microsoft-edge", "microsoft-edge-stable"], scheme: "edge" },
   { name: "Brave Browser", mac: "Brave Browser", win: "brave", linux: ["brave-browser"], scheme: "brave" },
@@ -23,6 +25,10 @@ export function listInstalledBrowsers() {
 }
 
 function isInstalled(browser) {
+  if (browser.egoLite) {
+    return Boolean(egoLiteCommand());
+  }
+
   if (process.platform === "darwin") {
     const bundle = `${browser.mac}.app`;
     return [path.join("/Applications", bundle), path.join(os.homedir(), "Applications", bundle)].some(existsSync);
@@ -54,6 +60,12 @@ function windowsExecutableCandidates(browser) {
 export function openInBrowser(url, browser, options = {}) {
   if (process.env.CONVO_VAULT_NO_OPEN) {
     process.stderr.write(`[convo-vault] (not opening a browser) ${url}\n`);
+    return;
+  }
+
+  // ego lite runs the job itself, in the background; it opens chat pages only.
+  if (browser?.egoLite) {
+    if (/^https:\/\//.test(url)) openInEgoLite(url);
     return;
   }
 

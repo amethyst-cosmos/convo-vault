@@ -27,7 +27,7 @@ async function startCli(t, args) {
 
   const cli = spawn(process.execPath, [cliPath, ...args, "--out", outDir], {
     cwd: repoRoot,
-    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   const run = { port, outDir, stdout: "", stderr: "", seen: new Set() };

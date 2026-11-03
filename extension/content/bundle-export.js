@@ -180,6 +180,22 @@
     }
 
     await Promise.all(Array.from({ length: Math.min(BUNDLE_IMAGE_DOWNLOAD_CONCURRENCY, sources.length) }, () => worker()));
+
+    // A signed download link now and then fails once (seen about 1 in 7 runs of a 119-image
+    // conversation); the same image downloads on the next try. One retry each, one at a time.
+    for (const source of Object.keys(failures)) {
+      try {
+        const fileId = getChatGptFileImageId(source);
+        const blob = fileId
+          ? await fetchChatGptFileImage(fileId, { accessToken, conversationId })
+          : await fetchChatGptSessionImage(source);
+        images[source] = await blobToDataUri(blob);
+        delete failures[source];
+      } catch (error) {
+        failures[source] = error?.message || String(error);
+      }
+    }
+
     options.debugLog?.event?.("assetDownload.done", {
       images: sources.length,
       downloaded: Object.keys(images).length,

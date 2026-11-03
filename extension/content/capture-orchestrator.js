@@ -2,7 +2,8 @@
   // page is never scrolled or clicked, so a long conversation takes seconds and
   // works the same in a background tab.
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // ego lite runs this script without the extension, through a stand-in chrome object.
+  chrome.runtime.onMessage?.addListener((message, sender, sendResponse) => {
     if (message?.type !== "CONVO_VAULT_EXPORT_CURRENT") {
       return false;
     }

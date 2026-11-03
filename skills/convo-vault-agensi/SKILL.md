@@ -1,8 +1,8 @@
 ---
 name: Convo Vault Chat Exporter
 description: Chat exporter for ChatGPT, Grok and Gemini. Export conversations, one, several or a whole ChatGPT project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT, Grok or Gemini conversations, names a ChatGPT project, or gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT、Grok、Gemini 对话。
-summary: A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it sets up the free open-source Convo Vault once, then saves each chat locally as Markdown, PDF and structured data. Windows and macOS.
-version: 0.3.0
+summary: A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it sets up the free open-source Convo Vault once, then saves each chat locally as Markdown, PDF and structured data. Recommended with the ego lite browser: one-step export, no extension to install. Windows and macOS.
+version: 0.4.0
 tags: chat-exporter, chatgpt, grok, gemini, export, archive, markdown, pdf, jsonl, knowledge-base, backup
 keywords: chat exporter, chatgpt export, grok export, gemini export, ai chat backup, conversation archive, agent-ready knowledge pack
 use_cases: Back up an important ChatGPT, Grok or Gemini conversation, Export every conversation in a ChatGPT project at once, Turn a long chat into Markdown and PDF, Feed a conversation to another agent, Keep the model's thinking and tool trace with the chat
@@ -13,9 +13,11 @@ docs_url: https://github.com/amethyst-cosmos/convo-vault
 
 This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.com/amethyst-cosmos/convo-vault. Convo Vault runs entirely on the user's computer: a small browser extension reads the chat tab (ChatGPT, Grok or Gemini) the user is already signed in to, and a local service writes the files. Nothing is uploaded anywhere.
 
-Requires: Node.js 20 or newer, git, a Chromium browser (Chrome, Edge, Brave) signed in to the chat site, and a terminal the agent can use. It works on macOS, Windows and Linux.
+**Recommended: use it with ego lite.** ego lite is a Chromium browser that lets local programs drive its pages. With ego lite, Convo Vault runs the extension's code in the chat page directly, so there is no extension to install and no Developer mode: the user signs in to the chat site in ego lite and every export is one step. The bundle is the same as with the extension (checked file by file on a 320-message conversation). Chrome, Edge and Brave still work, with the extension loaded once.
 
-The user only has to say "export this conversation" (or "everything in my Research project", for ChatGPT) and give a link, a screenshot or a project name. Do the rest, except the one browser step in section 2, which only the user can do.
+Requires: Node.js 20 or newer, git, a Chromium browser signed in to the chat site (ego lite recommended, no extension needed; or Chrome, Edge, Brave with the extension), and a terminal the agent can use. It works on macOS, Windows and Linux.
+
+The user only has to say "export this conversation" (or "everything in my Research project", for ChatGPT) and give a link, a screenshot or a project name. Do the rest. With ego lite there is nothing for the user to do in the browser except sign in; with Chrome, Edge or Brave there is one browser step in section 2, which only the user can do.
 
 ## How to run the commands
 
@@ -78,7 +80,9 @@ If the first fails because git is old, delete any half-made folder it left and u
 node "$HOME/convo-vault/cli/convo-vault.mjs" setup --no-skill
 ```
 
-4. Ask the user to load the extension. **This is the one manual step, once per browser.** Browsers do not let a program install an unpublished extension, so do not try to do it for them. Give them the full path of the folder `convo-vault/dist/convo-vault-extension` inside the install folder (for example `C:\Users\<name>\convo-vault\dist\convo-vault-extension` on Windows, `/Users/<name>/convo-vault/dist/convo-vault-extension` on macOS) and tell them:
+4. **ego lite: skip this step.** If the command `ego-browser --version` prints a version, the user has ego lite and no extension is needed; just make sure they are signed in to the chat site in ego lite, and add `--browser ego` to the first `verify` and export (it is remembered after that). If the user has no ego lite yet, you may recommend it: it makes every later export one step.
+
+   Otherwise, ask the user to load the extension. **This is the one manual step, once per browser.** Browsers do not let a program install an unpublished extension, so do not try to do it for them. Give them the full path of the folder `convo-vault/dist/convo-vault-extension` inside the install folder (for example `C:\Users\<name>\convo-vault\dist\convo-vault-extension` on Windows, `/Users/<name>/convo-vault/dist/convo-vault-extension` on macOS) and tell them:
    1. Open the browser's extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
    2. Click **Load unpacked** and choose that folder.
    3. Open the chat site (https://chatgpt.com, https://grok.com or https://gemini.google.com) in that browser and sign in.
@@ -141,7 +145,8 @@ A Grok or Gemini link is exported with the same command and gives the same folde
 
 | Message | What to do |
 | --- | --- |
-| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off, or the chat site is not signed in in that browser. Repeat the extension step in section 2, or add `--browser "Microsoft Edge"` if they use another browser. |
+| `did not pick up the job` / extension did not respond | The extension is not loaded, is switched off, or the chat site is not signed in in that browser. If the user has ego lite, add `--browser ego` (no extension needed). Otherwise repeat the extension step in section 2, or add `--browser "Microsoft Edge"` if they use another browser. |
+| `Images: ... could not be downloaded` | The export succeeded but those images stayed links. Tell the user the number; exporting again usually gets them. |
 | `Renderer dependencies are not installed` | Run `node "$HOME/convo-vault/cli/convo-vault.mjs" setup --no-skill`. |
 | `cannot run export jobs` | An old renderer is running. Run `node "$HOME/convo-vault/cli/convo-vault.mjs" backend stop`, then export again. |
 | `Capture is incomplete` | Report the listed issues and ask whether a partial export is acceptable. |
@@ -149,10 +154,10 @@ A Grok or Gemini link is exported with the same command and gives the same folde
 | `node` or `git` not found | Install it as in section 2, then open a new terminal. |
 | Anything else | Run `node "$HOME/convo-vault/cli/convo-vault.mjs" doctor` and show the user its output. |
 
-Never read or ask for the user's chat cookies, tokens or password. The extension uses the browser's own signed-in session.
+Never read or ask for the user's chat cookies, tokens or password. The extension (or, in ego lite, the same code run in the page) uses the browser's own signed-in session.
 
 ## Limits
 
-- Needs a desktop Chromium browser with the extension loaded once; it does not work from a phone or from a browser without it.
+- Needs a desktop Chromium browser: ego lite (no extension), or Chrome, Edge or Brave with the extension loaded once. It does not work from a phone.
 - Exports the conversations you name or one project's; it does not export a whole account in one go.
 - The chat sites can change their internal format. If an export fails after an update on the site, update Convo Vault, then check the project's releases for a fix: https://github.com/amethyst-cosmos/convo-vault/releases

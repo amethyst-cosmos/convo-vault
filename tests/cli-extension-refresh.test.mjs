@@ -30,7 +30,7 @@ async function exportWithSimulatedExtension(t, { checkedVersion, script }) {
 
   const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-3", "--out", outDir, "--no-pdf", "--no-extract"], {
     cwd: repoRoot,
-    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stdout = "";

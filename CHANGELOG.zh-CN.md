@@ -2,6 +2,25 @@
 
 [English](CHANGELOG.md)
 
+## 0.16.1
+
+用一个真实 ChatGPT 对话（320 条消息、119 张图片、1 个上传文件）验证：在装了扩展的 Chrome 和没装扩展的 ego lite 里各导出一次，带 `--files` 和不带各一次。两个浏览器导出的包除了导出时间完全相同，每条消息的 id、角色、顺序和文字都与 ChatGPT 接口一致。
+
+- **图片失败重试一次**：下载失败的 ChatGPT 图片，在其他图片下完后逐个再试一次。7 次导出里有 1 次，119 张图里有 1 张下载失败、留成了链接；同一张图在其他每次都能下到
+- **命令行报告图片数**：每次导出后打印嵌入了多少张图片、有多少张没下到，图片缺失不会悄无声息
+- **Skill**：说明 ego lite 不需要扩展；没有浏览器认领任务时建议 `--browser ego`；解释新的图片提示行
+- **Agensi skill 文字 0.4.0**（`skills/convo-vault-agensi`）：推荐配合 ego lite 一键导出、不用装扩展；检测到 `ego-browser` 时跳过加载扩展这一步
+
+## 0.16.0
+
+在 ego lite 里导出不再需要扩展。ego lite 是一个允许本地程序操作网页的 Chromium 浏览器，所以那一步手动加载扩展在它里面可以省掉。
+
+- **`--browser ego`**：命令行在 ego lite 里打开聊天页面，把构建好的内容脚本注入页面，并在 Node 沙箱里运行扩展自己的 `background.js`。两者之间由一个替身 `chrome.runtime` 转发消息，所以抓取、完整性闸门、图片下载和渲染请求都是扩展里的同一份代码（`cli/lib/ego-lite.mjs`、`cli/lib/ego-lite-driver.mjs`）。单个导出、批量、项目、列表和 verify 都走这条路
+- **浏览器顺序**：没选过浏览器时先试 ego lite，响应后会被记住。用 ego lite 时 `setup` 不再提示加载扩展
+- **渲染服务**：任务现在除了扩展，也可以由本地程序认领。网页仍然不能认领，因为网页请求一定带 Origin
+- **内容脚本**：只有 `chrome.runtime.onMessage` 存在时才注册弹窗的消息监听
+- 已在删除扩展的 ego lite 里用真实对话验证：一个 320 条消息、119 张图片（0 失败）的对话，和一个带思考过程与生成式界面的对话，逐字段对比了 0.15.2 扩展导出的结构
+
 ## 0.15.2
 
 - 仅文档。Agensi 上的 skill 改名为 “Convo Vault Chat Exporter”，地址变为 `agensi.io/skills/convo-vault-chat-exporter`，README 里的链接已指向新地址。
