@@ -47,7 +47,8 @@ Usage:
 
 Export options:
   --out DIR            Where to save (default: ~/Downloads/convo-vault)
-  --browser NAME       Chrome, Edge, Brave... (default: the one that worked last time)
+  --browser NAME       ego (ego lite, no extension needed), Chrome, Edge, Brave...
+                       (default: the one that worked last time)
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
@@ -199,18 +200,37 @@ async function saveJobBundle(jobId, job, outDir, flags) {
   const zipPath = await uniquePath(path.join(outDir, job.result.filename));
   await fs.writeFile(zipPath, zipBytes);
 
+  const zip = readZip(zipPath);
   let folder = "";
   let files = [];
   if (flags.extract !== false) {
     folder = zipPath.replace(/\.zip$/i, "");
-    extractZip(readZip(zipPath), folder);
+    extractZip(zip, folder);
     files = (await fs.readdir(folder)).sort();
   }
 
-  return { zipPath, folder, files };
+  return { zipPath, folder, files, images: countBundleImages(zip) };
 }
 
-function printSaved({ zipPath, folder, files }, indent) {
+// Images embedded and not downloaded, from the bundle's payload, so a missing one is never silent.
+function countBundleImages(zip) {
+  const entry = zip.entries.find((item) => /\.payload\.json$/.test(item.name) && !item.name.includes("/"));
+  if (!entry) return null;
+  try {
+    const messages = JSON.parse(zip.data(entry).toString("utf8")).messages || [];
+    return {
+      embedded: messages.reduce((sum, message) => sum + (Number(message.imagesEmbedded) || 0), 0),
+      failed: messages.reduce((sum, message) => sum + (Number(message.imagesFailed) || 0), 0)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function printSaved({ zipPath, folder, files, images }, indent) {
+  if (images?.embedded || images?.failed) {
+    console.log(`${indent}Images:   ${images.embedded} embedded${images.failed ? `, ${images.failed} could not be downloaded (kept as links; see *.assets.manifest.json)` : ""}`);
+  }
   console.log(`${indent}Zip:      ${zipPath}`);
   if (folder) {
     console.log(`${indent}Folder:   ${folder}`);
@@ -431,7 +451,7 @@ async function listCommand(flags) {
 async function browserCandidates(preferredName) {
   if (preferredName) {
     const browser = findBrowser(preferredName);
-    if (!browser) throw new Error(`Unknown browser "${preferredName}". Try Chrome, Edge or Brave.`);
+    if (!browser) throw new Error(`Unknown browser "${preferredName}". Try ego, Chrome, Edge or Brave.`);
     return [browser];
   }
   const installed = listInstalledBrowsers();
@@ -505,6 +525,13 @@ async function setup(flags) {
   console.log(`  Skill:     ${skill.summary}`);
   console.log(`  Extension: ${extensionDir}`);
   console.log("");
+
+  if (browser?.egoLite) {
+    console.log("ego lite needs no extension: exports run the same code in its pages directly.");
+    console.log("Sign in to your chat site (ChatGPT, Grok or Gemini) in ego lite, then check it: node cli/convo-vault.mjs verify");
+    return;
+  }
+
   console.log("One manual step, once: load the extension in your browser.");
   console.log("  1. Open the Extensions page and turn on Developer mode.");
   console.log("  2. Click Load unpacked and choose the Extension folder above.");
@@ -564,6 +591,11 @@ async function verify(flags) {
       if (browser) await writeConfig({ browser: browser.name });
       const version = await waitForPingVersion(jobId);
       const where = browser?.name || "your browser";
+      if (browser?.egoLite) {
+        console.log(`OK: Convo Vault ${version} answered in ego lite (no extension needed).`);
+        console.log("Exports also need ego lite to be signed in to the chat site (ChatGPT, Grok or Gemini).");
+        return;
+      }
       console.log(version ? `OK: Extension ${version} answered in ${where}.` : `OK: the Convo Vault extension answered in ${where}.`);
       const expected = await sourceVersion();
       if (version && expected && version !== expected) {
@@ -643,6 +675,9 @@ async function reloadExtension(flags) {
 // old extension. Reload it here so nobody has to click reload on the Extensions page. It asks once per
 // project version, and only for a browser that has answered before, so a first export pays nothing.
 async function refreshStaleExtension(browser) {
+  // ego lite injects the current build on every run.
+  if (browser.egoLite) return;
+
   const expected = await sourceVersion();
   const config = await readConfig();
   if (!expected || config.extensionVersionChecked === expected) return;

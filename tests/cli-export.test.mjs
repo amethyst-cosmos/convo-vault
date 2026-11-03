@@ -21,7 +21,7 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
     ...process.env,
     CONVO_VAULT_HOME: home,
     CGCE_ADVANCED_PDF_PORT: String(port),
-    CONVO_VAULT_NO_OPEN: "1"
+    CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: ""
   };
 
   t.after(async () => {
@@ -47,7 +47,7 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   assert.equal((await rawRequest(port, "POST", "/jobs", { Origin: "https://chatgpt.com" }, "{}")).status, 403);
   assert.equal((await rawRequest(port, "GET", `/jobs/${jobId}`, { "Sec-Fetch-Site": "cross-site" })).status, 403);
   assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "https://chatgpt.com" })).status, 403);
-  assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/claim`)).status, 403);
+  assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { "Sec-Fetch-Site": "same-origin" })).status, 403);
 
   // The extension claims the job once and receives the renderer token.
   const claimed = await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" });
@@ -88,7 +88,7 @@ test("--no-pdf exports a data-only bundle without needing a PDF renderer", async
 
   const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-2", "--out", outDir, "--no-pdf", "--files", "--no-extract"], {
     cwd: repoRoot,
-    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stdout = "";
@@ -147,7 +147,7 @@ async function verifyWithSimulatedExtension(t, statusMessage) {
 
   const cli = spawn(process.execPath, [cliPath, "verify", "--browser", "chrome"], {
     cwd: repoRoot,
-    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1" },
+    env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stdout = "";
@@ -273,7 +273,7 @@ test("installing the skill removes the old convo-vault folder, and only when it 
 
 function run(args, extraEnv = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [cliPath, ...args], { cwd: repoRoot, env: { ...process.env, CONVO_VAULT_NO_OPEN: "1", ...extraEnv } });
+    const child = spawn(process.execPath, [cliPath, ...args], { cwd: repoRoot, env: { ...process.env, CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "", ...extraEnv } });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });

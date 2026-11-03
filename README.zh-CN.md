@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.15.2-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.16.1-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -23,7 +23,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.15.2`
+当前版本：`0.16.1`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -81,6 +81,8 @@ Agent 会克隆项目、安装依赖、构建扩展、安装 skill，并运行�
 1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”
 2. 点“加载已解压的扩展程序”，选择 `~/convo-vault/dist/convo-vault-extension`
 3. 在这个浏览器里登录你的聊天网站（ChatGPT、Grok 或 Gemini）
+
+用的是 ego lite？这一步可以跳过。ego lite 允许本地程序操作它的网页，命令行会直接在页面里运行扩展的同一份代码：在 ego lite 里登录聊天网站，导出时加 `--browser ego` 即可（第一次导出后会记住；没选过浏览器时也会先试它）。
 
 ### 三、开始用
 
@@ -194,7 +196,7 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
 | `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
 
-其他选项：`--files` 同时下载对话里上传和生成的文件（默认不下，Agent 会先问你一次），`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会依次尝试已安装的 Chrome、Edge、Brave，并记住装了扩展的那个。
+其他选项：`--files` 同时下载对话里上传和生成的文件（默认不下，Agent 会先问你一次），`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会先试 ego lite（如果装了），再依次尝试已安装的 Chrome、Edge、Brave，并记住响应了的那个。
 
 ## 不用 Agent 时
 
@@ -213,7 +215,7 @@ ChatGPT 和 Grok：Convo Vault 读的是网站自己的对话接口，也就是�
 - 扩展只读取当前打开的聊天页面（chatgpt.com、grok.com 或 gemini.google.com），不使用任何远程转换服务
 - PDF、Markdown 和 zip 都在本机生成；运行时数据放在 `.convo-vault/`，不会进 Git
 - 渲染服务只监听 `127.0.0.1`，请求要带令牌；没有令牌时，带浏览器 Origin 的请求会被拒绝
-- 自动导出任务用 192 位随机 id 标识，只能被扩展认领一次，令牌在认领时直接交给扩展，不经过网页
+- 自动导出任务用 192 位随机 id 标识，只能被扩展或本地程序（ego lite 驱动）认领一次，网页不能认领，令牌在认领时直接交给扩展，不经过网页
 - 创建任务和读取结果只接受不带浏览器 Origin 的本机请求，并校验 Host，网页和 DNS 重绑定调用不了
 - Agent 不需要也拿不到你的聊天登录状态，扩展用的是浏览器里已登录的会话
 

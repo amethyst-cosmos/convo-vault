@@ -39,8 +39,10 @@ async function handleJobRequest(request, response, url) {
   }
 
   if (request.method === "POST" && action === "claim") {
-    // Only the extension may claim: page scripts cannot forge a chrome-extension Origin.
-    if (!String(request.headers.origin || "").toLowerCase().startsWith("chrome-extension://")) {
+    // Only the extension or a local program may claim: page scripts cannot forge a
+    // chrome-extension Origin, and they always send one. The ego lite driver is a local
+    // program that runs the content script itself (cli/lib/ego-lite-driver.mjs).
+    if (!String(request.headers.origin || "").toLowerCase().startsWith("chrome-extension://") && !isLocalProcessRequest(request)) {
       sendJson(response, 403, { ok: false, error: "Only the Convo Vault extension can claim a job." });
       return true;
     }
