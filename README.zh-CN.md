@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.16.2-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.16.3-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -15,6 +15,7 @@
 </p>
 
 <p align="center">
+  <a href="#推荐配合-ego-lite-使用">推荐：ego lite</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#它能做什么">它能做什么</a> ·
   <a href="#导出的内容">导出的内容</a> ·
@@ -23,11 +24,27 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.16.2`
+当前版本：`0.16.3`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
 Convo Vault 在你自己的电脑上，把对话导出成一个文件夹（它读的是你已经登录的聊天页面）：排好版的 Markdown 和 PDF，加上能直接交给 Codex、Claude、Cursor、知识库或 RAG 流程的结构化数据。你只需要对 Agent 说一句话，或者发一张对话截图。
+
+## 推荐配合 ego lite 使用
+
+> [!TIP]
+> **想要最顺手的体验，就用 [ego lite](https://lite.ego.app/) 来跑 Convo Vault。** 不用装扩展，不用开开发者模式，什么都不用点。在 ego lite 里登录一次聊天网站，之后对 Agent 说一句“把这个对话导出来”就够了。
+
+ego lite 是一个允许本地程序操作网页的 Chromium 浏览器。Convo Vault 借助这一点，直接在你已登录的聊天页面里运行导出程序，于是其他浏览器必须手动完成的那一步（加载未上架的扩展）就省掉了。两种方式导出的文件完全相同。
+
+| | ego lite（推荐） | Chrome、Edge、Brave |
+| --- | --- | --- |
+| 浏览器扩展 | 不需要 | 手动加载一次（开发者模式、加载已解压的扩展程序） |
+| 第一次使用 | Agent 安装 Convo Vault，你登录聊天网站 | Agent 安装 Convo Vault，你加载扩展并登录 |
+| 更新之后 | 立即运行新版本 | 扩展自动重新加载 |
+| 导出结果 | 同样的文件夹 | 同样的文件夹 |
+
+装了 ego lite 时，命令行和 skill 会自动用它；也可以用 `--browser ego` 明确指定。Chrome、Edge、Brave 装好扩展后照常可用。
 
 ## 支持的聊天网站
 
@@ -57,7 +74,7 @@ Convo Vault 在你自己的电脑上，把对话导出成一个文件夹（它�
     </td>
     <td width="33%" valign="top">
       <h3>全部在本机</h3>
-      渲染服务只监听 <code>127.0.0.1</code>，不用任何在线转换服务。你的 Cookie、令牌和密码不会交给 Agent。
+      渲染服务只监听 <code>127.0.0.1</code>，导出任务只能由扩展或本地程序认领（网页不行），不用任何在线转换服务。你的 Cookie、令牌和密码不会交给 Agent。
     </td>
   </tr>
 </table>
@@ -74,15 +91,15 @@ Convo Vault 在你自己的电脑上，把对话导出成一个文件夹（它�
 
 Agent 会克隆项目、安装依赖、构建扩展、安装 skill，并运行检查。
 
-### 二、在浏览器里加载一次扩展
+### 二、准备浏览器
 
-这是唯一需要你动手的一步，浏览器不允许程序自动安装未上架的扩展：
+**ego lite（推荐）：只需登录。** 在 [ego lite](https://lite.ego.app/) 里登录你的聊天网站（ChatGPT、Grok 或 Gemini）。浏览器里什么都不用装，Convo Vault 会自己选用 ego lite（也可以加 `--browser ego`）。
+
+**Chrome、Edge 或 Brave：加载一次扩展。** 这些浏览器不允许程序自动安装未上架的扩展，所以这一步要手动：
 
 1. 打开扩展页面（`chrome://extensions` 或 `edge://extensions`），开启右上角“开发者模式”
 2. 点“加载已解压的扩展程序”，选择 `~/convo-vault/dist/convo-vault-extension`
 3. 在这个浏览器里登录你的聊天网站（ChatGPT、Grok 或 Gemini）
-
-用的是 ego lite？这一步可以跳过。ego lite 允许本地程序操作它的网页，命令行会直接在页面里运行扩展的同一份代码：在 ego lite 里登录聊天网站，导出时加 `--browser ego` 即可（第一次导出后会记住；没选过浏览器时也会先试它）。
 
 ### 三、开始用
 

@@ -4,6 +4,10 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.16.3
+
+Docs only. The README (English and Chinese) recommends ego lite in a section of its own near the top: why it needs no extension, a side-by-side with Chrome, Edge and Brave, and a link to https://lite.ego.app/. Quick start step 2 is now "Get your browser ready", with ego lite first (just sign in) and the extension steps for the other browsers. INSTALL (both languages) tells agents to check for ego lite, skip the extension step when it is there, and recommend it otherwise.
+
 ## 0.16.2
 
 Wording only. The changelog, the Agensi skill text and a code comment no longer quote the sizes of the conversation used for testing; they say the result matches the extension. No behaviour changes.

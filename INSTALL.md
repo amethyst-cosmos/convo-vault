@@ -22,7 +22,9 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
    ```
 
    It installs the renderer dependencies, builds the extension, installs the skill for Claude and Codex (whichever it finds) and opens the browser's extensions page. If the user's browser is not Chrome, add `--browser edge` (or `brave`).
-5. **Ask the user to load the extension. This is the only manual step, and it happens once.**
+
+   **ego lite (recommended).** If `ego-browser --version` prints a version, the user has [ego lite](https://lite.ego.app/). `setup` picks it and says so, and no extension is needed: skip step 5 and only ask the user to sign in to the chat site in ego lite. If the user has no ego lite yet, recommend it: with it there is no manual browser step at all.
+5. **Chrome, Edge or Brave only: ask the user to load the extension. This is the only manual step, and it happens once.**
    1. Open the extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
    2. Click **Load unpacked** and choose `<location>/dist/convo-vault-extension`.
    3. Sign in to the chat site (ChatGPT, Grok or Gemini) in that browser.
