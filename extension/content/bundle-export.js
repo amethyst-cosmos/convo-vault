@@ -16,6 +16,7 @@
       jobId: options.jobId,
       skipPdf: options.skipPdf,
       downloadFiles: options.downloadFiles,
+      fileKind: options.fileKind,
       onProgress: options.onProgress
     });
     const filename = bundleResult.filename;
@@ -95,12 +96,14 @@
     // ChatGPT only: Grok's attachments are not downloaded yet (the export lists them).
     const fileDownloads = options.downloadFiles && getProviderId() === "chatgpt"
       ? await downloadChatGptFiles(payload.messages, {
+        kind: options.fileKind,
         debugLog: options.debugLog,
         onProgress: options.onProgress
       })
       : null;
     payload.fileDownload = {
       requested: Boolean(fileDownloads),
+      ...(fileDownloads && options.fileKind ? { kind: options.fileKind } : {}),
       failures: fileDownloads?.failures || {}
     };
 

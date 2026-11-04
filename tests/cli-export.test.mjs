@@ -118,6 +118,44 @@ test("--no-pdf exports a data-only bundle without needing a PDF renderer", async
   assert.ok(!entries.some((name) => name.endsWith(".pdf")), entries.join(", "));
 });
 
+test("--files-kind asks for one side's files only, and means every conversation on its own", async (t) => {
+  for (const [args, expected] of [
+    [["--files-kind", "generated"], "generated"],
+    [["--files", "--files-kind", "uploaded"], "uploaded"],
+    [["--files"], true],
+    [[], false]
+  ]) {
+    const port = await getAvailablePort();
+    const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-home-"));
+    const outDir = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-out-"));
+    const cli = spawn(process.execPath, [cliPath, "export", "fixture-conversation-3", "--out", outDir, "--no-pdf", "--no-extract", "--timeout", "20", ...args], {
+      cwd: repoRoot,
+      env: { ...process.env, CONVO_VAULT_HOME: home, CGCE_ADVANCED_PDF_PORT: String(port), CONVO_VAULT_NO_OPEN: "1", CONVO_VAULT_EGO_BROWSER: "" },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stderr = "";
+    cli.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+    cli.on("exit", () => {});
+    t.after(async () => {
+      cli.kill();
+      await rawRequest(port, "POST", "/shutdown").catch(() => {});
+      await rm(home, { recursive: true, force: true });
+      await rm(outDir, { recursive: true, force: true });
+    });
+
+    const jobId = await waitFor(() => stderr.match(/#convo-vault-job=([a-f0-9]{48})/)?.[1], () => stderr);
+    const claimed = JSON.parse((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).body);
+    assert.equal(claimed.options.files, expected, args.join(" ") || "no flags");
+    cli.kill();
+  }
+});
+
+test("--files-kind rejects a value other than generated or uploaded", () => {
+  const run = spawnSync(process.execPath, [cliPath, "export", "fixture-conversation-3", "--files-kind", "everything"], { cwd: repoRoot, encoding: "utf8", env: { ...process.env, CONVO_VAULT_NO_OPEN: "1" } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr + run.stdout, /--files-kind must be generated or uploaded/);
+});
+
 test("the renderer started for the CLI exits by itself when idle", async () => {
   const port = await getAvailablePort();
   const server = spawn(process.execPath, [path.join(repoRoot, "renderer", "server.js")], {

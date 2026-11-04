@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.16.4-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.17.0-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.16.4`
+当前版本：`0.17.0`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -186,7 +186,7 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 | `*.agent-trace.json` | 完整思考过程：每个回答从提问到作答之间的思考摘要、工具调用和完整返回内容，按时间排序，附来源索引 |
 | `*.agent-trace.md` | 同一份记录的可读版，长输出截断并指向 JSON |
 | `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因；已下载文件的大小和 SHA-256 |
-| `assets/files/` | 仅 `--files` 时有：对话里上传和生成的 Word、PDF、zip 等文件 |
+| `assets/files/` | 仅 `--files` 或 `--files-kind` 时有：对话里上传和生成的 Word、PDF、zip 等文件 |
 | `*.payload.json`、`*.conversation.json`、`*.data.json` | 完整导出数据和对话元数据，可用于重新渲染 |
 
 ## 命令行
@@ -199,6 +199,7 @@ node cli/convo-vault.mjs export <链接> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <链接1> <链接2> <链接3>             # 一次导出多个，只开一个浏览器标签页
 node cli/convo-vault.mjs list --project "Research"                  # 查看项目里有哪些对话（id、日期、标题）
 node cli/convo-vault.mjs export --project "Research"                # 导出项目里的所有对话
+node cli/convo-vault.mjs export <链接> --files-kind generated    # 只下载 ChatGPT 生成的附件（或 uploaded：只下载你上传的）
 node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"   # 只有标题含“发票”或“报告”的带附件
 ```
 
@@ -214,7 +215,7 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 | `mcp install` / `mcp config` | 给 Claude 桌面版聊天安装 MCP；打印其他客户端的配置 |
 | `backend start` / `stop` / `status` | 本地渲染服务；导出时自动启动，空闲两分钟后自动退出，不用手动关 |
 
-其他选项：`--files` 同时下载对话里上传和生成的文件（默认不下，Agent 会先问你一次），`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会先试 ego lite（如果装了），再依次尝试已安装的 Chrome、Edge、Brave，并记住响应了的那个。
+其他选项：`--files` 同时下载对话里上传和生成的文件（默认不下，Agent 会先问你一次），`--files-kind generated|uploaded` 只下载其中一边（单独使用时对所有对话生效；你对 Agent 说“只下载 GPT 生成的附件”它就会用这个），`--no-pdf` 只导出数据，跳过 PDF（更快，不需要无头 Chrome），`--no-extract` 只要 zip，`--keep-tab` 导出后不关标签页，`--allow-incomplete` 允许导出不完整的抓取（默认拒绝）。第一次导出会先试 ego lite（如果装了），再依次尝试已安装的 Chrome、Edge、Brave，并记住响应了的那个。
 
 ## 不用 Agent 时
 

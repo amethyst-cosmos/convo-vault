@@ -111,6 +111,7 @@ Ask the user one short question in their language, with the default stated, for 
 
 - A clear yes ("yes", "all of them", "include the attachments", "连文件一起下") adds `--files`.
 - Anything else leaves `--files` off. Do not ask twice.
+- Only one side wanted ("only what ChatGPT generated", "just my uploads", "只下载 GPT 生成的附件") adds `--files-kind generated` or `--files-kind uploaded` instead of `--files`; the request already is the yes.
 - Skip the question when the user already said it in the request.
 - With several conversations, ask once; if the user wants files for only some of them, use `--files-for` with their names.
 
@@ -127,6 +128,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
 - A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
+- One side only: `--files-kind generated` (what ChatGPT made) or `--files-kind uploaded` (what the user attached). Alone it applies to every conversation; with `--files-for` only to the named ones. The side left out is listed in the manifest as "not requested", not as a failure.
 - Files for only some: `--files-for "invoice,report"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 - On macOS the browser tab opens in the background. On Windows and Linux the browser window may come to the front once per run, not once per conversation.
 

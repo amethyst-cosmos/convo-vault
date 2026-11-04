@@ -4,6 +4,15 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.17.0
+
+Download only the files ChatGPT generated, or only the ones you uploaded. Also fixes Gemini replies that are only a generated picture.
+
+- **`--files-kind generated|uploaded`**: `generated` downloads what ChatGPT made (the `sandbox:` files), `uploaded` what you attached. On its own it applies to every conversation; with `--files-for` only to the named ones; `--files` alone still downloads both. The other side is listed in the manifest as `not-requested` with the reason "left out: only generated files were requested", not as a failure, and `fileDownload.kind` in the payload records the choice.
+- **Agents**: the MCP `export_conversation` tool has a `files_kind` argument, and both skills tell the agent to use it when you ask for only one side ("只下载 GPT 生成的附件").
+- **Gemini picture-only replies**: Gemini puts a generated picture inside a button (click to enlarge) and the Gemini reader skipped every button, so a reply that was only a picture came out empty and the integrity gate stopped the export with "1 prompt(s) have no reply". A button's own text is still dropped, but a picture inside it is kept, drawn and stored like any other Gemini picture. Found by exporting a real Gemini conversation in ego lite.
+- Tests: the download filter (generated only, uploaded only, both), the manifest for a left-out side, the CLI flag (alone, with `--files`, none, an invalid value), and the picture inside the enlarge button (fails without the fix).
+
 ## 0.16.4
 
 Wording only: the remaining texts that described the extension as the only way now include ego lite. No behaviour changes.

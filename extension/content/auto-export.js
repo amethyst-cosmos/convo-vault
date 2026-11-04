@@ -118,7 +118,8 @@
         jobId,
         allowIncomplete: claim.options?.allowIncomplete === true,
         skipPdf: claim.options?.pdf === false,
-        downloadFiles: claim.options?.files === true,
+        downloadFiles: claim.options?.files === true || claim.options?.files === "generated" || claim.options?.files === "uploaded",
+        fileKind: claim.options?.files === "generated" || claim.options?.files === "uploaded" ? claim.options.files : "",
         onProgress: (message) => report(message)
       });
       return claim.options?.closeTab !== false;
