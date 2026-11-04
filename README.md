@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.16.4-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.0-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.16.4`
+Current version: `0.17.0`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -172,7 +172,7 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the chat
 | `*.agent-trace.json` | Full thinking and tool trace per answer, in order, with complete tool outputs and a source index |
 | `*.agent-trace.md` | Readable version of the trace |
 | `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded; size and SHA-256 of each downloaded file |
-| `assets/files/` | Only with `--files`: the Word, PDF, zip... files uploaded to or generated in the conversation |
+| `assets/files/` | Only with `--files` or `--files-kind`: the Word, PDF, zip... files uploaded to or generated in the conversation |
 | `*.payload.json`, `*.conversation.json`, `*.data.json` | Complete export data and metadata, enough to re-render later |
 
 </td>
@@ -207,6 +207,7 @@ node cli/convo-vault.mjs export https://chatgpt.com/c/<id>        # a link (Chat
 node cli/convo-vault.mjs export <link> --out ./archive            # choose where to save
 node cli/convo-vault.mjs export <link> --no-pdf                   # data only: faster, no headless Chrome
 node cli/convo-vault.mjs export <link> --files                    # also download uploaded and generated files
+node cli/convo-vault.mjs export <link> --files-kind generated     # only what ChatGPT generated (or: uploaded)
 node cli/convo-vault.mjs export <link> --browser ego              # ego lite: no extension needed
 node cli/convo-vault.mjs export <link> --browser "Microsoft Edge"
 node cli/convo-vault.mjs export <link1> <link2> <link3>           # several at once, in one browser tab
@@ -215,7 +216,7 @@ node cli/convo-vault.mjs export --project "Research"               # every conve
 node cli/convo-vault.mjs export --project "Research" --files-for "invoice,report"   # files only for those
 ```
 
-Several conversations run **in one tab, one after another**, so nothing pops up per conversation (on macOS the tab also opens without bringing the browser to the front). Each result is printed, a failed conversation does not stop the rest, and the exit code is 1 if any failed. `--files-for` takes words from titles (or ids); `--files` means all.
+Several conversations run **in one tab, one after another**, so nothing pops up per conversation (on macOS the tab also opens without bringing the browser to the front). Each result is printed, a failed conversation does not stop the rest, and the exit code is 1 if any failed. `--files-for` takes words from titles (or ids); `--files` means all. `--files-kind generated|uploaded` keeps one side only (alone it applies to every conversation).
 
 | Command | What it does |
 | --- | --- |

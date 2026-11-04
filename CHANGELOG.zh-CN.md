@@ -2,6 +2,15 @@
 
 [English](CHANGELOG.md)
 
+## 0.17.0
+
+可以只下载 ChatGPT 生成的附件，或只下载你上传的附件。同时修复了只含一张生成图片的 Gemini 回复被判为没有回复的问题。
+
+- **`--files-kind generated|uploaded`**：`generated` 下载 ChatGPT 生成的文件（`sandbox:` 文件），`uploaded` 下载你上传的文件。单独使用时对所有对话生效；和 `--files-for` 一起用时只对点名的对话生效；只写 `--files` 仍然两边都下。没下载的那一边在清单里记为 `not-requested`，原因是“left out: only generated files were requested”，不算失败；导出的 payload 里的 `fileDownload.kind` 会记录这个选择。
+- **Agent**：MCP 的 `export_conversation` 工具增加了 `files_kind` 参数，两份 skill 也写明：用户只要其中一边时用它（比如“只下载 GPT 生成的附件”）。
+- **Gemini 只有图片的回复**：Gemini 把生成的图片放在按钮里（点击放大），而 Gemini 读取器会跳过所有按钮，所以只有图片的回复读出来是空的，完整性闸门以“1 个提问没有回复”拦下导出。现在按钮自己的文字仍然丢掉，但按钮里的图片会保留，并和 Gemini 的其他图片一样被绘制并存入。这是在 ego lite 里导出一个真实 Gemini 对话时发现的。
+- 测试：下载过滤（只生成、只上传、两边）、被略过一边的清单、命令行参数（单独、配合 `--files`、不带、非法值），以及放大按钮里的图片（去掉修复会失败）。
+
 ## 0.16.4
 
 只改文字：剩下那些把扩展说成唯一方式的地方，都补上了 ego lite。行为没有变化。

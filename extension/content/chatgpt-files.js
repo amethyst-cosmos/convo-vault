@@ -95,7 +95,10 @@
    *   data URIs and failure reasons keyed by the reference key.
    */
   async function downloadChatGptFiles(messages, options = {}) {
-    const refs = uniqueFileRefs(messages.flatMap((message) => message?.fileRefs || []));
+    // options.kind "generated" or "uploaded" keeps only that side; anything else keeps both.
+    const wantedKind = options.kind === "generated" ? "generated" : options.kind === "uploaded" ? "upload" : "";
+    const refs = uniqueFileRefs(messages.flatMap((message) => message?.fileRefs || []))
+      .filter((ref) => !wantedKind || ref.kind === wantedKind);
     const files = {};
     const failures = {};
 

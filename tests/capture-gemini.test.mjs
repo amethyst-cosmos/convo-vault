@@ -224,6 +224,17 @@ test("a picture the page can draw is kept as an image, under a made-up address, 
   assert.deepEqual({ ...g.images() }, { "https://gemini.google.com/__convo_vault_image/1": "data:image/png;base64,QUJD" });
 });
 
+test("a generated picture inside Gemini's enlarge button is kept, and a reply that is only that picture is not empty", async () => {
+  const g = await loadGemini();
+  g.set("geminiImageToDataUri", () => "data:image/png;base64,QUJD");
+  const inButton = '<response-element class="no-md"><generated-image><single-image><div class="image-container"><div class="overlay-container"><button class="image-button"><img class="image" src="blob:https://gemini.google.com/190dff89" alt="A framed certificate on a desk"></button></div></div></single-image></generated-image></response-element>';
+
+  const markdown = g.md(parse(`<div class="markdown">${inButton}</div>`));
+
+  assert.match(markdown, /^!\[A framed certificate on a desk\]\(https:\/\/gemini\.google\.com\/__convo_vault_image\/1\)$/);
+  assert.deepEqual({ ...g.images() }, { "https://gemini.google.com/__convo_vault_image/1": "data:image/png;base64,QUJD" });
+});
+
 test("a picture the page does not let a script read stays a link, and the warning says how many", async () => {
   const g = await loadGemini();
   g.set("geminiImageToDataUri", () => "");

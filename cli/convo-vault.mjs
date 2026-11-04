@@ -52,6 +52,8 @@ Export options:
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
+  --files-kind KIND    Only one side's files: generated (what ChatGPT made) or uploaded (what you attached).
+                       On its own it applies to every conversation; with --files-for, only to those.
   --files-for A,B      Only for the conversations whose title contains A or B (or whose id is A or B)
   --project NAME       Export every conversation in that project (a name, id or project link)
   --keep-tab           Leave the chat tab open after exporting
@@ -93,7 +95,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "limit"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "filesKind", "limit"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -164,7 +166,7 @@ async function exportConversation(input, flags) {
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
       pdf: flags.pdf !== false,
-      files: flags.files === true
+      files: filesJobOption(flags, false)
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser, { background: true });
@@ -303,6 +305,18 @@ async function exportOneByOne(group, flags) {
   console.log(`\nExported ${exported} of ${group.length} conversation(s) from gemini.google.com.`);
 }
 
+// The job's "files" option: false (none), true (all) or "generated" / "uploaded" (one side only).
+// --files and --files-for choose which conversations get files; --files-kind chooses which side, and
+// on its own it means every conversation.
+function filesJobOption(flags, namedByFilesFor) {
+  const kind = String(flags.filesKind === true ? "" : flags.filesKind || "").trim().toLowerCase();
+  if (flags.filesKind !== undefined && !["generated", "uploaded"].includes(kind)) {
+    throw new Error("--files-kind must be generated or uploaded.");
+  }
+  const wanted = flags.files === true || (kind && !flags.filesFor) || namedByFilesFor;
+  return wanted ? (kind || true) : false;
+}
+
 // True when --files-for names this conversation: by id, or by a word from its title.
 function matchesFilesFor(filesFor, target) {
   const terms = String(filesFor === true ? "" : filesFor || "").split(",").map((term) => term.trim().toLowerCase()).filter(Boolean);
@@ -323,7 +337,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
 
   const jobs = [];
   for (const [index, target] of targets.entries()) {
-    const files = flags.files === true || matchesFilesFor(flags.filesFor, target);
+    const files = filesJobOption(flags, matchesFilesFor(flags.filesFor, target));
     const jobId = await createJob({
       conversationId: target.id,
       allowIncomplete: flags.allowIncomplete === true,
@@ -365,7 +379,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
     try {
       const done = await waitForBatchJob(job.jobId, timeoutMs, () => lastProgressAt, label);
       const saved = await saveJobBundle(job.jobId, done, outDir, flags);
-      console.log(`${label}\n  Exported: ${origin}/c/${job.id}${job.files ? " (with files)" : ""}`);
+      console.log(`${label}\n  Exported: ${origin}/c/${job.id}${job.files ? (typeof job.files === "string" ? ` (with ${job.files} files)` : " (with files)") : ""}`);
       printSaved(saved, "  ");
       outcomes.push({ ...job, ok: true, saved });
     } catch (error) {
