@@ -4,6 +4,11 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.17.2
+
+- Added a portable `convo-vault` Agent Skill for installer and catalog distribution.
+- GitHub releases now include a local MCP bundle and publish its metadata to the official MCP Registry.
+
 ## 0.17.1
 
 - ChatGPT product cards now save resolved thumbnails in the export ZIP and display them in Markdown and PDF. Thumbnail download failures are included in the image results.

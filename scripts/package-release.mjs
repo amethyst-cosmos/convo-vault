@@ -55,11 +55,49 @@ await copyEntry(path.join(outRoot, "convo-vault-extension"), path.join(stagingDi
 
 await fs.rm(zipPath, { force: true });
 await createZipFromDirectory(stagingRoot, zipPath);
+if (process.argv.includes("--mcpb")) await createMcpBundle();
 await fs.rm(stagingRoot, { recursive: true, force: true });
 
 const { size } = await fs.stat(zipPath);
 console.log(`Release package: ${zipPath} (${(size / 1024 / 1024).toFixed(1)} MB)`);
 console.log("Unzip it, then run: node cli/convo-vault.mjs setup");
+
+async function createMcpBundle() {
+  // Use a flat production dependency tree so the archive is portable and
+  // unpacking doesn't have to recreate pnpm's local symlinks.
+  const install = spawnSync("pnpm", ["install", "--prod", "--frozen-lockfile", "--config.node-linker=hoisted"], {
+    cwd: path.join(stagingDir, "renderer"),
+    stdio: "inherit",
+    shell: process.platform === "win32"
+  });
+  if (install.status !== 0) throw new Error("Could not install the MCP bundle's renderer dependencies.");
+
+  const manifest = {
+    manifest_version: "0.3",
+    name: "convo-vault",
+    display_name: "Convo Vault",
+    version,
+    description: "Export ChatGPT, Grok and Gemini chats to Markdown, PDF and structured files on your computer.",
+    author: { name: "amethyst-cosmos", url: "https://github.com/amethyst-cosmos" },
+    repository: { type: "git", url: "https://github.com/amethyst-cosmos/convo-vault" },
+    homepage: "https://github.com/amethyst-cosmos/convo-vault",
+    icon: "extension/icons/icon-128.png",
+    license: "MIT",
+    server: {
+      type: "node",
+      entry_point: "cli/mcp-server.mjs",
+      mcp_config: { command: "node", args: ["${__dirname}/cli/mcp-server.mjs"] }
+    },
+    compatibility: { platforms: ["darwin", "win32", "linux"], runtimes: { node: ">=20" } }
+  };
+  await fs.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  // The runtime imports the packages directly. pnpm's command shims can be
+  // platform-specific and may point to files through symlinks.
+  await fs.rm(path.join(stagingDir, "renderer", "node_modules", ".bin"), { recursive: true, force: true });
+  const bundlePath = path.join(outRoot, `${packageName}.mcpb`);
+  await createZipFromDirectory(stagingDir, bundlePath);
+  console.log(`MCP bundle: ${bundlePath}`);
+}
 
 async function copyEntry(source, destination) {
   const stat = await fs.stat(source);

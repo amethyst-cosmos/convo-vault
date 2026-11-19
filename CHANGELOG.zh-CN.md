@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.md)
 
+## 0.17.2
+
+- 新增可通过通用安装器和 Skill 目录分发的 `convo-vault` Agent Skill。
+- GitHub 发布包新增本地 MCP 安装包，并向官方 MCP Registry 登记版本。
+
 ## 0.17.1
 
 - ChatGPT 商品卡片的缩略图会随 ZIP 保存，并显示在 Markdown 和 PDF 中。下载失败会计入图片结果。
