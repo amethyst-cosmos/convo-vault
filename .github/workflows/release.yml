@@ -35,9 +35,62 @@ jobs:
           npm test
 
       - name: Build release package
-        run: npm run package
+        run: npm run package -- --mcpb
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/convo-vault-*.zip --title "Convo Vault ${GITHUB_REF_NAME#v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/convo-vault-*.zip dist/convo-vault-*.mcpb --title "Convo Vault ${GITHUB_REF_NAME#v}" --generate-notes
+
+  registry:
+    name: Publish official MCP Registry entry
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MCP_PUBLISHER_RELEASE: v1.8.9
+
+    steps:
+      - name: Install verified MCP publisher
+        run: |
+          gh release download "$MCP_PUBLISHER_RELEASE" --repo modelcontextprotocol/registry --pattern mcp-publisher_linux_amd64.tar.gz
+          echo '4d527ca8f1ced0394c962dc925c2a4a4addef441cbefd62501c875e9481823a8  mcp-publisher_linux_amd64.tar.gz' | sha256sum --check
+          tar -xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+
+      - name: Describe the published MCP bundle
+        run: |
+          asset="convo-vault-${GITHUB_REF_NAME#v}.mcpb"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$asset"
+          node --input-type=module - "$asset" <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const asset = process.argv[2];
+          const { GITHUB_REPOSITORY: repository, GITHUB_REF_NAME: tag } = process.env;
+          const owner = repository.split('/')[0];
+          const url = `https://github.com/${repository}`;
+          const server = {
+            $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
+            name: `io.github.${owner}/convo-vault`,
+            title: 'Convo Vault',
+            description: 'Export signed-in ChatGPT, Grok and Gemini chats to local Markdown, PDF and JSON.',
+            repository: { url, source: 'github' },
+            version: tag.slice(1),
+            packages: [{
+              registryType: 'mcpb',
+              identifier: `${url}/releases/download/${tag}/${asset}`,
+              fileSha256: createHash('sha256').update(readFileSync(asset)).digest('hex'),
+              transport: { type: 'stdio' }
+            }]
+          };
+          writeFileSync('server.json', `${JSON.stringify(server, null, 2)}\n`);
+          NODE
+
+      - name: Publish using GitHub OIDC
+        run: |
+          ./mcp-publisher validate
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

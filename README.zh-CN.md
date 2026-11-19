@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.17.1-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.17.2-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.17.1`
+当前版本：`0.17.2`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -190,6 +190,8 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 | `*.payload.json`、`*.conversation.json`、`*.data.json` | 完整导出数据和对话元数据，可用于重新渲染 |
 
 ## 命令行
+
+运行 `npx skills add amethyst-cosmos/convo-vault --skill convo-vault` 可以安装通用 Agent Skill。支持桌面安装包的 MCP 客户端可以使用 [GitHub Releases](https://github.com/amethyst-cosmos/convo-vault/releases) 上的 `.mcpb`。导出需要在 Ego Lite 里登录聊天网站，或使用已加载 Convo Vault 扩展并登录的浏览器。
 
 ```bash
 node cli/convo-vault.mjs export https://chatgpt.com/c/<id>         # 链接（ChatGPT、Grok、Gemini）或 ChatGPT 的对话 id 都行

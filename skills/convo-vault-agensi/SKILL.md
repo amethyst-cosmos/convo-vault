@@ -1,7 +1,8 @@
 ---
 name: Convo Vault Chat Exporter
 description: Chat exporter for ChatGPT, Grok and Gemini. Export conversations, one, several or a whole ChatGPT project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT, Grok or Gemini conversations, names a ChatGPT project, or gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT、Grok、Gemini 对话。
-summary: A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it saves each chat on your computer as Markdown, PDF and structured data. Best with the ego lite browser: one-step export, no extension to install.
+summary: >-
+  A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it saves each chat on your computer as Markdown, PDF and structured data. Best with the ego lite browser: one-step export, no extension to install.
 version: "1.3"
 tags: chat-exporter, chatgpt, grok, gemini, export, archive, markdown, pdf, jsonl, knowledge-base, backup
 keywords: chat exporter, chatgpt export, grok export, gemini export, ai chat backup, conversation archive, agent-ready knowledge pack
