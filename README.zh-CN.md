@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.17.0-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.17.1-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.17.0`
+当前版本：`0.17.1`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -209,6 +209,7 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 | `list` | 列出对话（最近的，或 `--project 名称` 里的）；`--json` 输出数据 |
 | `verify` | 确认浏览器有响应（ego lite 或扩展） |
 | `doctor` | 自检：依赖、扩展构建、浏览器、skill |
+| `doctor --debug-pack [--from EXPORT.zip]` | 保存可分享的诊断 ZIP，可选附加导出统计 |
 | `update` | 拉取最新版本、重新安装并重新加载扩展（git 克隆） |
 | `reload` | 重建后让扩展自己重新加载（ego lite 不需要） |
 | `skill install` | 重新安装 Claude 和 Codex 的 skill |

@@ -2,7 +2,7 @@
 name: Convo Vault Chat Exporter
 description: Chat exporter for ChatGPT, Grok and Gemini. Export conversations, one, several or a whole ChatGPT project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT, Grok or Gemini conversations, names a ChatGPT project, or gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT、Grok、Gemini 对话。
 summary: A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it saves each chat on your computer as Markdown, PDF and structured data. Best with the ego lite browser: one-step export, no extension to install.
-version: 0.4.0
+version: "1.3"
 tags: chat-exporter, chatgpt, grok, gemini, export, archive, markdown, pdf, jsonl, knowledge-base, backup
 keywords: chat exporter, chatgpt export, grok export, gemini export, ai chat backup, conversation archive, agent-ready knowledge pack
 use_cases: Back up an important ChatGPT, Grok or Gemini conversation, Export every conversation in a ChatGPT project at once, Turn a long chat into Markdown and PDF, Feed a conversation to another agent, Keep the model's thinking and tool trace with the chat
@@ -102,6 +102,18 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" update --no-skill
 ```
 
 It pulls the latest version, rebuilds the extension and reloads it in the browser by itself. The user does not need to open the Extensions page or click anything. Exports also reload an out-of-date extension on their own once the project has been updated, so there is nothing to tell the user to refresh. Only if the output says the extension did not take the reload, ask the user to click the reload icon on the Extensions page once. With ego lite there is nothing to reload: every export runs the current version.
+
+Convo Vault 0.17.1 and later save resolved ChatGPT product-card thumbnails in the ZIP, Markdown and PDF. If an older install misses those images, explain that the user can update their Git checkout with the command above or get the latest [GitHub release](https://github.com/amethyst-cosmos/convo-vault/releases) for a ZIP install.
+
+### Share a diagnostic report
+
+When the user asks for a shareable Debug pack, run:
+
+```
+node "$HOME/convo-vault/cli/convo-vault.mjs" doctor --debug-pack --out "<directory>"
+```
+
+Add `--from "<export.zip>"` when the user wants aggregate counts from a specific export. The Debug ZIP contains version, environment checks and optional counts. Conversation text, images, filenames, links, logs and local paths are excluded. Give the user the Debug ZIP path so they can share it.
 
 ## 3. Ask once about files
 

@@ -1497,6 +1497,22 @@ a {
   line-height: 1.3;
 }
 
+.dil-image-loaded {
+  padding: 0;
+  position: relative;
+}
+
+.dil-image-loaded[style*="aspect-ratio"] .dil-image-content {
+  position: absolute;
+  height: 100%;
+}
+
+.dil-image-content {
+  display: block;
+  width: 100%;
+  object-fit: contain;
+}
+
 .dil-writing {
   border: 1px solid #e3e3e3;
   border-radius: 14px;

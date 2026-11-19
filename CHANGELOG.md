@@ -4,6 +4,13 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.17.1
+
+- ChatGPT product cards now save resolved thumbnails in the export ZIP and display them in Markdown and PDF. Thumbnail download failures are included in the image results.
+- Exported source links omit the internal job marker.
+- `doctor --debug-pack` creates a shareable ZIP with version, runtime and check status. Add `--from EXPORT.zip` to include aggregate counts. Conversation text, images, filenames, links and logs are excluded.
+- The Agensi skill documents the product image fix and how to create a shareable Debug pack.
+
 ## 0.17.0
 
 Download only the files ChatGPT generated, or only the ones you uploaded. Also fixes Gemini replies that are only a generated picture.

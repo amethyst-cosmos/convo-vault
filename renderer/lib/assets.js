@@ -110,7 +110,18 @@ function rewriteEmbeddedImageAssets(payload, assetManifest, options = {}) {
     return {
       ...message,
       markdown: rewriteMarkdownImages(message?.markdown, assetsBySha, replacementCache, localImageAssetMap, options),
-      thinkingMarkdown: rewriteMarkdownImages(message?.thinkingMarkdown, assetsBySha, replacementCache, localImageAssetMap, options)
+      thinkingMarkdown: rewriteMarkdownImages(message?.thinkingMarkdown, assetsBySha, replacementCache, localImageAssetMap, options),
+      ...(Array.isArray(message.dil) ? { dil: message.dil.map((block) => {
+        if (!block?.imageSources) return block;
+        const imageSources = Object.fromEntries(Object.entries(block.imageSources).flatMap(([id, source]) => {
+          const local = resolveLocalImageAsset(source, localImageAssetMap);
+          const replacement = options.externalize
+            ? assetsBySha.get(local?.sha256)?.cachePath || source
+            : local?.renderUrl || local?.fileUrl;
+          return replacement ? [[id, replacement]] : [];
+        }));
+        return { ...block, imageSources };
+      }) } : {})
     };
   });
 

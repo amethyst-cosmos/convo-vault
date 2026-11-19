@@ -247,6 +247,29 @@ test("Fast builder attaches the DIL program to the assistant message", async () 
   assert.equal(messages[0].dil, undefined);
 });
 
+test("Fast capture stages the resolved product thumbnail as a Markdown image", async () => {
+  const fast = await loadFastModule();
+  const thumbnail = "https://images.openai.com/thumbnails/example.png";
+  const [message] = fast.buildMessagesFromConversationApi({ messages: [apiMessage("a1", "assistant",
+    '<AsyncImage query="Desk lamp"/>', {
+      channel: "final",
+      end_turn: true,
+      metadata: { model_dil_v2: {
+        code: 'DIL.render(__dil.jsx(AsyncImage, {"__resolutionId":"r1"}))',
+        appData: { opGenui: { componentResults: {
+          r1: { componentName: "AsyncImage", state: { images: [{
+            title: "Desk lamp [blue]", image_search_query: "Desk lamp", thumbnail_url: thumbnail,
+            content_url: "https://images.openai.com/content/example.png"
+          }] } },
+          unused: { componentName: "AsyncImage", state: { images: [{ thumbnail_url: "https://images.openai.com/unused.png" }] } }
+        } } }
+      } }
+    })] });
+  assert.deepEqual({ ...message.dil[0].imageSources }, { r1: thumbnail });
+  assert.equal(message.markdown, `![Desk lamp blue](${thumbnail})`);
+  assert.equal(message.imageCount, 1);
+});
+
 test("Fast builder keeps a final answer whose text looks like JSON", async () => {
   const fast = await loadFastModule();
   const messages = fast.buildMessagesFromConversationApi({
@@ -434,6 +457,7 @@ async function loadMarkupModule() {
 async function loadFastModule() {
   const source = (await Promise.all([
     "chatgpt-markup.js",
+    "capture-validation.js",
     "conversation-manifest.js",
     "agent-trace.js",
     "chatgpt-files.js",

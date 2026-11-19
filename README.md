@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.0-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.1-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.17.0`
+Current version: `0.17.1`
 
 **Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
 
@@ -224,6 +224,7 @@ Several conversations run **in one tab, one after another**, so nothing pops up 
 | `list` | List conversations (all recent ones, or `--project NAME`); `--json` for data |
 | `verify` | Confirm your browser answers (ego lite, or the extension) |
 | `doctor` | Check dependencies, extension build, browsers and skills |
+| `doctor --debug-pack [--from EXPORT.zip]` | Save a shareable diagnostic ZIP with check results and optional aggregate export counts |
 | `update` | Pull the latest version, reinstall and reload the extension (git checkouts) |
 | `reload` | Make the extension reload itself after a rebuild (not needed in ego lite) |
 | `skill install` | Reinstall the Claude and Codex skills |
