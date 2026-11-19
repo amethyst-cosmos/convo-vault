@@ -191,6 +191,7 @@
 
     let primaryMessage = primaryNode?.message || null;
     const textParts = [];
+    const dilBlocks = [];
     const imagePointers = [];
     const fileEntries = [];
     const citations = [];
@@ -257,6 +258,8 @@
       // Collect text and image parts
       const content = msg.content;
       if (isDil && !isThinking && !isInternalTool) {
+        const block = buildDilRenderBlock(msg, markupContext.citationSources);
+        if (block) dilBlocks.push(block);
         const fallbackMarkdown = getDilFallbackMarkdown(msg);
         const dil = chooseDilMarkdown(getApiStringParts(content).join("\n\n"), fallbackMarkdown);
         if (markupStats) {
@@ -265,9 +268,8 @@
           if (dil.origin === "source" && fallbackMarkdown) markupStats.dilRenderedFromSource += 1;
           markupStats.dilUnexpandedLoops += dil.unexpandedLoops;
         }
-        if (dil.markdown.trim()) {
-          textParts.push(renderApiResponseMarkup(dil.markdown, markupContext));
-        }
+        const markdown = addDilImagesToMarkdown(renderApiResponseMarkup(dil.markdown, markupContext), block);
+        if (markdown.trim()) textParts.push(markdown);
       }
 
       if (content && typeof content === "object") {
@@ -314,12 +316,6 @@
     const combinedProse = uniqueStrings(textParts).join("\n\n");
     const combinedImages = imagePointers.join("\n\n");
     const combinedFiles = uniqueStrings(fileEntries).join("\n\n");
-
-    const dilBlocks = nodes
-      .map((node) => node?.message)
-      .filter((msg) => msg && isDilMessage(msg) && !isApiThinkingNode(msg) && !isApiInternalToolCallNode(msg))
-      .map((msg) => buildDilRenderBlock(msg, markupContext.citationSources))
-      .filter(Boolean);
 
     let markdown = cleanApiMarkdown([
       combinedProse,

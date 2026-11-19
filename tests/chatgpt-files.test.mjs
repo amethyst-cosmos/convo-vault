@@ -98,6 +98,27 @@ test("downloadChatGptFiles stores what it can and gives every failure its own re
   assert.ok(requests.some((url) => url.includes("/interpreter/download") && url.includes("sandbox_path=%2Fmnt%2Fdata%2Fa.docx") && url.includes("message_id=m")));
 });
 
+test("downloadChatGptFiles keeps only the generated or only the uploaded side when asked", async () => {
+  const replies = [
+    { match: "/files/download/file_up", reply: () => json(200, { status: "success", download_url: "/dl/up", file_size_bytes: 2 }) },
+    { match: "/dl/up", reply: () => bytes("up", "text/plain") },
+    { match: "/interpreter/download", reply: () => json(200, { status: "success", download_url: "/dl/gen", file_size_bytes: 3 }) },
+    { match: "/dl/gen", reply: () => bytes("gen", "text/plain") }
+  ];
+  const messages = [{ fileRefs: [
+    { key: "upload:file_up", kind: "upload", fileId: "file_up", name: "mine.txt", messageId: "m" },
+    { key: "generated:m:/mnt/data/out.txt", kind: "generated", name: "out.txt", messageId: "m", sandboxPath: "/mnt/data/out.txt" }
+  ] }];
+
+  const generated = await load(replies).api.downloadChatGptFiles(messages, { kind: "generated" });
+  const uploaded = await load(replies).api.downloadChatGptFiles(messages, { kind: "uploaded" });
+  const both = await load(replies).api.downloadChatGptFiles(messages, {});
+
+  assert.deepEqual(Object.keys(generated.files), ["generated:m:/mnt/data/out.txt"]);
+  assert.deepEqual(Object.keys(uploaded.files), ["upload:file_up"]);
+  assert.deepEqual(Object.keys(both.files).sort(), ["generated:m:/mnt/data/out.txt", "upload:file_up"]);
+});
+
 test("a server error is retried once, then reported", async () => {
   let calls = 0;
   const { api } = load([

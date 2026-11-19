@@ -33,6 +33,7 @@ Before exporting, ask the user one short question, in their language, with the d
 
 - A clear yes ("yes", "all of them", "include the attachments", "连文件一起下") → add `--files`.
 - Anything else → leave `--files` off: "no", a vague or unrelated reply, no reply, or a setting where you cannot ask. Do not ask twice or press.
+- Only one side wanted ("only what ChatGPT generated", "just my uploads", "只下载 GPT 生成的附件") → add `--files-kind generated` (what ChatGPT made) or `--files-kind uploaded` (what the user attached) instead of `--files`. It needs no separate yes: the request already says it.
 - Skip the question when the user already said it in the request ("download the attachments too", "just the conversation, no files").
 - With several conversations, ask once; if the user wants files for only some of them, use `--files-for` with their names.
 
@@ -51,6 +52,7 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 - The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
 - A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
+- One side only: `--files-kind generated` or `--files-kind uploaded`. Alone it applies to every conversation; with `--files-for` only to the named ones. The side left out is listed in the manifest as "not requested", not as a failure.
 - Files for only some: `--files-for "invoice,report"` downloads files only for the conversations whose title contains one of those words (or whose id is given). `--files` means every conversation. Use it when the user wants attachments for some conversations and not others.
 
 ## 4. After it finishes

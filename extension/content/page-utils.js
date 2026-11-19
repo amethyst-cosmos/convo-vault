@@ -24,9 +24,16 @@
   }
 
   function getExportSourceUrl() {
-    return activeExportContext?.conversationId
-      ? `${location.origin}/c/${encodeURIComponent(activeExportContext.conversationId)}`
-      : location.href;
+    if (activeExportContext?.conversationId) {
+      return `${location.origin}/c/${encodeURIComponent(activeExportContext.conversationId)}`;
+    }
+    const url = new URL(location.href);
+    const hash = new URLSearchParams(url.hash.slice(1));
+    if (hash.has(AUTO_EXPORT_HASH_KEY)) {
+      hash.delete(AUTO_EXPORT_HASH_KEY);
+      url.hash = hash.toString();
+    }
+    return url.href;
   }
 
   function cleanTitle(title) {

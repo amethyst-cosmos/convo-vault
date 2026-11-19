@@ -23,6 +23,7 @@ import {
 import { installClaudeDesktopMcp, mcpSnippets } from "./lib/mcp.mjs";
 import { installSkill, skillStatus } from "./lib/skill.mjs";
 import { extractZip, readZip } from "./lib/zip-reader.mjs";
+import { writeDebugPack } from "./lib/debug-pack.mjs";
 
 const CLAIM_TIMEOUT_MS = 25_000;
 const EXPORT_TIMEOUT_MS = 15 * 60_000;
@@ -41,6 +42,7 @@ Usage:
   convo-vault update
   convo-vault reload [--browser NAME]
   convo-vault doctor
+  convo-vault doctor --debug-pack [--from EXPORT.zip] [--out DIR]
   convo-vault skill install [--agents auto|claude|codex|all] [--dir FOLDER]
   convo-vault mcp install [--client claude-desktop]   (or: mcp config)
   convo-vault backend start|stop|status
@@ -52,6 +54,8 @@ Export options:
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
+  --files-kind KIND    Only one side's files: generated (what ChatGPT made) or uploaded (what you attached).
+                       On its own it applies to every conversation; with --files-for, only to those.
   --files-for A,B      Only for the conversations whose title contains A or B (or whose id is A or B)
   --project NAME       Export every conversation in that project (a name, id or project link)
   --keep-tab           Leave the chat tab open after exporting
@@ -75,7 +79,7 @@ try {
     case "verify": await verify(flags); break;
     case "update": await update(flags); break;
     case "reload": await reloadExtension(flags); break;
-    case "doctor": await doctor(); break;
+    case "doctor": await doctor(flags); break;
     case "skill":
       if (positional[0] !== "install") throw new Error("Usage: convo-vault skill install");
       await printSkillInstall(flags.agents || "auto", flags.dir);
@@ -93,7 +97,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "limit"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "filesKind", "limit", "from"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -164,7 +168,7 @@ async function exportConversation(input, flags) {
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
       pdf: flags.pdf !== false,
-      files: flags.files === true
+      files: filesJobOption(flags, false)
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
     openInBrowser(`${conversationUrl}#convo-vault-job=${jobId}`, browser, { background: true });
@@ -303,6 +307,18 @@ async function exportOneByOne(group, flags) {
   console.log(`\nExported ${exported} of ${group.length} conversation(s) from gemini.google.com.`);
 }
 
+// The job's "files" option: false (none), true (all) or "generated" / "uploaded" (one side only).
+// --files and --files-for choose which conversations get files; --files-kind chooses which side, and
+// on its own it means every conversation.
+function filesJobOption(flags, namedByFilesFor) {
+  const kind = String(flags.filesKind === true ? "" : flags.filesKind || "").trim().toLowerCase();
+  if (flags.filesKind !== undefined && !["generated", "uploaded"].includes(kind)) {
+    throw new Error("--files-kind must be generated or uploaded.");
+  }
+  const wanted = flags.files === true || (kind && !flags.filesFor) || namedByFilesFor;
+  return wanted ? (kind || true) : false;
+}
+
 // True when --files-for names this conversation: by id, or by a word from its title.
 function matchesFilesFor(filesFor, target) {
   const terms = String(filesFor === true ? "" : filesFor || "").split(",").map((term) => term.trim().toLowerCase()).filter(Boolean);
@@ -323,7 +339,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
 
   const jobs = [];
   for (const [index, target] of targets.entries()) {
-    const files = flags.files === true || matchesFilesFor(flags.filesFor, target);
+    const files = filesJobOption(flags, matchesFilesFor(flags.filesFor, target));
     const jobId = await createJob({
       conversationId: target.id,
       allowIncomplete: flags.allowIncomplete === true,
@@ -365,7 +381,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
     try {
       const done = await waitForBatchJob(job.jobId, timeoutMs, () => lastProgressAt, label);
       const saved = await saveJobBundle(job.jobId, done, outDir, flags);
-      console.log(`${label}\n  Exported: ${origin}/c/${job.id}${job.files ? " (with files)" : ""}`);
+      console.log(`${label}\n  Exported: ${origin}/c/${job.id}${job.files ? (typeof job.files === "string" ? ` (with ${job.files} files)` : " (with files)") : ""}`);
       printSaved(saved, "  ");
       outcomes.push({ ...job, ok: true, saved });
     } catch (error) {
@@ -741,22 +757,40 @@ async function printSkillInstall(target, dir) {
   for (const item of installed) console.log(`Installed for ${item.label}: ${item.path}`);
 }
 
-async function doctor() {
+async function doctor(flags) {
+  const manifest = JSON.parse(await fs.readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8"));
+  const health = await getHealth();
+  const builtManifest = await fs.readFile(path.join(repoRoot, "dist", "convo-vault-extension", "manifest.json"), "utf8").then(JSON.parse, () => null);
+  const browsers = listInstalledBrowsers();
+  const rendererDependenciesInstalled = backendDependenciesInstalled();
+  const extensionBuildCurrent = builtManifest?.version === manifest.version;
+  const rendererSupportsJobs = Boolean(health?.capabilities?.includes("jobs"));
+
+  if (flags.debugPack) {
+    const destination = await uniquePath(path.resolve(flags.out || ".", "convo-vault-debug.zip"));
+    await writeDebugPack(destination, {
+      version: manifest.version,
+      bundlePath: flags.from,
+      checks: {
+        rendererDependenciesInstalled,
+        rendererRunning: Boolean(health),
+        rendererSupportsJobs,
+        extensionBuildCurrent,
+        browserDetected: browsers.length > 0,
+        egoLiteDetected: browsers.some((browser) => browser.egoLite)
+      }
+    });
+    console.log(`Debug pack: ${destination}`);
+    return;
+  }
+
   const rows = [];
   const add = (ok, label, detail = "") => rows.push(`${ok ? "OK  " : "FAIL"} ${label}${detail ? `  ${detail}` : ""}`);
   const config = await readConfig();
-  const manifest = JSON.parse(await fs.readFile(path.join(repoRoot, "extension", "manifest.json"), "utf8"));
-
   add(Number(process.versions.node.split(".")[0]) >= 20, "Node 20+", process.version);
-  add(backendDependenciesInstalled(), "Renderer dependencies", backendDependenciesInstalled() ? "" : "run: setup");
-
-  const health = await getHealth();
-  add(Boolean(health?.capabilities?.includes("jobs")) || !health, "Renderer", health ? `running v${health.version} at ${BACKEND_URL}` : "not running (starts automatically on export)");
-
-  const builtManifest = await fs.readFile(path.join(repoRoot, "dist", "convo-vault-extension", "manifest.json"), "utf8").then(JSON.parse, () => null);
-  add(builtManifest?.version === manifest.version, "Extension build", builtManifest ? `v${builtManifest.version} (source v${manifest.version})` : "missing, run: setup");
-
-  const browsers = listInstalledBrowsers();
+  add(rendererDependenciesInstalled, "Renderer dependencies", rendererDependenciesInstalled ? "" : "run: setup");
+  add(rendererSupportsJobs || !health, "Renderer", health ? `running v${health.version} at ${BACKEND_URL}` : "not running (starts automatically on export)");
+  add(extensionBuildCurrent, "Extension build", builtManifest ? `v${builtManifest.version} (source v${manifest.version})` : "missing, run: setup");
   add(browsers.length > 0, "Browser", browsers.map((browser) => browser.name).join(", ") || "none found");
   add(true, "Preferred browser", config.browser || "not chosen yet (first export tries each installed browser)");
 

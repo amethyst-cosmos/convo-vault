@@ -107,7 +107,8 @@ test("staged local images render from files and remain portable bundle reference
       id: "user-staged-image",
       role: "user",
       turnNumber: 1,
-      markdown: `![Staged image](${source})`
+      markdown: `![Staged image](${source})`,
+      dil: [{ imageSources: { staged: source, unavailable: "https://images.openai.com/unavailable.png" } }]
     }]
   };
 
@@ -125,6 +126,8 @@ test("staged local images render from files and remain portable bundle reference
   assert.equal(manifest.outputObjectCounts.total, 1);
   assert.equal(renderPayload.messages[0].markdown, `![Staged image](render-assets/${sha256}.png)`);
   assert.equal(bundlePayload.messages[0].markdown, `![Staged image](${cachePath})`);
+  assert.deepEqual(renderPayload.messages[0].dil[0].imageSources, { staged: `render-assets/${sha256}.png` });
+  assert.deepEqual(bundlePayload.messages[0].dil[0].imageSources, { staged: cachePath, unavailable: "https://images.openai.com/unavailable.png" });
 });
 
 test("bundle payload externalizes and deduplicates repeated embedded image layers", async () => {

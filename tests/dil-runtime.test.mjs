@@ -92,6 +92,18 @@ test("DIL runtime leaves the Markdown fallback visible when a program throws", (
   assert.equal(root.childNodes.length, 0);
 });
 
+test("DIL runtime uses a staged thumbnail and leaves unavailable images as captions", () => {
+  const local = `render-assets/${"a".repeat(64)}.png`;
+  const { root } = runRuntime({
+    code: 'DIL.render(__dil.jsx("row", null, __dil.jsx(AsyncImage, { __resolutionId: "local", query: "Desk lamp" }), __dil.jsx(AsyncImage, { __resolutionId: "remote", query: "Unavailable" })))',
+    imageSources: { local, remote: "https://images.openai.com/remote.png" }
+  });
+  const html = serialize(root);
+  assert.ok(html.includes(`<img class="dil-image-content" src="${local}" alt="Desk lamp">`));
+  assert.match(html, /<span class="dil-image-caption">Unavailable<\/span>/);
+  assert.doesNotMatch(html, /images\.openai\.com/);
+});
+
 function runRuntime(block) {
   const document = new FakeDocument();
   const message = document.createElement("div");
@@ -173,6 +185,8 @@ class FakeElement extends FakeNode {
   }
 
   set href(value) { this.attributes.href = value; }
+  set src(value) { this.attributes.src = value; }
+  set alt(value) { this.attributes.alt = value; }
   set title(value) { this.attributes.title = value; }
   set innerHTML(value) { this.childNodes = []; this.rawHtml = value; }
 

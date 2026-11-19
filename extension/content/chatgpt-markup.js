@@ -396,14 +396,42 @@
       }
     }
 
+    const imageSources = Object.fromEntries(Object.entries(dil.appData?.opGenui?.componentResults || {})
+      .filter(([id, result]) => result?.componentName === "AsyncImage" && searchable.includes(JSON.stringify(id)))
+      .flatMap(([id, result]) => {
+        const image = result.state?.images?.[0];
+        const source = [image?.thumbnail_url, image?.content_url].find((value) =>
+          typeof value === "string" && /^https:\/\/images\.openai\.com\/[^\s]+$/i.test(value));
+        return source ? [[id, source.replace(/[()]/g, (char) => char === "(" ? "%28" : "%29")]] : [];
+      }));
+
     return {
       version: 2,
       code: dil.code,
       constants: dil.constants || {},
       appData: dil.appData || {},
       widgets,
-      citations
+      citations,
+      ...(Object.keys(imageSources).length ? { imageSources } : {})
     };
+  }
+
+  function addDilImagesToMarkdown(markdown, block) {
+    if (!block?.imageSources) return markdown;
+    const sources = new Set(extractMarkdownImageUrls(markdown));
+    for (const [id, source] of Object.entries(block.imageSources)) {
+      if (sources.has(source)) continue;
+      sources.add(source);
+      const image = block.appData.opGenui.componentResults[id].state.images[0];
+      const label = sanitizeApiMarkdownLabel(String(image.title || image.image_search_query || "Image").replace(/[[\]\\]/g, ""));
+      const reference = `![${label}](${source})`;
+      const query = String(image.image_search_query || "").trim();
+      const placeholder = query ? `*[Image search: ${escapeMarkdownLinkLabel(query)}]*` : "";
+      markdown = placeholder && markdown.includes(placeholder)
+        ? markdown.replace(placeholder, () => reference)
+        : [markdown, reference].filter(Boolean).join("\n\n");
+    }
+    return markdown;
   }
 
   function getCitationLabel(source) {

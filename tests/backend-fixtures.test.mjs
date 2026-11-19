@@ -301,14 +301,14 @@ test("backend renderer prepares and serves export bundles", async (t) => {
   assert.equal(fileResponse.ok, true, JSON.stringify(storedFile));
   assert.equal(storedFile.sha256, wordSha);
 
-  const filesPayload = (requested) => ({
+  const filesPayload = (requested, kind) => ({
     schemaVersion: 1,
     title: "File assets fixture",
     source: "https://chatgpt.com/c/file-assets",
     exportedAt: "2026-10-21T00:00:00.000Z",
     captureMode: "fast",
     messageCount: 2,
-    fileDownload: { requested, failures: requested ? { [fileRefs[1].key]: "lookup HTTP 404 (conversation_deleted)" } : {} },
+    fileDownload: { requested, ...(kind ? { kind } : {}), failures: requested && !kind ? { [fileRefs[1].key]: "lookup HTTP 404 (conversation_deleted)" } : {} },
     messages: [
       { id: "files-user", role: "user", turnNumber: 1, markdown: "[File: 题目:报告?.docx]", thinkingMarkdown: "", fileRefs: [fileRefs[0]] },
       { id: "files-assistant", role: "assistant", turnNumber: 2, markdown: "Here: [out.docx](sandbox:/mnt/data/out.docx)", thinkingMarkdown: "", fileRefs: [fileRefs[1]] }
@@ -346,6 +346,20 @@ test("backend renderer prepares and serves export bundles", async (t) => {
   assert.match(failedAsset.download.reason, /conversation_deleted/);
   assert.equal(failedAsset.sourceUrl, "sandbox:/mnt/data/out.docx");
   assert.deepEqual(withFiles.manifest.fileDownload, { requested: true, total: 2, stored: 1, failed: 1 });
+
+  // Only the uploaded side was asked for: the generated file is left out on purpose, not failed.
+  const secondSession = await (await fetch(`http://127.0.0.1:${port}/export-sessions`, { method: "POST", headers: { "X-Convo-Vault-Token": token } })).json();
+  await fetch(`http://127.0.0.1:${port}/export-sessions/${secondSession.sessionId}/files/${createHash("sha256").update(fileRefs[0].key).digest("hex")}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/msword", "X-Convo-Vault-Token": token },
+    body: wordBytes
+  });
+  const uploadedOnly = await prepareFiles(filesPayload(true, "uploaded"), secondSession.sessionId);
+  const leftOut = uploadedOnly.manifest.assets.find((asset) => asset.kind === "file" && asset.origin === "ai-generated");
+  assert.equal(leftOut.download.state, "not-requested");
+  assert.match(leftOut.download.reason, /left out: only uploaded files were requested/);
+  assert.equal(uploadedOnly.manifest.assets.find((asset) => asset.kind === "file" && asset.origin === "user-provided").download.state, "stored");
+  assert.equal(uploadedOnly.manifest.fileDownload.failed, 0);
 
   const withoutFiles = await prepareFiles(filesPayload(false));
   assert.equal([...withoutFiles.entries.keys()].some((name) => name.startsWith("assets/files/")), false);

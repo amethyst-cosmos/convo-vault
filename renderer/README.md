@@ -99,5 +99,5 @@ boxes, rows, grids, badges, icons, lists, tables, buttons, radio groups,
 citation chips, and writing/code widgets as HTML. Hooks return their initial
 state and actions do nothing. The page's Content-Security-Policy blocks all
 network access. If a program throws, the message shows the Markdown fallback.
-`AsyncImage` results carry only titles, so images render as captioned
-placeholders.
+Resolved `AsyncImage` thumbnails render from bundled image files. Unavailable
+images appear as captioned placeholders.

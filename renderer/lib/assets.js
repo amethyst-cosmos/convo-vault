@@ -110,7 +110,18 @@ function rewriteEmbeddedImageAssets(payload, assetManifest, options = {}) {
     return {
       ...message,
       markdown: rewriteMarkdownImages(message?.markdown, assetsBySha, replacementCache, localImageAssetMap, options),
-      thinkingMarkdown: rewriteMarkdownImages(message?.thinkingMarkdown, assetsBySha, replacementCache, localImageAssetMap, options)
+      thinkingMarkdown: rewriteMarkdownImages(message?.thinkingMarkdown, assetsBySha, replacementCache, localImageAssetMap, options),
+      ...(Array.isArray(message.dil) ? { dil: message.dil.map((block) => {
+        if (!block?.imageSources) return block;
+        const imageSources = Object.fromEntries(Object.entries(block.imageSources).flatMap(([id, source]) => {
+          const local = resolveLocalImageAsset(source, localImageAssetMap);
+          const replacement = options.externalize
+            ? assetsBySha.get(local?.sha256)?.cachePath || source
+            : local?.renderUrl || local?.fileUrl;
+          return replacement ? [[id, replacement]] : [];
+        }));
+        return { ...block, imageSources };
+      }) } : {})
     };
   });
 
@@ -308,6 +319,8 @@ function collectStructuredFileAssets(payload, assetsById, localFiles) {
   const storedByKey = new Map((Array.isArray(localFiles) ? localFiles : []).map((file) => [file.sourceKey, file]));
   const requested = payload?.fileDownload?.requested === true;
   const failures = payload?.fileDownload?.failures || {};
+  // "generated" or "uploaded": the other side was left out on purpose, not failed.
+  const onlyKind = payload?.fileDownload?.kind === "generated" ? "generated" : payload?.fileDownload?.kind === "uploaded" ? "upload" : "";
   const names = new Set();
 
   for (const message of Array.isArray(payload?.messages) ? payload.messages : []) {
@@ -339,6 +352,11 @@ function collectStructuredFileAssets(payload, assetsById, localFiles) {
           cachePath: stored.cachePath,
           bundlePath: `assets/files/${stored.sha256.slice(0, 8)}-${safeFileName(fileName)}`,
           download: { state: "stored" }
+        });
+      } else if (requested && onlyKind && ref.kind !== onlyKind) {
+        Object.assign(asset, {
+          storage: "reference-only",
+          download: { state: "not-requested", reason: `left out: only ${onlyKind === "upload" ? "uploaded" : "generated"} files were requested (--files-kind)` }
         });
       } else if (requested) {
         Object.assign(asset, {

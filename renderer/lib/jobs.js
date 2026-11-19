@@ -132,8 +132,9 @@ function createExportJob(body) {
       reload: body?.reload === true,
       // false skips the PDF: a data-only bundle needs no headless Chrome.
       pdf: body?.pdf !== false,
-      // true downloads uploaded and generated files into assets/files/; off by default.
-      files: body?.files === true,
+      // true downloads uploaded and generated files into assets/files/; "generated" or "uploaded"
+      // downloads only that side. Off by default.
+      files: normalizeFilesOption(body?.files),
       // Exports this conversation instead of the one open in the tab, so one tab can run a batch.
       conversationId: normalizeConversationId(body?.conversationId),
       // Asks for a list of conversations instead of an export: { project, limit }.
@@ -144,6 +145,10 @@ function createExportJob(body) {
   };
   exportJobs.set(jobId, job);
   return { ok: true, jobId, options: job.options };
+}
+
+function normalizeFilesOption(value) {
+  return value === "generated" || value === "uploaded" ? value : value === true;
 }
 
 function normalizeConversationId(value) {

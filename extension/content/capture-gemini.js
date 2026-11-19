@@ -293,7 +293,11 @@
 
     if (node.nodeType !== 1 || geminiIsHidden(node)) return "";
     const tag = geminiTag(node);
-    if (GEMINI_SKIPPED_TAGS.has(tag)) return "";
+    if (GEMINI_SKIPPED_TAGS.has(tag)) {
+      // A generated picture sits inside a button (click to enlarge): the button's own text is
+      // dropped, the picture is not. A reply that is only a picture would otherwise read as empty.
+      return tag === "button" ? geminiFindAll(node, (child) => geminiTag(child) === "img").map((image) => geminiImageMarkdown(image)).join("") : "";
+    }
 
     const inner = () => [...node.childNodes].map((child) => geminiNodeToMarkdown(child, ctx)).join("");
 

@@ -16,6 +16,7 @@
 
   const Fragment = Symbol("dil.fragment");
   const SPACING_PX = 4;
+  const LOCAL_IMAGE = /^(?:render-assets\/|assets\/sha256\/[a-f0-9]{2}\/[a-f0-9]{2}\/)[a-f0-9]{64}\.[a-z0-9]+$/i;
   const TEXT_SIZES = { "3xs": 10, "2xs": 11, xs: 12, sm: 13, md: 14, lg: 16, xl: 18, "2xl": 21, "3xl": 24 };
   const COLORS = {
     default: "#0d0d0d",
@@ -374,7 +375,8 @@
       },
       AsyncImage(props) {
         const state = componentResult(ctx, props);
-        return { type: "__image", props: { query: props.query || "", title: state?.images?.[0]?.title || "", aspectRatio: props.aspectRatio, maxWidth: props.maxWidth }, children: [] };
+        const source = ctx.imageSources[props.__resolutionId] || "";
+        return { type: "__image", props: { source, query: props.query || "", title: state?.images?.[0]?.title || "", aspectRatio: props.aspectRatio, maxWidth: props.maxWidth }, children: [] };
       },
       WritingBlock(props) {
         return { type: "__writing", props, children: props.children || [] };
@@ -412,6 +414,14 @@
     __image(props) {
       const frame = el("div", "dil-image", { maxWidth: sizeValue(props.maxWidth) || "100%" });
       if (props.aspectRatio) frame.style.aspectRatio = String(props.aspectRatio).replace(":", " / ");
+      if (LOCAL_IMAGE.test(props.source)) {
+        const image = el("img", "dil-image-content");
+        image.src = props.source;
+        image.alt = props.title || props.query || "Image";
+        frame.classList.add("dil-image-loaded");
+        frame.appendChild(image);
+        return frame;
+      }
       const caption = el("span", "dil-image-caption");
       caption.textContent = props.title || props.query || "Image";
       frame.appendChild(caption);
@@ -444,6 +454,7 @@
     let tree = null;
     const ctx = {
       appData: data.appData || {},
+      imageSources: data.imageSources || {},
       widgets: data.widgets && typeof data.widgets === "object" ? data.widgets : {},
       citations: data.citations || {}
     };
