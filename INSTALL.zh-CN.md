@@ -6,6 +6,14 @@
 
 ## 安装
 
+### 使用便携发布包
+
+先选一个存放程序的本地文件夹。从 [GitHub Releases](https://github.com/amethyst-cosmos/convo-vault/releases) 下载指定版本的 ZIP 和 SHA-256 校验文件，核对后解压到该文件夹。包内有预构建的扩展及渲染依赖，电脑需要 Node.js 20 或更新版本。
+
+在解压后的目录运行 `node cli/convo-vault.mjs setup --verify --no-open`。它会自动检查本地渲染服务是否响应，并记录安装位置，方便 Skill 之后直接调用。浏览器按下方步骤首次准备一次，每次导出的文件可以另选保存目录。
+
+### 从源码安装
+
 1. **确定位置**：用户没指定就装到 `~/convo-vault`。
 2. **取代码**：下面这条会跳过只有开发者才需要的文件（测试、文档图片、CI）：
 

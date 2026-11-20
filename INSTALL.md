@@ -6,6 +6,14 @@ A Chinese version is in [INSTALL.zh-CN.md](INSTALL.zh-CN.md).
 
 ## Install
 
+### Portable release ZIP
+
+Choose a local folder for the program. Download the versioned ZIP and its SHA-256 checksum from [GitHub Releases](https://github.com/amethyst-cosmos/convo-vault/releases), verify the ZIP, and extract it into that folder. The bundle includes the built extension and renderer dependencies and needs Node.js 20 or newer.
+
+From the extracted folder, run `node cli/convo-vault.mjs setup --verify --no-open`. This records the path for the skill and verifies that the local renderer responds. Prepare the browser once as described below. Choose where to save exported conversations separately.
+
+### Source checkout
+
 1. **Pick a location.** Use `~/convo-vault` unless the user names another.
 2. **Get the code.** This skips the files only developers need (tests, docs images, CI):
 

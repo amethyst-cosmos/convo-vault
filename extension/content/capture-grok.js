@@ -103,7 +103,7 @@
   function grokResponseToMessage(response, index) {
     const role = ["human", "user"].includes(String(response.sender || "").toLowerCase()) ? "user" : "assistant";
     const markdown = role === "user" ? grokUserMarkdown(response) : grokAssistantMarkdown(response);
-    const thinkingMarkdown = role === "assistant" ? grokThinkingMarkdown(response) : "";
+    const agentTrace = role === "assistant" ? grokAgentTrace(response) : null;
     const createdAt = Date.parse(response.createTime || "");
 
     return {
@@ -115,7 +115,8 @@
       timestamp: Number.isNaN(createdAt) ? "" : formatConversationTimestamp(createdAt / 1000),
       preview: truncatePreview(markdown.replace(/\s+/g, " "), 120),
       markdown,
-      thinkingMarkdown,
+      thinkingMarkdown: grokThinkingMarkdown(agentTrace),
+      ...(agentTrace ? { agentTrace } : {}),
       model: role === "assistant" ? String(response.model || "") : ""
     };
   }
@@ -205,48 +206,83 @@
     return [markdown, ...extras, footnotes.join("\n")].filter(Boolean).join("\n\n");
   }
 
-  function grokThinkingMarkdown(response) {
-    const lines = [];
-
-    for (const step of response.steps || []) {
-      for (const text of step?.text || []) {
-        const cards = String(text).match(GROK_TOOL_CARD_RE);
-
-        if (cards) {
-          cards.forEach((card) => lines.push(grokToolCardLine(card)));
-        } else if (String(text).trim()) {
-          lines.push(`🧠 **推理思考**: ${String(text).replace(/\s+/g, " ").trim()}`);
+  function grokAgentTrace(response) {
+    const events = [];
+    const addThought = (text) => {
+      const content = text.trim();
+      if (content) events.push({ kind: "thought", summary: "", content });
+    };
+    for (const step of Array.isArray(response.steps) ? response.steps : []) {
+      const parts = Array.isArray(step?.text) ? step.text : [step?.text];
+      for (const part of parts) {
+        if (typeof part !== "string") continue;
+        let offset = 0;
+        for (const card of part.matchAll(GROK_TOOL_CARD_RE)) {
+          addThought(part.slice(offset, card.index));
+          events.push(grokToolCardEvent(card[0]));
+          offset = card.index + card[0].length;
         }
+        addThought(part.slice(offset));
       }
     }
 
     const started = Date.parse(response.thinkingStartTime || "");
     const ended = Date.parse(response.thinkingEndTime || "");
-    const seconds = Number.isNaN(started) || Number.isNaN(ended) ? 0 : Math.max(0, Math.round((ended - started) / 1000));
+    const durationSeconds = Number.isFinite(started) && Number.isFinite(ended) && ended >= started
+      ? Math.round((ended - started) / 1000)
+      : null;
+    if (!events.length && durationSeconds == null) return null;
 
-    if (!lines.length && !seconds) {
-      return "";
-    }
+    const thoughts = events.filter((event) => event.kind === "thought").length;
+    return {
+      version: 2,
+      model: response.model ? { slug: String(response.model) } : null,
+      startedAt: Number.isFinite(started) ? new Date(started).toISOString() : "",
+      finishedAt: Number.isFinite(ended) ? new Date(ended).toISOString() : "",
+      durationSeconds,
+      events: events.map((event, index) => ({ seq: index + 1, offsetSeconds: null, ...event })),
+      stats: { events: events.length, thoughts, toolCalls: events.length - thoughts },
+      sources: []
+    };
+  }
 
+  function grokThinkingMarkdown(trace) {
+    if (!trace) return "";
+    const seconds = trace.durationSeconds;
     const duration = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
     const head = `> 💭 **Thinking Process${seconds ? ` (Worked for ${duration})` : ""}**`;
+    const lines = trace.events.map((event) => event.kind === "thought"
+      ? `🧠 **推理思考**: ${event.content.replace(/\s+/g, " ")}`
+      : grokToolCardLine(event));
     return lines.length ? `${head}\n>\n${lines.map((line) => `> - ${line}`).join("\n")}` : head;
   }
 
-  function grokToolCardLine(card) {
-    const name = card.match(/<xai:tool_name>([^<]*)<\/xai:tool_name>/)?.[1]?.trim() || "tool";
-    let args = {};
+  function grokToolCardEvent(card) {
+    const tool = card.match(/<xai:tool_name>([^<]*)<\/xai:tool_name>/)?.[1]?.trim() || "tool";
+    const input = card.match(/<!\[CDATA\[([\s\S]*?)\]\]>/)?.[1]?.trim() || "";
+    let args = null;
 
     try {
-      args = JSON.parse(card.match(/<!\[CDATA\[([\s\S]*?)\]\]>/)?.[1] || "{}").args || {};
+      const parsed = JSON.parse(input)?.args;
+      if (parsed && typeof parsed === "object") args = parsed;
     } catch (_) {
-      args = {};
+      // Keep the original card input if Grok sent a different format.
     }
+    return {
+      kind: "tool_call",
+      tool,
+      ...(input ? { input } : {}),
+      ...(args ? { arguments: args } : {}),
+      ...(typeof args?.query === "string" && args.query ? { queries: [args.query] } : {})
+    };
+  }
 
+  function grokToolCardLine(event) {
+    const args = event.arguments || {};
     if (args.query) return `🔍 **网页搜索**: ${args.query}`;
     if (args.url) return `🌐 **打开网页**: ${args.url}`;
     const firstText = Object.values(args).find((value) => typeof value === "string" && value);
-    return `🔧 **调用工具**: ${name}${firstText ? ` ${String(firstText).slice(0, 120)}` : ""}`;
+    return `🔧 **调用工具**: ${event.tool}${firstText ? ` ${firstText.slice(0, 120)}` : ""}`;
   }
 
   // The check the ChatGPT capture does against its message list, against Grok's tree: every

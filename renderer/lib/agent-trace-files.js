@@ -12,21 +12,40 @@ const { getProvider } = require("./provider.js");
 const HIDDEN_INPUT_NOTE = "ChatGPT stores web.run and functions.* calls with empty text, so search queries and those arguments are not recoverable; queries appear only when a search result group names them.";
 
 function buildAgentTraceFile(payload) {
-  const turns = collectTraceTurns(payload.messages || []);
+  const provider = getProvider(payload);
+  const messages = payload.messages || [];
+  const turns = collectTraceTurns(messages);
+  const answers = messages.filter((message) => message.role === "assistant");
+  const thoughts = turns.flatMap((turn) => turn.events.filter((event) => event.kind === "thought"));
+  const thoughtsWithContent = thoughts.filter((event) => typeof event.content === "string" && event.content.trim()).length;
+  const structuredAnswers = turns.filter((turn) => turn.events.some((event) => event.kind !== "answer")).length;
+  const textOnlyAnswers = answers.filter((message) => message.agentTrace?.version !== 2 && message.thinkingMarkdown).length;
+  const durationOnlyAnswers = turns.filter((turn) => turn.durationSeconds != null && !turn.events.some((event) => event.kind !== "answer")).length;
+  const notes = [
+    `Events follow ${provider.name}'s conversation order; offsetSeconds counts from the first event of the turn when timestamps are available.`,
+    `thought events are ${provider.name}'s stored reasoning summaries, not hidden chain-of-thought.`
+  ];
+  if (provider.id === "chatgpt") notes.push(HIDDEN_INPUT_NOTE);
+  if (provider.id === "grok") notes.push("The Grok trace contains recorded thought text and tool calls. Separate tool results and per-step timing are outside this capture.");
+  if (provider.id === "gemini") notes.push("The Gemini exporter currently captures answers and images. Its separate thinking panel is not captured.");
   return {
     schema: "convo-vault/agent-trace",
     version: 2,
     conversation: {
-      title: payload.title || `${getProvider(payload).name} Conversation`,
+      title: payload.title || `${provider.name} Conversation`,
       source: payload.source || "",
       exportedAt: payload.exportedAt || "",
       exporterVersion: payload.exporterVersion || ""
     },
-    notes: [
-      `Events follow ${getProvider(payload).name}'s conversation order; offsetSeconds counts from the first event of the turn.`,
-      `thought events are ${getProvider(payload).name}'s stored reasoning summaries, not hidden chain-of-thought.`,
-      HIDDEN_INPUT_NOTE
-    ],
+    notes,
+    coverage: {
+      answers: answers.length,
+      structuredAnswers,
+      textOnlyAnswers,
+      durationOnlyAnswers,
+      thoughtsWithContent,
+      thoughtsWithTitleOnly: thoughts.length - thoughtsWithContent
+    },
     turns,
     sources: buildSourceIndex(turns)
   };
@@ -42,7 +61,7 @@ function collectTraceTurns(messages) {
       return;
     }
     const trace = message.agentTrace;
-    if (message.role !== "assistant" || trace?.version !== 2 || !trace.events?.length) {
+    if (message.role !== "assistant" || trace?.version !== 2 || (!trace.events?.length && trace.durationSeconds == null)) {
       return;
     }
     turns.push({
@@ -50,7 +69,8 @@ function collectTraceTurns(messages) {
       messageId: message.id || "",
       timestamp: message.timestamp || "",
       prompt: String(prompt?.markdown || ""),
-      ...trace
+      ...trace,
+      events: trace.events || []
     });
   });
 
@@ -71,17 +91,22 @@ function buildSourceIndex(turns) {
 }
 
 function buildAgentTraceMarkdown(traceFile) {
-  const { conversation, turns, sources } = traceFile;
+  const { conversation, turns, sources, coverage, notes } = traceFile;
   const lines = [
     `# Agent trace: ${conversation.title}`,
     "",
-    `> Exported ${conversation.exportedAt || ""} · Convo Vault ${conversation.exporterVersion || ""} · ${turns.length} answers with a recorded process · ${sources.length} sources`,
-    `> Full content of every event is in the matching \`.agent-trace.json\` (turns[].events[]). ${HIDDEN_INPUT_NOTE}`,
+    `> Exported ${conversation.exportedAt || ""} · Convo Vault ${conversation.exporterVersion || ""} · ${sources.length} sources`,
+    `> Recorded steps: ${coverage.structuredAnswers} of ${coverage.answers} answers. Text only: ${coverage.textOnlyAnswers}. Duration only: ${coverage.durationOnlyAnswers}.`,
+    `> Thinking entries with a body: ${coverage.thoughtsWithContent}. Title only: ${coverage.thoughtsWithTitleOnly}.`,
+    `> Full content of recorded events is in the matching \`.agent-trace.json\` (turns[].events[]).`,
+    ...notes.map((note) => `> ${note}`),
     ""
   ];
 
   if (!turns.length) {
-    lines.push("*No thinking or tool activity was recorded for this conversation.*");
+    lines.push(coverage.textOnlyAnswers
+      ? "*The conversation Markdown contains the thinking text for this export.*"
+      : "*No structured thinking or tool activity was captured for this conversation.*");
     return lines.join("\n");
   }
 

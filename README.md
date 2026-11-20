@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.2-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.3-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -24,9 +24,9 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.17.2`
+Current version: `0.17.3`
 
-**Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the model's full thinking and tool trace.
+**Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the reasoning summaries and tool activity available from each chat site.
 
 Everything runs on your machine. Convo Vault reads the chat tab you are already signed in to (in ego lite directly, in Chrome, Edge or Brave through a small extension), and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
 
@@ -143,7 +143,7 @@ The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-v
 
 ### Grok
 
-Grok conversations work the same way: give the agent a `https://grok.com/c/<id>` link, or run `node cli/convo-vault.mjs export https://grok.com/c/<id>`. The extension reads Grok's own conversation API with the session your browser already has (no token, no scrolling) and checks that every message came back before it exports. The PDF and data files look the same as a ChatGPT export, labelled Grok; Grok's search steps become the thinking trace and its citations become footnotes.
+Grok conversations work the same way: give the agent a `https://grok.com/c/<id>` link, or run `node cli/convo-vault.mjs export https://grok.com/c/<id>`. The extension reads Grok's own conversation API with the session your browser already has (no token, no scrolling) and checks that every message came back before it exports. The PDF and data files look the same as a ChatGPT export, labelled Grok; Grok's recorded thinking steps, search queries and tool calls are saved in order in the trace files. The JSON preserves the stored tool inputs and the answer keeps its citations as footnotes.
 
 Images (the ones Grok generated and the ones you uploaded) are downloaded into the bundle; other attachments are listed by name. Not yet for Grok: downloading attachments, `list` and `--project`. A conversation with regenerated answers exports its newest branch and says how many alternatives it skipped. Links to several Grok conversations run in one grok.com tab, and a mix of ChatGPT and Grok links gets one tab per site.
 
@@ -169,7 +169,7 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the chat
 | `*.messages.jsonl` | One message per line, ready for search and RAG |
 | `*.qa-pairs.json` | Question and answer pairs |
 | `*.topics.json`, `*.entities.json` | Topic index; links, file names, dates |
-| `*.agent-trace.json` | Full thinking and tool trace per answer, in order, with complete tool outputs and a source index |
+| `*.agent-trace.json` | Recorded reasoning and tool activity in order, with trace coverage and available tool inputs, outputs and sources |
 | `*.agent-trace.md` | Readable version of the trace |
 | `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded; size and SHA-256 of each downloaded file |
 | `assets/files/` | Only with `--files` or `--files-kind`: the Word, PDF, zip... files uploaded to or generated in the conversation |
@@ -245,7 +245,7 @@ With manual controls on, open the conversation (ChatGPT, Grok or Gemini) and pre
 
 For ChatGPT and Grok, Convo Vault reads the site's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against the site's message list (ChatGPT by message id, Grok by its response tree); if anything is missing the export is blocked and says what. Gemini has no such API, so its page is read and scrolled instead (see Gemini above).
 
-You get everything the conversation has: every message, the model's thinking steps and tool calls in order with their full output, every web page it looked at and cited, images and generative UI. Uploaded and generated files are listed in the manifest and downloaded only when you ask for them (`--files`; the agent asks once, default no). Choosing what to keep is up to you afterwards.
+For ChatGPT and Grok, the export keeps recorded thinking and tool activity in order. Check the trace coverage for each export. Hidden reasoning, tool data the provider did not store, and Gemini's separate thinking panel are outside that coverage. Uploaded and generated files are listed in the manifest and downloaded only when you ask for them (`--files`; the agent asks once, default no). Choosing what to keep is up to you afterwards.
 
 ## Privacy and security
 

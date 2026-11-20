@@ -5,7 +5,7 @@ description: Chat exporter. Export a conversation from ChatGPT, Grok or Gemini i
 
 # Convo Vault: export a chat conversation
 
-Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the model's full thinking and tool trace. This skill runs it end to end. **Do not ask the user to open the extension or export by hand.** Run the command below.
+Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a local folder with `.md`, `.pdf`, structured JSON/JSONL, assets and the reasoning summaries and tool activity available from the chat site. This skill runs it end to end. **Do not ask the user to open the extension or export by hand.** Run the command below.
 
 ## 1. Find the conversation
 
@@ -43,7 +43,7 @@ Before exporting, ask the user one short question, in their language, with the d
 node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 ```
 
-- `scripts/run.mjs` finds the Convo Vault project, or installs it from GitHub the first time, then runs its CLI. It starts the local renderer if needed, opens the conversation in the user's browser, where it is exported by itself, and closes the tab when done. The user's browser must be signed in to the chat site. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
+- `scripts/run.mjs` uses the installation path recorded by `setup`, including a portable ZIP unpacked on a drive the user chose. When there is no installed copy, it uses the GitHub source checkout. It starts the local renderer if needed, opens the conversation in the user's browser, where it is exported by itself, and closes the tab when done. The user's browser must be signed in to the chat site. Expect 10 to 60 seconds; long conversations take longer. Run it in the foreground and wait, timeout at least 10 minutes.
 - **ego lite needs no extension, and is recommended.** If the user has ego lite (the `ego-browser` command exists), the CLI uses it first and runs the exporter in its page directly; nothing has to be installed in the browser. Add `--browser ego` to choose it explicitly. Chrome, Edge and Brave need the Convo Vault extension loaded once.
 - Progress goes to stderr. The last stdout lines list the result: the unpacked folder, the `.zip`, and the main files.
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
@@ -57,7 +57,7 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 
 ## 4. After it finishes
 
-- Tell the user where the folder is and list the key files: `*.md` (readable), `*.pdf`, `*.summary.md`, `*.agent-trace.md`.
+- Give the output folder and the key files, including `*.agent-trace.md` and `*.agent-trace.json` for the reasoning records available in ChatGPT or Grok. Check the trace coverage before describing a conversation as having a reasoning record. Gemini's separate thinking panel is currently outside the export.
 - If files were requested, report how many were stored and how many failed (`fileDownload` in `*.assets.manifest.json`: `requested`, `total`, `stored`, `failed`), and name the main failure reason. If files were not requested but the manifest lists some, you may tell the user they can ask for them and re-run with `--files`.
 - If the user wanted something done with the conversation (summarize, continue the work, extract decisions), read the `.md` or `*.messages.jsonl` from the folder and do it. Do not paste the whole conversation back.
 - The integrity gate can refuse an incomplete capture. Report that message to the user. Do not retry with `--allow-incomplete` unless they say they accept a partial export.

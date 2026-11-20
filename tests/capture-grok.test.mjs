@@ -3,6 +3,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import traceFiles from "../renderer/lib/agent-trace-files.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFile(path.join(repoRoot, "extension", "content", file), "utf8");
@@ -85,12 +86,31 @@ test("a Grok conversation becomes ordered messages with footnotes, a thinking tr
   assert.match(a1.thinkingMarkdown, /🔍 \*\*网页搜索\*\*: Claude AI subscription plans pricing/);
   assert.match(a1.thinkingMarkdown, /🌐 \*\*打开网页\*\*: https:\/\/www\.claude\.com\/pricing/);
   assert.match(a1.thinkingMarkdown, /🔧 \*\*调用工具\*\*: Calculator 20\*12/);
+  const recorded = traceFiles.buildAgentTraceFile({ provider: "grok", messages: result.messages });
+  assert.equal(recorded.coverage.structuredAnswers, 1);
+  assert.equal(recorded.turns[0].durationSeconds, 65);
+  assert.deepEqual(Array.from(recorded.turns[0].events, ({ seq, kind }) => [seq, kind]), [
+    [1, "thought"], [2, "tool_call"], [3, "tool_call"], [4, "tool_call"]
+  ]);
+  assert.equal(recorded.turns[0].events[3].arguments.expression, "20*12");
   assert.equal(u2.markdown, "And Max?\n\n📎 **Attachment**: plans.pdf");
   assert.equal(a2.thinkingMarkdown, "");
   assert.ok(a1.timestamp && a1.sourceMessageId === "a1");
   assert.equal(title(), "Claude Pro Subscription Price");
   assert.equal(result.completeness.complete, true);
   assert.ok(requests.every((request) => request.credentials === "include"), "the session cookies are used, no token");
+});
+
+test("Grok keeps thought text around tool cards and preserves the untruncated input", async () => {
+  const responses = standard();
+  const expression = "20*12+".repeat(30);
+  responses[1].steps = [{ text: `First paragraph.\n\nSecond paragraph.${card("Calculator", { expression })}Continue.` }];
+  const { collect } = await loadGrok(conversation(responses));
+  const { messages } = await collect();
+  const [before, tool, after] = messages[1].agentTrace.events;
+  assert.equal(before.content, "First paragraph.\n\nSecond paragraph.");
+  assert.equal(tool.arguments.expression, expression);
+  assert.equal(after.content, "Continue.");
 });
 
 test("a response that does not come back stops the export", async () => {

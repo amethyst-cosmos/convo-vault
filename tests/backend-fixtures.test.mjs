@@ -70,6 +70,10 @@ test("agent trace files keep every event in order and the full output only in JS
 
   assert.equal(data.agentTrace.version, 2);
   assert.equal(data.agentTrace.turns.length, 1);
+  assert.deepEqual(data.agentTrace.coverage, {
+    answers: 1, structuredAnswers: 1, textOnlyAnswers: 0, durationOnlyAnswers: 0,
+    thoughtsWithContent: 1, thoughtsWithTitleOnly: 0
+  });
   assert.equal(data.agentTrace.turns[0].prompt, "Find a repo");
   assert.equal(data.agentTrace.turns[0].events[4].output, longOutput);
   assert.deepEqual(data.agentTrace.sources, [{ url: "https://example.test/a", title: "Source A", domain: "example.test", turns: [2], cited: true }]);
