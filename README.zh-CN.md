@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.17.2-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.17.3-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,7 +24,7 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.17.2`
+当前版本：`0.17.3`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
@@ -70,7 +70,7 @@ ego lite 是一个允许本地程序操作网页的 Chromium 浏览器。Convo V
     </td>
     <td width="33%" valign="top">
       <h3>内容不丢</h3>
-      以聊天网站自己的消息清单为准逐条核对（ChatGPT、Grok；Gemini 只能核对页面上显示的内容，并会说明），缺一条就拒绝导出并说明原因。图片、引用、思考过程、生成式界面都保留。
+      以聊天网站自己的消息清单为准逐条核对（ChatGPT、Grok；Gemini 只能核对页面上显示的内容，并会说明），缺一条就拒绝导出并说明原因。图片、引用、平台提供的思考记录和生成式界面按各网站的可用能力保存。
     </td>
     <td width="33%" valign="top">
       <h3>全部在本机</h3>
@@ -161,7 +161,7 @@ skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到�
 
 ### Grok
 
-Grok 的对话用法一样：把 `https://grok.com/c/<id>` 链接给 Agent，或运行 `node cli/convo-vault.mjs export https://grok.com/c/<id>`。扩展用浏览器里已登录的会话读取 Grok 自己的对话接口（不要令牌、不滚动页面），导出前核对每条消息是否都取回。PDF 和数据文件的样式和 ChatGPT 的导出一致，只是名称标成 Grok；Grok 的搜索步骤成为思考记录，引用变成脚注。
+Grok 的对话用法一样：把 `https://grok.com/c/<id>` 链接给 Agent，或运行 `node cli/convo-vault.mjs export https://grok.com/c/<id>`。扩展用浏览器里已登录的会话读取 Grok 自己的对话接口（不要令牌、不滚动页面），导出前核对每条消息是否都取回。PDF 和数据文件的样式和 ChatGPT 的导出一致，只是名称标成 Grok；Grok 提供的思考步骤、搜索和工具调用按顺序写入轨迹，JSON 保留平台记录的完整工具参数，回答里的引用保留为脚注。
 
 图片（Grok 生成的和你上传的）会下载进导出包；其他附件只列出名称。Grok 暂不支持：下载附件、`list` 和 `--project`。有重新生成的回答时导出最新的分支，并说明跳过了几个备选回答。多个 Grok 链接在同一个 grok.com 标签页里依次导出，ChatGPT 和 Grok 的链接混在一起时每个网站一个标签页。
 
@@ -183,7 +183,7 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 | `*.messages.jsonl` | 逐条消息，适合检索和 RAG |
 | `*.qa-pairs.json` | 问答配对 |
 | `*.topics.json`、`*.entities.json` | 话题索引；链接、文件名、日期等实体线索 |
-| `*.agent-trace.json` | 完整思考过程：每个回答从提问到作答之间的思考摘要、工具调用和完整返回内容，按时间排序，附来源索引 |
+| `*.agent-trace.json` | 按顺序保存平台提供的思考摘要、工具活动与来源，并报告每条对话的轨迹覆盖情况 |
 | `*.agent-trace.md` | 同一份记录的可读版，长输出截断并指向 JSON |
 | `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因；已下载文件的大小和 SHA-256 |
 | `assets/files/` | 仅 `--files` 或 `--files-kind` 时有：对话里上传和生成的 Word、PDF、zip 等文件 |
@@ -230,7 +230,7 @@ node cli/convo-vault.mjs export --project "Research" --files-for "发票,报告"
 
 ChatGPT 和 Grok：Convo Vault 读的是网站自己的对话接口，也就是页面画出来的那份数据。它不会滚动或点击页面，所以很长的对话几秒就读完，标签页放在后台也行。读完后会对照网站的消息清单（ChatGPT 按消息 id，Grok 按回复树），缺任何一条都会拦截并说明。Gemini 没有这样的接口，所以读的是页面本身，并且要先滚动（见上面的 Gemini 一节）。
 
-导出的是对话里有的一切：每条消息、模型的思考步骤和工具调用（按顺序，含完整返回内容）、它看过和引用过的每个网页、图片和生成式界面。上传和生成的文件会列在清单里，只有你要求时才下载（`--files`，Agent 会问一次，默认不下）。留下哪些，由你导出后自己决定。
+ChatGPT 和 Grok 的轨迹按顺序保存平台提供的思考与工具活动，并分别统计有正文与只有标题的思考条目。轨迹的范围取决于平台保存的数据，Gemini 的独立思考面板目前未采集。上传和生成的文件列在清单里，需要时可通过 `--files` 下载。
 
 ## 安全与隐私
 

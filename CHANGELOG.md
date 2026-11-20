@@ -4,6 +4,12 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.17.3
+
+- The portable release ZIP includes the built extension and the renderer runtime dependencies. Setup can verify the local renderer and remember the chosen installation folder.
+- Grok's recorded thoughts and tool calls now appear in the structured trace files. The JSON preserves step order and stored tool arguments.
+- Trace files report coverage and describe the limits for each provider, including Gemini's separate thinking panel.
+
 ## 0.17.2
 
 - Added a portable `convo-vault` Agent Skill for installer and catalog distribution.

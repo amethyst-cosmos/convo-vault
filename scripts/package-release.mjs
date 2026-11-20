@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-// Builds dist/convo-vault-<version>.zip: the extension, the CLI, the local
-// renderer and the agent skill in one folder that runs after `setup`.
+// Builds a portable release with the CLI, prebuilt extension and renderer.
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -36,42 +37,51 @@ const include = [
 ];
 const skipNames = new Set(["node_modules", "tmp", ".DS_Store"]);
 
-const stagingRoot = path.join(outRoot, ".package-staging");
-const stagingDir = path.join(stagingRoot, packageName);
 const zipPath = path.join(outRoot, `${packageName}.zip`);
 
 // The setup command loads this prebuilt copy into the browser.
 const build = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "build-extension.mjs"), "--out-dir", outRoot], { stdio: "ignore" });
 if (build.status !== 0) throw new Error("Building the extension failed.");
 
-await fs.rm(stagingRoot, { recursive: true, force: true });
-await fs.mkdir(stagingDir, { recursive: true });
-
-for (const entry of include) {
-  await copyEntry(path.join(repoRoot, entry), path.join(stagingDir, entry));
+const stagingRoot = await fs.mkdtemp(path.join(outRoot, ".package-staging-"));
+const stagingDir = path.join(stagingRoot, packageName);
+try {
+  for (const entry of include) {
+    await copyEntry(path.join(repoRoot, entry), path.join(stagingDir, entry));
+  }
+  await copyEntry(path.join(outRoot, "convo-vault-extension"), path.join(stagingDir, "dist", "convo-vault-extension"));
+  await copyRuntimeDependencies(path.join(repoRoot, "renderer"), path.join(stagingDir, "renderer"));
+  await createZipFromDirectory(stagingRoot, zipPath);
+  const digest = createHash("sha256").update(await fs.readFile(zipPath)).digest("hex");
+  await fs.writeFile(`${zipPath}.sha256`, `${digest}  ${path.basename(zipPath)}\n`);
+  if (process.argv.includes("--mcpb")) await createMcpBundle();
+} finally {
+  await fs.rm(stagingRoot, { recursive: true, force: true });
 }
-
-await copyEntry(path.join(outRoot, "convo-vault-extension"), path.join(stagingDir, "dist", "convo-vault-extension"));
-
-await fs.rm(zipPath, { force: true });
-await createZipFromDirectory(stagingRoot, zipPath);
-if (process.argv.includes("--mcpb")) await createMcpBundle();
-await fs.rm(stagingRoot, { recursive: true, force: true });
 
 const { size } = await fs.stat(zipPath);
 console.log(`Release package: ${zipPath} (${(size / 1024 / 1024).toFixed(1)} MB)`);
-console.log("Unzip it, then run: node cli/convo-vault.mjs setup");
+console.log("Unzip it, then run: node cli/convo-vault.mjs setup --verify --no-open");
+
+async function copyRuntimeDependencies(source, destination, ancestors = []) {
+  // Copy the locked dependencies installed by the build, resolving pnpm's
+  // symlinks into normal folders that also work after unzipping on Windows.
+  const manifest = path.join(source, "package.json");
+  const { dependencies = {} } = JSON.parse(await fs.readFile(manifest, "utf8"));
+  const requireFromPackage = createRequire(manifest);
+  for (const name of Object.keys(dependencies)) {
+    const installed = requireFromPackage.resolve.paths(name)?.map((dir) => path.join(dir, name, "package.json")).find(existsSync);
+    if (!installed) throw new Error(`Renderer dependency ${name} is missing. Run pnpm install --frozen-lockfile in renderer first.`);
+
+    const packageDir = path.dirname(await fs.realpath(installed));
+    if (ancestors.includes(packageDir)) continue; // Node can find this dependency in a parent.
+    const target = path.join(destination, "node_modules", name);
+    await copyEntry(packageDir, target);
+    await copyRuntimeDependencies(packageDir, target, [...ancestors, packageDir]);
+  }
+}
 
 async function createMcpBundle() {
-  // Use a flat production dependency tree so the archive is portable and
-  // unpacking doesn't have to recreate pnpm's local symlinks.
-  const install = spawnSync("pnpm", ["install", "--prod", "--frozen-lockfile", "--config.node-linker=hoisted"], {
-    cwd: path.join(stagingDir, "renderer"),
-    stdio: "inherit",
-    shell: process.platform === "win32"
-  });
-  if (install.status !== 0) throw new Error("Could not install the MCP bundle's renderer dependencies.");
-
   const manifest = {
     manifest_version: "0.3",
     name: "convo-vault",
@@ -91,9 +101,6 @@ async function createMcpBundle() {
     compatibility: { platforms: ["darwin", "win32", "linux"], runtimes: { node: ">=20" } }
   };
   await fs.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  // The runtime imports the packages directly. pnpm's command shims can be
-  // platform-specific and may point to files through symlinks.
-  await fs.rm(path.join(stagingDir, "renderer", "node_modules", ".bin"), { recursive: true, force: true });
   const bundlePath = path.join(outRoot, `${packageName}.mcpb`);
   await createZipFromDirectory(stagingDir, bundlePath);
   console.log(`MCP bundle: ${bundlePath}`);

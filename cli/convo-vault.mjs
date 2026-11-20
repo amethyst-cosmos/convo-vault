@@ -37,7 +37,7 @@ Usage:
   convo-vault export <chatgpt-grok-or-gemini-url|conversation-id>... [options]
   convo-vault export --project NAME [options]
   convo-vault list [--project NAME|ID|URL] [--limit N] [--json]
-  convo-vault setup [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
+  convo-vault setup [--verify] [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
   convo-vault verify [--browser NAME]
   convo-vault update
   convo-vault reload [--browser NAME]
@@ -530,10 +530,19 @@ async function setup(flags) {
   }
 
   const extensionDir = await ensureExtensionBuilt();
-  const skill = await installSkillBestEffort(flags);
   const browsers = listInstalledBrowsers();
   const browser = flags.browser ? findBrowser(flags.browser) : browsers[0] || null;
   if (flags.browser && !browser) throw new Error(`Unknown browser "${flags.browser}".`);
+  if (flags.verify) {
+    const health = await ensureBackend(log);
+    const expected = await sourceVersion();
+    if (health.version !== expected) {
+      throw new Error(`A different Convo Vault renderer (${health.version || "unknown version"}) is running. When its exports finish, run ` +
+        `"node cli/convo-vault.mjs backend stop" and repeat setup.`);
+    }
+    console.log(`OK: Convo Vault ${expected} local renderer answered.`);
+  }
+  const skill = await installSkillBestEffort(flags);
   // The skill finds this project again through the recorded path.
   await writeConfig({ repo: repoRoot, ...(browser ? { browser: browser.name } : {}) });
 
@@ -580,6 +589,12 @@ async function installSkillBestEffort(flags) {
 
 async function ensureExtensionBuilt() {
   const builtDir = path.join(repoRoot, "dist", "convo-vault-extension");
+  const isRelease = !(await fs.stat(path.join(repoRoot, ".git")).then(() => true, () => false));
+  if (isRelease) {
+    const builtManifest = await fs.readFile(path.join(builtDir, "manifest.json"), "utf8").then(JSON.parse, () => null);
+    const hasContent = await fs.stat(path.join(builtDir, "content.js")).then((file) => file.isFile(), () => false);
+    if (hasContent && builtManifest?.version === await sourceVersion()) return builtDir;
+  }
   const hasSource = await fs.stat(path.join(repoRoot, "extension", "content", "index.js")).then(() => true, () => false);
 
   if (hasSource) {

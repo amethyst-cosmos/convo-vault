@@ -5,25 +5,23 @@ description: >-
   JSONL and knowledge packs. Use when a user wants to export, archive, or
   back up an AI chat, or an entire ChatGPT project.
 compatibility: >-
-  Requires Node.js 20+, Git for cloning, and a signed-in desktop browser for
+  Requires Node.js 20+, Git for source installs, and a signed-in desktop browser for
   the chat service. Ego Lite can run exports through its local browser CLI.
 ---
 
 # Convo Vault Chat Exporter
 
-This skill drives Convo Vault, a free, open-source (MIT) tool at https://github.com/amethyst-cosmos/convo-vault. Convo Vault runs entirely on the user's computer: a small browser extension reads the chat tab (ChatGPT, Grok or Gemini) the user is already signed in to, and a local service writes the files. Nothing is uploaded anywhere.
+Convo Vault exports signed-in ChatGPT, Grok and Gemini conversations as local Markdown, PDF, JSONL and images. ChatGPT and Grok exports also include the thinking and tool activity their conversation records provide.
 
-**Recommended: use it with ego lite.** ego lite is a Chromium browser that lets local programs drive its pages. With ego lite, Convo Vault runs the extension's code in the chat page directly, so there is no extension to install and no Developer mode: the user signs in to the chat site in ego lite and every export is one step. The bundle is the same as with the extension. Chrome, Edge and Brave still work, with the extension loaded once.
+Use the user's chosen browser. A signed-in Ego Lite session can export without a Convo Vault extension. Chrome, Edge and Brave need the extension loaded once.
 
-Requires: Node.js 20 or newer, git, a Chromium browser signed in to the chat site (ego lite recommended, no extension needed; or Chrome, Edge, Brave with the extension), and a terminal the agent can use. It works on macOS, Windows and Linux.
-
-The user only has to say "export this conversation" (or "everything in my Research project", for ChatGPT) and give a link, a screenshot or a project name. Do the rest. With ego lite there is nothing for the user to do in the browser except sign in; with Chrome, Edge or Brave there is one browser step in section 2, which only the user can do.
+The project is open source at https://github.com/amethyst-cosmos/convo-vault. Setup requires Node.js 20+ and local command execution. Git is needed for source installs. Installation and updates can download code or dependencies. Export files stay on the user's computer.
 
 ## How to run the commands
 
-Convo Vault is installed in `$HOME/convo-vault`. That path works as written in macOS and Linux shells, Git Bash and Windows PowerShell. In Windows Command Prompt write `%USERPROFILE%\convo-vault` instead. If the user keeps it somewhere else, they will say so; use that folder in its place everywhere below.
+The examples use `$HOME/convo-vault`. First look for `CONVO_VAULT_DIR` or the `repo` path in `~/.convo-vault/config.json` (or `$CONVO_VAULT_HOME/config.json`). A user-provided installation path takes precedence. If it contains `cli/convo-vault.mjs`, substitute that absolute path in every command below. Quote paths with spaces.
 
-Run each command on its own line and wait for it to finish. Do not join commands with `&&`: Windows PowerShell 5.1 does not support it. Quote paths with double quotes. Every command below can be run from any folder.
+Complete first-time setup before running export or list commands. Run each command on its own line and wait for it to finish. Do not join commands with `&&`: Windows PowerShell 5.1 does not support it. Quote paths with double quotes. Every command below can be run from any folder.
 
 ## 1. Find the conversations
 
@@ -43,7 +41,22 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" list --project "Research"
 
 ## 2. First time only: set up Convo Vault
 
-Check whether Convo Vault is already installed: does the file `$HOME/convo-vault/cli/convo-vault.mjs` exist? Use your file tools, or one of these:
+Use the GitHub Release ZIP when the user chooses the portable package or already downloaded it. A fresh Skill installation defaults to the source checkout.
+
+### Portable GitHub Release ZIP
+
+1. Reuse the user's existing extracted folder if it contains `cli/convo-vault.mjs`. Otherwise use the local parent folder the user chooses and a fixed tagged [GitHub Release](https://github.com/amethyst-cosmos/convo-vault/releases). Download its named `convo-vault-<version>.zip` and matching `.zip.sha256`. Verify the SHA-256 before extracting. Keep existing folder contents intact and use the extracted `convo-vault-<version>` folder as the installation path.
+2. Check for Node.js 20+. The ZIP includes renderer dependencies and a prebuilt extension. Run this command from the extracted folder:
+
+   ```
+   node cli/convo-vault.mjs setup --verify --no-open --no-skill
+   ```
+
+   Setup checks that the local renderer answers and records the installation path for later exports. Use the browser steps and `verify` below when preparing the first browser export. The user can separately choose where each exported conversation is saved.
+
+### Source checkout
+
+If the configured copy exists, go to the export instructions. Otherwise check the default location: does the file `$HOME/convo-vault/cli/convo-vault.mjs` exist? Use your file tools, or one of these:
 
 ```
 test -f "$HOME/convo-vault/cli/convo-vault.mjs" && echo installed || echo missing
@@ -57,11 +70,11 @@ The first is for macOS, Linux and Git Bash, the second for Windows PowerShell.
 
 If it is installed, go to section 3. If it is missing, tell the user plainly what you are about to do and wait for a clear yes before running anything:
 
-> To export, I need to set up Convo Vault, a free open-source tool, on this computer. I will download it from https://github.com/amethyst-cosmos/convo-vault into a `convo-vault` folder in your user folder, install its dependencies and build its browser extension. Nothing is uploaded and nothing outside that folder is changed. Is that OK?
+> To export, I need to download Convo Vault from GitHub, install its project dependencies and build its extension. Your export files stay on this computer. Is that OK?
 
 After a yes:
 
-1. Check Node: `node -v` must print v20 or newer. If it does not, help the user install a current Node.js first: `brew install node` on macOS, `winget install OpenJS.NodeJS.LTS` on Windows, or the distribution's package on Linux. If `node` is still not found right after installing it, open a new terminal so it picks up the new PATH.
+1. Check for Node.js 20+ and Git. If a prerequisite is missing, tell the user which one is needed. Use the portable ZIP if Git is unavailable.
 2. Download the project. These two commands skip the files only developers need (tests, docs images, CI):
 
 ```
@@ -72,7 +85,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/amethyst-cosm
 git -C "$HOME/convo-vault" sparse-checkout set --no-cone '/*' '!/tests/' '!/docs/' '!/.github/' '!/AGENTS.md' '!/CONTRIBUTING.md' '!/eslint.config.mjs'
 ```
 
-If the first fails because git is old, delete any half-made folder it left and use a plain `git clone --depth 1 https://github.com/amethyst-cosmos/convo-vault.git "$HOME/convo-vault"`. If git is missing, ask the user to install it (`winget install Git.Git` on Windows), or to download the latest release zip from https://github.com/amethyst-cosmos/convo-vault/releases and unzip it to `$HOME/convo-vault`.
+If sparse checkout fails, retry the plain `git clone --depth 1` into an empty folder the user chose.
 
 3. Set it up. This installs dependencies and builds the extension, and does not touch any agent's skill folders:
 
@@ -80,7 +93,7 @@ If the first fails because git is old, delete any half-made folder it left and u
 node "$HOME/convo-vault/cli/convo-vault.mjs" setup --no-skill
 ```
 
-4. **ego lite: skip this step.** If the command `ego-browser --version` prints a version, the user has ego lite and no extension is needed; just make sure they are signed in to the chat site in ego lite, and add `--browser ego` to the first `verify` and export (it is remembered after that). If the user has no ego lite yet, you may recommend it: it makes every later export one step.
+4. **Ego Lite.** For users already using it, check that they are signed in to the chat site and run the first `verify` and export with `--browser ego`. This path needs no extension.
 
    Otherwise, ask the user to load the extension. **This is the one manual step, once per browser.** Browsers do not let a program install an unpublished extension, so do not try to do it for them. Give them the full path of the folder `convo-vault/dist/convo-vault-extension` inside the install folder (for example `C:\Users\<name>\convo-vault\dist\convo-vault-extension` on Windows, `/Users/<name>/convo-vault/dist/convo-vault-extension` on macOS) and tell them:
    1. Open the browser's extensions page (`chrome://extensions` or `edge://extensions`) and turn on **Developer mode**.
@@ -95,7 +108,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" verify
 
 ### Updating later
 
-When the user asks to update Convo Vault, or an export fails after a change on the chat site, run:
+For source installs, when the user asks to update Convo Vault, run:
 
 ```
 node "$HOME/convo-vault/cli/convo-vault.mjs" update --no-skill
@@ -104,6 +117,8 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" update --no-skill
 It pulls the latest version, rebuilds the extension and reloads it in the browser by itself. The user does not need to open the Extensions page or click anything. Exports also reload an out-of-date extension on their own once the project has been updated, so there is nothing to tell the user to refresh. Only if the output says the extension did not take the reload, ask the user to click the reload icon on the Extensions page once. With ego lite there is nothing to reload: every export runs the current version.
 
 Convo Vault 0.17.1 and later save resolved ChatGPT product-card thumbnails in the ZIP, Markdown and PDF. If an older install misses those images, explain that the user can update their Git checkout with the command above or get the latest [GitHub release](https://github.com/amethyst-cosmos/convo-vault/releases) for a ZIP install.
+
+For portable installs, download and verify the new version's ZIP, unzip it alongside the previous version, and run setup in the new folder. Chrome, Edge and Brave users load the extension from the new folder.
 
 ### Share a diagnostic report
 
@@ -117,7 +132,7 @@ Add `--from "<export.zip>"` when the user wants aggregate counts from a specific
 
 ## 3. Ask once about files
 
-The conversation, the model's thinking and tool trace, and its images are always exported. **Files** (Word, PDF, zip and other documents uploaded to the conversation or generated in it) can be many and large, so by default they are not downloaded; the export only lists them as "not requested".
+The bundle includes the conversation, images and the thinking or tool activity that Convo Vault can capture. ChatGPT and Grok have structured traces where their conversation records include steps. Gemini exports replies and images, and its separate thinking panel is currently outside the capture. Check `*.agent-trace.json` for coverage. **Files** uploaded to or generated in the conversation are only downloaded on request.
 
 Ask the user one short question in their language, with the default stated, for example: "Besides the conversation and the model's thinking, should I also download the files uploaded and generated in it? Default is no."
 
@@ -150,7 +165,7 @@ A Grok or Gemini link is exported with the same command and gives the same folde
 
 ## 5. After it finishes
 
-- Tell the user where the folder is and list the key files: `*.md` (readable), `*.pdf`, `*.summary.md`, `*.agent-trace.md`.
+- Give the folder and the key files, including `*.agent-trace.md` and `*.agent-trace.json` when the user wants to study the available reasoning. Check trace coverage and report any provider-specific omissions.
 - If files were requested, report how many were stored and how many failed (`fileDownload` in `*.assets.manifest.json`: `requested`, `total`, `stored`, `failed`) and the main failure reason.
 - If the user wants something done with a conversation (summarize it, continue the work, pull out decisions), read its `.md` or `*.messages.jsonl` from the folder and do that. Do not paste the whole conversation back.
 - Convo Vault checks every export message by message and refuses an incomplete capture. Report that message to the user. Do not retry with `--allow-incomplete` unless they say a partial export is fine.
