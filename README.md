@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/amethyst-cosmos/convo-vault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/amethyst-cosmos/convo-vault/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.3-6d4aff?style=flat-square"></a>
+  <a href="https://github.com/amethyst-cosmos/convo-vault/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.17.6-6d4aff?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
@@ -24,9 +24,11 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Current version: `0.17.3`
+Current version: `0.17.6`
 
-**Convo Vault is a chat exporter. It turns a conversation from ChatGPT, Grok or Gemini into a folder you own.** Tell Claude or Codex to export a conversation, or send it a screenshot, and you get typeset Markdown and PDF plus structured data you can feed to agents, a knowledge base or a RAG pipeline: JSONL messages, QA pairs, a topic and entity index, and the reasoning summaries and tool activity available from each chat site.
+**Convo Vault exports ChatGPT, Grok and Gemini conversations to a folder on your computer.** Give Claude or Codex a conversation link or a screenshot with the address visible. Export Markdown, PDF, JSONL, images and structured records. The original wording and languages are preserved, including mixed-language conversations.
+
+Open `*.decision-path.md` to see how a reply developed. It groups available progress notes, reasoning summaries and tool results, with links to the original trace events. Coverage depends on the chat service and the individual reply.
 
 Everything runs on your machine. Convo Vault reads the chat tab you are already signed in to (in ego lite directly, in Chrome, Edge or Brave through a small extension), and a small local service renders the files. No cloud converter, and no cookies or tokens handed to an agent.
 
@@ -54,7 +56,7 @@ When ego lite is installed, the CLI and the skill use it automatically; `--brows
 | **Grok** | `grok.com/c/<id>` | its conversation API | its response tree |
 | **Gemini** | `gemini.google.com/app/<id>` | the page itself, scrolled to the top first | only what the page shows (a weaker check, stated in a warning) |
 
-Every chat gets the same folder: readable Markdown, a typeset PDF, `messages.jsonl`, question-and-answer pairs, a summary, the thinking trace where the site has one, and the images. What each site cannot do yet (attachments, `list`, `--project`) is listed under Grok and Gemini below; ChatGPT does everything.
+Each export includes the same file formats. ChatGPT and Grok can provide recorded reasoning summaries and tool activity. Gemini exports the visible messages and images, with page-based validation. ChatGPT supports project listing and optional attachment downloads.
 
 <p align="center">
   <img src="docs/images/agent-demo.svg" alt="Tell an agent once and get the full export folder" width="860">
@@ -70,7 +72,7 @@ Every chat gets the same folder: readable Markdown, a typeset PDF, `messages.jso
     </td>
     <td width="33%" valign="top">
       <h3>Nothing silently lost</h3>
-      Every export is checked message by message against the chat's own message list (ChatGPT and Grok; Gemini can only be checked against what its page shows, and says so). A gap blocks the export and tells you what is missing. Images, citations, thinking steps and generative UI are kept.
+      ChatGPT and Grok are checked against the site's message list or reply tree. Gemini is checked against the visible page and reports that limit. The export reports missing messages, unavailable assets and the coverage of recorded reasoning.
     </td>
     <td width="33%" valign="top">
       <h3>Local by design</h3>
@@ -137,9 +139,15 @@ Requires Node 20 or newer.
 
 The skill is the self-contained folder `skills/convo-vault-skill`. Copy it anywhere, or run `node cli/convo-vault.mjs skill install --dir <folder>`. Its launcher finds the project, or installs it from GitHub the first time.
 
-### Also on Agensi
+### Distribution channels
 
-The same skill is listed, free, on [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter), a marketplace that serves skills to your agent over MCP. It is a text-only version (`skills/convo-vault-agensi`): on first use the agent asks your permission, installs this project from GitHub into `~/convo-vault`, and you load the extension once. It is the same open-source code either way; the Agensi listing is only another way to find it.
+- [GitHub Releases](https://github.com/amethyst-cosmos/convo-vault/releases/latest) has the versioned portable installer, its SHA-256 file and the desktop MCP bundle.
+- [skills.sh](https://www.skills.sh/amethyst-cosmos/convo-vault/convo-vault) lists the Agent Skill from this repository. Install it with `npx skills add amethyst-cosmos/convo-vault --skill convo-vault`.
+- [ClawHub](https://clawhub.ai/violet-amethyst/convo-vault) lists the skill for OpenClaw. Its catalog version tracks the skill instructions separately from the Convo Vault runtime release.
+- [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter) offers the text-only Agent Skill. It guides the agent through local installation from GitHub or the portable release ZIP.
+- The [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.amethyst-cosmos%2Fconvo-vault) lists `io.github.amethyst-cosmos/convo-vault`, which points to the versioned local MCP bundle.
+
+Use a signed-in Ego Lite session for extension-free export. Chrome, Edge and Brave use the same exporter after you load its extension once.
 
 ### Grok
 
@@ -171,9 +179,12 @@ Each export is a folder (and a `.zip`), including a PDF that reads like the chat
 | `*.topics.json`, `*.entities.json` | Topic index; links, file names, dates |
 | `*.agent-trace.json` | Recorded reasoning and tool activity in order, with trace coverage and available tool inputs, outputs and sources |
 | `*.agent-trace.md` | Readable version of the trace |
+| `*.decision-path.md` | A shorter view of how each recorded reply developed, with progress notes, reasoning summaries, and links to the underlying tool events |
 | `*.assets.manifest.json` | Where every image and attachment came from, how it is stored, why it degraded; size and SHA-256 of each downloaded file |
 | `assets/files/` | Only with `--files` or `--files-kind`: the Word, PDF, zip... files uploaded to or generated in the conversation |
 | `*.payload.json`, `*.conversation.json`, `*.data.json` | Complete export data and metadata, enough to re-render later |
+
+**Export label language.** The decision-path headings support English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese, Arabic, and Hindi. Choose one export's labels with `--locale fr-CA` or save an agent/CLI preference with `setup --locale fr-CA`. In automatic mode, Convo Vault uses the chat interface or browser language, with the last successful CLI export's label language as a fallback. Unavailable headings use English. Metadata records the label locale separately from any known conversation language. Conversation text and trace records keep their original languages.
 
 </td>
     <td valign="top" width="42%" align="center">
@@ -245,7 +256,7 @@ With manual controls on, open the conversation (ChatGPT, Grok or Gemini) and pre
 
 For ChatGPT and Grok, Convo Vault reads the site's own conversation API, the same data the page is drawn from. It never scrolls or clicks the page, so a very long conversation takes seconds and the tab can stay in the background. The result is checked against the site's message list (ChatGPT by message id, Grok by its response tree); if anything is missing the export is blocked and says what. Gemini has no such API, so its page is read and scrolled instead (see Gemini above).
 
-For ChatGPT and Grok, the export keeps recorded thinking and tool activity in order. Check the trace coverage for each export. Hidden reasoning, tool data the provider did not store, and Gemini's separate thinking panel are outside that coverage. Uploaded and generated files are listed in the manifest and downloaded only when you ask for them (`--files`; the agent asks once, default no). Choosing what to keep is up to you afterwards.
+For ChatGPT and Grok, the export keeps the summaries and tool activity available in the provider's records. The decision path describes the sequence, and the full trace shows coverage and missing events. ChatGPT can omit stored tool arguments. Grok may have recorded calls without separate tool results. Gemini's separate thinking panel is outside the export. Uploaded and generated ChatGPT files are listed in the manifest and can be downloaded on request with `--files`.
 
 ## Privacy and security
 

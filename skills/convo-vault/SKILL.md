@@ -11,7 +11,7 @@ compatibility: >-
 
 # Convo Vault Chat Exporter
 
-Convo Vault exports signed-in ChatGPT, Grok and Gemini conversations as local Markdown, PDF, JSONL and images. ChatGPT and Grok exports also include the thinking and tool activity their conversation records provide.
+Convo Vault exports signed-in ChatGPT, Grok and Gemini conversations as local Markdown, PDF, JSONL and images, preserving the original languages. Open `*.decision-path.md` to review the recorded steps and their evidence. ChatGPT and Grok can provide reasoning summaries and tool activity. Gemini provides its visible messages and images.
 
 Use the user's chosen browser. A signed-in Ego Lite session can export without a Convo Vault extension. Chrome, Edge and Brave need the extension loaded once.
 
@@ -153,6 +153,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Output goes to the `Downloads/convo-vault` folder in the user's user folder (`C:\Users\<name>\Downloads\convo-vault` on Windows) unless the user names a place; then add `--out "<dir>"`.
 - Add `--files` only when the user said yes in section 3.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster.
+- If the user requests a language for the export labels, pass `--locale` with a language tag such as `ja` or `fr-CA`. Otherwise use the saved preference and active interface. Leave the conversation and trace in their original languages.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
 - A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
 - One side only: `--files-kind generated` (what ChatGPT made) or `--files-kind uploaded` (what the user attached). Alone it applies to every conversation; with `--files-for` only to the named ones. The side left out is listed in the manifest as "not requested", not as a failure.

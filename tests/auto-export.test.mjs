@@ -44,7 +44,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 test("auto export claims the job, strips the hash, exports, then closes the tab", async () => {
   let exportOptions = null;
   const harness = load({
-    claim: { ok: true, options: { allowIncomplete: false, closeTab: true } },
+    claim: { ok: true, options: { allowIncomplete: false, closeTab: true, language: "ja-JP", fallbackLanguage: "de-DE" } },
     exportConversation: async (options) => { exportOptions = options; return { ok: true }; }
   });
   await settle();
@@ -54,6 +54,8 @@ test("auto export claims the job, strips the hash, exports, then closes the tab"
   assert.equal(exportOptions.jobId, JOB_ID);
   assert.equal(exportOptions.allowIncomplete, false);
   assert.equal(exportOptions.skipPdf, false);
+  assert.equal(exportOptions.language, "ja-JP");
+  assert.equal(exportOptions.fallbackLanguage, "de-DE");
 });
 
 test("auto export reports the integrity gate error and keeps the tab open", async () => {

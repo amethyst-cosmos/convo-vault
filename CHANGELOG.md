@@ -4,6 +4,20 @@
 
 Releases before 0.10 are documented in Chinese in [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md).
 
+## 0.17.6
+
+- Add a decision-path Markdown file. It follows recorded progress notes, visible reasoning summaries and tool activity in order and links to the original events and final answer.
+- Preserve the original wording and mixed languages in conversations and recorded traces. Store the decision-path label locale separately from source-language metadata.
+- Clarify provider coverage, browser setup and distribution in both READMEs and the agent install guides.
+
+## 0.17.5 (local development)
+
+- Decision-path headings and prompts support multiple languages. Export uses a requested or saved language, the active interface language, or the previous export's language. Conversation and trace text remain in their original languages.
+
+## 0.17.4 (local development)
+
+- Local knowledge packs include a decision-path Markdown file that groups recorded progress notes, reasoning summaries and tool activity in order and links to the corresponding trace events. It reports how many answers have usable process records.
+
 ## 0.17.3
 
 - The portable release ZIP includes the built extension and the renderer runtime dependencies. Setup can verify the local renderer and remember the chosen installation folder.

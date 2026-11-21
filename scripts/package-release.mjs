@@ -87,7 +87,7 @@ async function createMcpBundle() {
     name: "convo-vault",
     display_name: "Convo Vault",
     version,
-    description: "Export ChatGPT, Grok and Gemini chats to Markdown, PDF and structured files on your computer.",
+    description: "Export ChatGPT, Grok and Gemini chats locally with original-language text and a view of available reasoning records.",
     author: { name: "amethyst-cosmos", url: "https://github.com/amethyst-cosmos" },
     repository: { type: "git", url: "https://github.com/amethyst-cosmos/convo-vault" },
     homepage: "https://github.com/amethyst-cosmos/convo-vault",

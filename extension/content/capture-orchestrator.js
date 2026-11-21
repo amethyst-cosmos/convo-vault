@@ -41,6 +41,8 @@
       allowIncomplete: options.allowIncomplete === true,
       jobId: options.jobId,
       skipPdf: options.skipPdf === true,
+      language: options.language,
+      fallbackLanguage: options.fallbackLanguage,
       downloadFiles: options.downloadFiles === true,
       fileKind: options.fileKind || "",
       onProgress

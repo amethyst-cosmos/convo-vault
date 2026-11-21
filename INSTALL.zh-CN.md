@@ -50,7 +50,9 @@
 node <位置>/cli/convo-vault.mjs export "<链接>"
 ```
 
-导出整段对话，结果在 `~/Downloads/convo-vault/<标题>/`。不要让用户选任何东西或点弹窗。详细规则见已安装的 `convo-vault-skill`。
+默认保存到 `~/Downloads/convo-vault/<标题>/`。Agent 可直接发起导出，ChatGPT 附件按用户需求用 `--files` 下载。详细规则见已安装的 `convo-vault-skill`。
+
+在 `*.decision-path.md` 里按顺序看平台留下的进度说明、摘要和工具活动，点击事件编号可核对原记录。保留对话和轨迹的原文。用户指定导航标签语言时使用 `--locale`。Gemini 目前导出可见问答和图片，完整性按页面内容核对。
 
 ## 把一切放在同一个文件夹
 

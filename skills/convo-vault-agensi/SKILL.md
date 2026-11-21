@@ -1,9 +1,9 @@
 ---
 name: Convo Vault Chat Exporter
-description: Chat exporter for ChatGPT, Grok and Gemini. Export conversations, one, several or a whole ChatGPT project, into a local knowledge pack (Markdown, PDF, JSONL, QA pairs, thinking and tool trace). Use when the user wants to download, save, archive or back up ChatGPT, Grok or Gemini conversations, names a ChatGPT project, or gives a chatgpt.com/c/..., grok.com/c/... or gemini.google.com/app/... link, a conversation id or a screenshot of one. Works on macOS, Windows and Linux. 触发词：下载、导出、保存、归档 ChatGPT、Grok、Gemini 对话。
+description: Export ChatGPT, Grok and Gemini conversations into local Markdown, PDF and structured data. Preserve the original languages. Review available reasoning summaries and tool events with a linked decision path.
 summary: >-
-  A chat exporter for ChatGPT, Grok and Gemini. Tell your agent to export a conversation (or a whole ChatGPT project); it saves each chat on your computer as Markdown, PDF and structured data. Includes structured thinking records for ChatGPT and Grok when available. Install from GitHub source or use the portable release ZIP.
-version: "1.4"
+  Export chats to local Markdown, PDF and JSONL. Keep the original languages and follow available progress, summaries and tool activity in the decision path. Set up from GitHub or the portable ZIP.
+version: "1.5"
 tags: chat-exporter, chatgpt, grok, gemini, export, archive, markdown, pdf, jsonl, knowledge-base, backup
 keywords: chat exporter, chatgpt export, grok export, gemini export, ai chat backup, conversation archive, agent-ready knowledge pack
 use_cases: Back up an important ChatGPT, Grok or Gemini conversation, Export every conversation in a ChatGPT project at once, Turn a long chat into Markdown and PDF, Feed a conversation to another agent, Keep the model's thinking and tool trace with the chat
@@ -154,6 +154,7 @@ node "$HOME/convo-vault/cli/convo-vault.mjs" export "<url-or-id>"
 - Output goes to the `Downloads/convo-vault` folder in the user's user folder (`C:\Users\<name>\Downloads\convo-vault` on Windows) unless the user names a place; then add `--out "<dir>"`.
 - Add `--files` only when the user said yes in section 3.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster.
+- If the user requests a language for the export labels, pass `--locale` with a language tag such as `ja` or `fr-CA`. Otherwise use the saved preference and active interface. Leave the conversation and trace in their original languages.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
 - A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
 - One side only: `--files-kind generated` (what ChatGPT made) or `--files-kind uploaded` (what the user attached). Alone it applies to every conversation; with `--files-for` only to the named ones. The side left out is listed in the manifest as "not requested", not as a failure.
@@ -166,7 +167,7 @@ A Grok or Gemini link is exported with the same command and gives the same folde
 
 ## 5. After it finishes
 
-- Give the folder and the key files, including `*.agent-trace.md` and `*.agent-trace.json` when the user wants to study the available reasoning. Check trace coverage and report any provider-specific omissions.
+- Give the export folder and `*.decision-path.md` for a readable view of the available steps. Its links lead to the original events. Check `*.agent-trace.json` for full recorded details and coverage.
 - If files were requested, report how many were stored and how many failed (`fileDownload` in `*.assets.manifest.json`: `requested`, `total`, `stored`, `failed`) and the main failure reason.
 - If the user wants something done with a conversation (summarize it, continue the work, pull out decisions), read its `.md` or `*.messages.jsonl` from the folder and do that. Do not paste the whole conversation back.
 - Convo Vault checks every export message by message and refuses an incomplete capture. Report that message to the user. Do not retry with `--allow-incomplete` unless they say a partial export is fine.

@@ -1,8 +1,8 @@
 # Convo Vault Local Renderer
 
 Local service that turns the extension's structured export payload into the
-export bundle: Markdown, PDF, payload JSON, data sidecars, an asset manifest,
-and the image assets themselves. Nothing leaves the machine.
+export bundle: Markdown, PDF, payload JSON, conversation data, a decision path,
+trace files, an asset manifest, and local assets.
 
 ## Install
 
@@ -25,8 +25,8 @@ Start it from the extension popup (turn on **Manual controls** first) with **Cop
 npm run backend
 ```
 
-The service listens on `127.0.0.1:38474` by default (`CGCE_ADVANCED_PDF_PORT`
-changes it; save the same port in the popup settings).
+The service listens on `127.0.0.1:38474` by default. Local development can
+override the port with `CGCE_ADVANCED_PDF_PORT`.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -60,6 +60,7 @@ renderer/
     zip.js             streaming ZIP writer
     bundle-content.js  payload normalization, Markdown, data sidecars
     agent-trace-files.js  *.agent-trace.json and *.agent-trace.md
+    decision-path.js    *.decision-path.md and links to original events
     assets.js          asset manifest, SHA-256 store, output-object accounting
     document.js        builds the PDF's HTML document
     messages.js, markdown.js, math.js, charts.js, mermaid.js, images.js, text.js, util.js
@@ -79,6 +80,10 @@ node renderer/render.js path/to/payload.json --out output/pdf/conversation.pdf -
 `CGCE_RENDER_BROWSER_PATH` (or pass `--chrome`) to choose one.
 
 ## PDF layout
+
+Captured messages and trace records retain their original languages. The
+payload's source `language`, when known, supplies the PDF document language.
+The separate `labelLocale` controls generated decision-path labels.
 
 The PDF reads like the ChatGPT page: one reading column, prompts as
 right-aligned bubbles with uncropped screenshots, answers as full-width text,

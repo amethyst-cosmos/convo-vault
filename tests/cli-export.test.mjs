@@ -17,6 +17,8 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const base = `http://127.0.0.1:${port}`;
   const home = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-home-"));
   const outDir = await mkdtemp(path.join(os.tmpdir(), "convo-vault-cli-out-"));
+  const configPath = path.join(home, "config.json");
+  await writeFile(configPath, JSON.stringify({ exportLocale: "ja-JP", recentExportLocale: "de-DE" }));
   const env = {
     ...process.env,
     CONVO_VAULT_HOME: home,
@@ -30,7 +32,7 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
     await rm(outDir, { recursive: true, force: true });
   });
 
-  const cli = spawn(process.execPath, [cliPath, "export", "https://chatgpt.com/c/fixture-conversation-1", "--out", outDir], {
+  const cli = spawn(process.execPath, [cliPath, "export", "https://chatgpt.com/c/fixture-conversation-1", "--out", outDir, "--locale", "fr_ca"], {
     cwd: repoRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"]
@@ -54,6 +56,8 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   assert.equal(claimed.status, 200);
   const { token, options } = JSON.parse(claimed.body);
   assert.equal(options.closeTab, true);
+  assert.equal(options.language, "fr-CA");
+  assert.equal(options.fallbackLanguage, "de-DE");
   assert.match(token, /^[a-f0-9]{64}$/);
   assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/claim`, { Origin: "chrome-extension://test" })).status, 409);
   assert.equal((await rawRequest(port, "POST", `/jobs/${jobId}/status`, { Origin: "chrome-extension://test" }, "{}")).status, 401);
@@ -65,7 +69,7 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const prepared = await fetch(`${base}/prepare-render-bundle`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Convo-Vault-Token": token },
-    body: JSON.stringify({ jobId, exportPayload: fixture, fileName: "Fixture conversation.zip" })
+    body: JSON.stringify({ jobId, exportPayload: { ...fixture, language: "es-ES", labelLocale: options.language }, fileName: "Fixture conversation.zip" })
   });
   assert.equal(prepared.ok, true, await prepared.clone().text());
 
@@ -74,6 +78,16 @@ test("CLI exports a conversation through the extension job flow", async (t) => {
   const folder = await readdir(path.join(outDir, "Fixture conversation"));
   assert.ok(folder.some((name) => name.endsWith(".md")), folder.join(", "));
   assert.ok(folder.some((name) => name.endsWith(".pdf")), folder.join(", "));
+  const exportFolder = path.join(outDir, "Fixture conversation");
+  assert.match(await readFile(path.join(exportFolder, "Fixture conversation.decision-path.md"), "utf8"), /^# Processus de décision/);
+  const conversation = JSON.parse(await readFile(path.join(exportFolder, "Fixture conversation.conversation.json"), "utf8"));
+  assert.equal(conversation.language, "es-ES");
+  assert.equal(conversation.labelLocale, "fr-CA");
+  const savedPayload = JSON.parse(await readFile(path.join(exportFolder, "Fixture conversation.payload.json"), "utf8"));
+  assert.deepEqual(savedPayload.messages.map(({ markdown }) => markdown), fixture.messages.map(({ markdown }) => markdown));
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+  assert.equal(config.exportLocale, "ja-JP", "one export does not replace the saved preference");
+  assert.equal(config.recentExportLocale, "fr-CA");
 });
 
 test("--no-pdf exports a data-only bundle without needing a PDF renderer", async (t) => {

@@ -118,6 +118,8 @@
         jobId,
         allowIncomplete: claim.options?.allowIncomplete === true,
         skipPdf: claim.options?.pdf === false,
+        language: claim.options?.language,
+        fallbackLanguage: claim.options?.fallbackLanguage,
         downloadFiles: claim.options?.files === true || claim.options?.files === "generated" || claim.options?.files === "uploaded",
         fileKind: claim.options?.files === "generated" || claim.options?.files === "uploaded" ? claim.options.files : "",
         onProgress: (message) => report(message)

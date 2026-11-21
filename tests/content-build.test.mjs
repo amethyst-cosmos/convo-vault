@@ -1,10 +1,43 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import vm from "node:vm";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildContentScript } from "../scripts/lib/content-build.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+
+test("export language follows the chosen locale, site, browser, and last saved export", async () => {
+  const source = await readFile(path.join(repoRoot, "extension", "content", "bundle-export.js"), "utf8");
+  const sandbox = { document: { documentElement: { lang: "ja-JP" } }, navigator: { language: "fr-CA" } };
+  const select = vm.runInNewContext(`${source}\ngetExportLabelLocale;`, sandbox);
+  assert.equal(select({ language: "zh_tw", fallbackLanguage: "ar" }), "zh-TW");
+  assert.equal(select({ fallbackLanguage: "ar" }), "ja-JP");
+  sandbox.document.documentElement.lang = "und";
+  assert.equal(select({ fallbackLanguage: "ar" }), "fr-CA");
+  sandbox.navigator.language = "invalid locale";
+  assert.equal(select({ fallbackLanguage: "ar" }), "ar");
+  assert.equal(select({}), "");
+});
+
+test("the capture puts the browser language on generated labels without tagging the conversation", async () => {
+  const source = await readFile(path.join(repoRoot, "extension", "content", "bundle-export.js"), "utf8");
+  const text = "Nous gardons le texte original. También conservamos el español.";
+  const sandbox = {
+    document: { documentElement: { lang: "ja-JP" } },
+    createPortableMessageSnapshot: (message) => message,
+    normalizeCaptureMode: () => "fast",
+    getConversationTitle: () => "Conversation",
+    getExportSourceUrl: () => "https://chatgpt.com/c/fixture",
+    getProviderId: () => "chatgpt",
+    EXPORTER_VERSION: "fixture"
+  };
+  const capture = vm.runInNewContext(`${source}\ncreateStructuredExportPayload;`, sandbox);
+  const payload = await capture([{ role: "assistant", markdown: text }], new Date(), { language: "fr-CA" });
+  assert.equal(payload.labelLocale, "fr-CA");
+  assert.equal(payload.language, undefined);
+  assert.equal(payload.messages[0].markdown, text);
+});
 
 test("content script is generated from its modules and keeps the Fast capture, image and renderer bridges", async () => {
   const generated = await buildContentScript(repoRoot);
