@@ -1,9 +1,9 @@
 ---
 name: convo-vault
 description: >-
-  Export ChatGPT, Grok and Gemini conversations into local Markdown, PDF,
-  JSONL and knowledge packs. Use when a user wants to export, archive, or
-  back up an AI chat, or an entire ChatGPT project.
+  Export or archive ChatGPT, Grok and Gemini chats in local Markdown, PDF and
+  JSONL. Preserve original languages and review available reasoning and tool
+  records. Supports whole ChatGPT projects.
 compatibility: >-
   Requires Node.js 20+, Git for source installs, and a signed-in desktop browser for
   the chat service. Ego Lite can run exports through its local browser CLI.
