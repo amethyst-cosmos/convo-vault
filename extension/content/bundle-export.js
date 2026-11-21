@@ -15,6 +15,8 @@
       captureMode: options.captureMode,
       jobId: options.jobId,
       skipPdf: options.skipPdf,
+      language: options.language,
+      fallbackLanguage: options.fallbackLanguage,
       downloadFiles: options.downloadFiles,
       fileKind: options.fileKind,
       onProgress: options.onProgress
@@ -56,6 +58,7 @@
   async function createStructuredExportPayload(messages, exportedAt = new Date(), options = {}) {
     const portableMessages = messages.map((message, index) => createPortableMessageSnapshot(message, index));
     const captureMode = normalizeCaptureMode(options.captureMode);
+    const labelLocale = getExportLabelLocale(options);
     const assetStats = {
       imagesEmbedded: 0,
       imagesFailed: 0,
@@ -69,6 +72,7 @@
       title: getConversationTitle(),
       source: getExportSourceUrl(),
       exportedAt: exportedAt.toISOString(),
+      ...(labelLocale ? { labelLocale } : {}),
       captureMode,
       messageCount: messages.length,
       assetStats,
@@ -76,10 +80,26 @@
     };
   }
 
+  // The interface language belongs to generated labels. A conversation can mix languages.
+  function getExportLabelLocale(options) {
+    for (const value of [options.language, document.documentElement?.lang, globalThis.navigator?.language, options.fallbackLanguage]) {
+      if (typeof value !== "string" || value.length > 80) continue;
+      try {
+        const [language] = Intl.getCanonicalLocales(value.trim().replace(/_/g, "-"));
+        if (language && language !== "und" && language !== "auto") return language;
+      } catch {
+        // An invalid page language should fall through to the browser preference.
+      }
+    }
+    return "";
+  }
+
   async function downloadExportBundle(metadata, messages, exportedAt = new Date(), options = {}) {
     const defaultFileName = markdownBuilder.filename(metadata.title, exportedAt, "zip");
     const payload = await createStructuredExportPayload(messages, exportedAt, {
-      captureMode: options.captureMode
+      captureMode: options.captureMode,
+      language: options.language,
+      fallbackLanguage: options.fallbackLanguage
     });
 
     const pageImageDownloads = await downloadChatGptFileImages(payload.messages, {

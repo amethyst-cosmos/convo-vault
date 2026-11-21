@@ -112,16 +112,18 @@ function buildAgentTraceMarkdown(traceFile) {
 
   turns.forEach((turn, turnIndex) => {
     const model = turn.model ? [turn.model.resolvedSlug || turn.model.slug, turn.model.thinkingEffort].filter(Boolean).join(" · ") : "";
-    lines.push(`## Turn ${turn.turnNumber}${model ? ` · ${model}` : ""}${turn.durationSeconds ? ` · ${formatDuration(turn.durationSeconds)}` : ""}`, "");
+    const anchor = `agent-trace-turn-${turnIndex + 1}`;
+    lines.push(`<a id="${anchor}"></a>`, `## Turn ${turn.turnNumber}${model ? ` · ${model}` : ""}${turn.durationSeconds ? ` · ${formatDuration(turn.durationSeconds)}` : ""}`, "");
     if (turn.prompt) {
       lines.push(...quote(`**Prompt:** ${truncate(turn.prompt.replace(/\s+/g, " "), 400)}`), "");
     }
     const stats = turn.stats || {};
     lines.push(`${stats.thoughts || 0} thoughts · ${stats.notes || 0} notes · ${stats.toolCalls || 0} tool calls · ${stats.toolResults || 0} tool results · ${stats.sources || 0} sources (${stats.citedSources || 0} cited)`, "");
 
-    for (const event of turn.events) {
-      lines.push(...renderEvent(event, turnIndex));
-    }
+    turn.events.forEach((event, eventIndex) => {
+      const [heading, ...body] = renderEvent(event, turnIndex);
+      lines.push(`${heading} <a id="${anchor}-event-${eventIndex + 1}"></a>`, ...body);
+    });
 
     if (turn.sources?.length) {
       lines.push("", "**Sources seen in this turn**", "");

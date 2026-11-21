@@ -1,6 +1,7 @@
 const fs = require("fs");
 const crypto = require("crypto");
 const { EXPORT_JOB_ID_PATTERN, EXPORT_JOB_TTL_MS, LOCAL_API_TOKEN } = require("./config");
+const { normalizeExportLocale } = require("./export-locale");
 const { isLocalApiAuthorized, isLocalProcessRequest, makeContentDisposition, readJsonBody, sendJson } = require("./http-utils");
 
 // Export jobs let a local program (the CLI or an agent skill) ask the extension
@@ -132,6 +133,7 @@ function createExportJob(body) {
       reload: body?.reload === true,
       // false skips the PDF: a data-only bundle needs no headless Chrome.
       pdf: body?.pdf !== false,
+      ...exportLanguages(body),
       // true downloads uploaded and generated files into assets/files/; "generated" or "uploaded"
       // downloads only that side. Off by default.
       files: normalizeFilesOption(body?.files),
@@ -145,6 +147,13 @@ function createExportJob(body) {
   };
   exportJobs.set(jobId, job);
   return { ok: true, jobId, options: job.options };
+}
+
+function exportLanguages(body) {
+  // Job locale options select generated labels. Source language belongs to the payload.
+  const language = normalizeExportLocale(body?.language);
+  const fallbackLanguage = normalizeExportLocale(body?.fallbackLanguage);
+  return { ...(language ? { language } : {}), ...(fallbackLanguage ? { fallbackLanguage } : {}) };
 }
 
 function normalizeFilesOption(value) {

@@ -18,6 +18,7 @@ const cases = JSON.parse(
 const { buildDataBundle, buildMarkdownDocument, normalizePayload } = createRequire(import.meta.url)(
   path.join(repoRoot, "renderer", "lib", "bundle-content.js")
 );
+const { buildDecisionPathMarkdown } = createRequire(import.meta.url)("../renderer/lib/decision-path.js");
 
 test("bundle Markdown and data builders preserve export fixture text", async () => {
   for (const fixtureCase of cases) {
@@ -91,6 +92,71 @@ test("agent trace files keep every event in order and the full output only in JS
   assert.match(markdown, /\| \[Source A\]\(https:\/\/example\.test\/a\) \| 2 \| yes \|/);
 });
 
+test("decision path links progress, revised approach and checks to the original events", () => {
+  const payload = normalizePayload({
+    title: "排版测试",
+    messages: [
+      { role: "user", markdown: "检查版面" },
+      { role: "assistant", markdown: "最终 3 页", agentTrace: { version: 2, events: [
+        { seq: 1, kind: "note", text: "先渲染原稿。" },
+        { seq: 2, kind: "tool_call", tool: "render", input: "internal tool input" },
+        { seq: 3, kind: "tool_result", tool: "render", output: "初稿 4 页" },
+        { seq: 4, kind: "note", text: "保留字号，调整分页。" },
+        { seq: 5, kind: "thought", summary: "复核布局" },
+        { seq: 6, kind: "tool_result", tool: "render", output: "调整后 3 页" },
+        { seq: 7, kind: "tool_result", tool: "open_image", output: "<<ImageDisplayed>>" },
+        { seq: 8, kind: "tool_result", tool: "bio", output: "Model set context updated." }
+      ] } },
+      { role: "assistant", markdown: "另一条回答", agentTrace: { version: 2, durationSeconds: 4, events: [
+        { seq: 1, kind: "recap", text: "已思考 4 秒" },
+        { seq: 2, kind: "answer" }
+      ] } }
+    ]
+  });
+  const data = buildDataBundle(payload);
+  const route = buildDecisionPathMarkdown(data.agentTrace, "排版 (示例)", payload.language);
+  assert.match(route, /2 条回答中，1 条有可排列的过程记录/);
+  const stages = ["先渲染原稿", "初稿 4 页", "保留字号，调整分页", "复核布局 (仅标题)", "调整后 3 页"];
+  const offsets = stages.map((stage) => route.indexOf(stage));
+  assert.ok(offsets.every((offset, index) => offset >= 0 && (index === 0 || offsets[index - 1] < offset)));
+  assert.doesNotMatch(route, /internal tool input|ImageDisplayed|Model set context updated|已思考 4 秒|Turn 3/);
+  assert.match(route, /%20%28[^)]+%29\.md#turn-02---response/);
+  for (const [, anchor] of route.matchAll(/\.agent-trace\.md#([a-z0-9-]+)\)/g)) {
+    assert.ok(data.agentTraceMarkdown.includes(`id="${anchor}"`), anchor);
+  }
+});
+
+test("decision path translates labels while preserving the captured multilingual text", () => {
+  const note = "Keep the English source. 保留原文。";
+  const output = "3 pages · Résultat vérifié · 測試";
+  const payload = normalizePayload({
+    title: "Mixed language",
+    language: "ja-JP",
+    messages: [
+      { role: "user", markdown: "Verify the original English." },
+      { role: "assistant", markdown: "English original. العربية", agentTrace: { version: 2, events: [
+        { seq: 1, kind: "note", text: note },
+        { seq: 2, kind: "tool_result", tool: "inspect", output }
+      ] } }
+    ]
+  });
+  const data = buildDataBundle(payload);
+  for (const [locale, label] of [
+    ["en-US", "Decision path"], ["zh-TW", "思考路線"], ["zh-Hans", "思考路线"],
+    ["ja-JP", "判断の流れ"], ["ko-KR", "판단 과정"], ["es-MX", "Proceso de decisión"],
+    ["fr-CA", "Processus de décision"], ["de-AT", "Entscheidungsverlauf"],
+    ["pt-BR", "Percurso de decisão"], ["ar-EG", "مسار اتخاذ القرار"],
+    ["hi-IN", "निर्णय की प्रक्रिया"], ["sv-SE", "Decision path"]
+  ]) {
+    const route = buildDecisionPathMarkdown(data.agentTrace, "sample", locale);
+    assert.ok(route.startsWith(`# ${label} ·`), locale);
+    assert.ok(route.includes(note) && route.includes(output), locale);
+  }
+  assert.equal(data.agentTrace.turns[0].events[0].text, note);
+  assert.equal(data.agentTrace.turns[0].events[1].output, output);
+  assert.equal(data.messages[1].markdown, "English original. العربية");
+});
+
 test("backend renderer prepares and serves export bundles", async (t) => {
   const port = await getAvailablePort();
   const token = `fixture-token-${process.pid}-${Date.now()}`;
@@ -161,6 +227,7 @@ test("backend renderer prepares and serves export bundles", async (t) => {
     ".conversation.json",
     ".agent-trace.json",
     ".agent-trace.md",
+    ".decision-path.md",
     ".messages.jsonl",
     ".qa-pairs.json",
     ".topics.json",

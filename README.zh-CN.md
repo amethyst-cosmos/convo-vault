@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.17.3-6d4aff?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-0.17.6-6d4aff?style=flat-square">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285f4?style=flat-square">
   <img alt="Node" src="https://img.shields.io/badge/Node-%E2%89%A5%2020-3c873a?style=flat-square">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -24,11 +24,13 @@
   <a href="CHANGELOG.zh-CN.md">更新日志</a>
 </p>
 
-当前版本：`0.17.3`
+当前版本：`0.17.6`
 
 **Convo Vault 是一个聊天导出工具，可以把 ChatGPT、Grok、Gemini 的对话导出成你自己的文件夹。** 一段重要的 AI 长对话里，常常混着代码、表格、图片、文件和一大段思考过程。手动复制太痛苦，丢给在线转换工具又不放心。
 
-Convo Vault 在你自己的电脑上，把对话导出成一个文件夹（它读的是你已经登录的聊天页面）：排好版的 Markdown 和 PDF，加上能直接交给 Codex、Claude、Cursor、知识库或 RAG 流程的结构化数据。你只需要对 Agent 说一句话，或者发一张对话截图。
+Convo Vault 在本机导出你已登录的对话，提供 Markdown、PDF、JSONL、图片和结构化记录。把对话链接或包含地址栏的截图交给 Agent 即可。法语、西班牙语、英文和混合语言都保留原文。
+
+打开 `*.decision-path.md` 可以看出一轮答复怎样展开。它按顺序整理平台留下的进度说明、思考摘要和工具结果，并链接到原始事件。每个网站和每条答复的覆盖范围可能不同。
 
 ## 推荐配合 ego lite 使用
 
@@ -54,7 +56,7 @@ ego lite 是一个允许本地程序操作网页的 Chromium 浏览器。Convo V
 | **Grok** | `grok.com/c/<id>` | 它的对话接口 | 它的回复树 |
 | **Gemini** | `gemini.google.com/app/<id>` | 页面本身，先滚到最上面 | 只能看页面上显示的内容（较弱，会用警告说明） |
 
-每个网站得到的是同一个文件夹：可读的 Markdown、排好版的 PDF、`messages.jsonl`、问答对、摘要、该网站有的思考记录，以及图片。各网站暂时做不到的（附件、`list`、`--project`）写在下面的 Grok 和 Gemini 两节里；ChatGPT 全都支持。
+各网站使用同一套知识包格式。ChatGPT 和 Grok 可提供已记录的思考摘要和工具活动。Gemini 导出可见问答和图片，按页面内容核对。ChatGPT 支持列出项目对话，以及按需下载附件。
 
 <p align="center">
   <img src="docs/images/agent-demo.zh-CN.svg" alt="对 Agent 说一句话，就得到完整的导出文件夹" width="860">
@@ -155,9 +157,15 @@ flowchart LR
 
 skill 是自成一体的文件夹 `skills/convo-vault-skill`，可以复制到任何地方，或运行 `node cli/convo-vault.mjs skill install --dir <文件夹>`。它自带的启动脚本会自己找到项目，第一次用时自动从 GitHub 安装。
 
-### 也可以在 Agensi 上找到
+### 分发入口
 
-同一个 skill 已免费上架 [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter)，这是一个通过 MCP 把 skill 交给 Agent 的市场。上架的是纯文字版（`skills/convo-vault-agensi`）：第一次使用时 Agent 会先征求你的同意，再把本项目从 GitHub 安装到 `~/convo-vault`，你只需要加载一次扩展。两种方式用的是同一份开源代码，Agensi 只是多一个找到它的入口。
+- [GitHub Releases](https://github.com/amethyst-cosmos/convo-vault/releases/latest) 提供带版本号的便携安装包、SHA-256 校验文件和桌面 MCP 安装包。
+- [skills.sh](https://www.skills.sh/amethyst-cosmos/convo-vault/convo-vault) 收录本仓库的 Agent Skill，可用 `npx skills add amethyst-cosmos/convo-vault --skill convo-vault` 安装。
+- [ClawHub](https://clawhub.ai/violet-amethyst/convo-vault) 提供 OpenClaw 的安装入口，目录里的 Skill 版本独立于 Convo Vault 程序版本。
+- [Agensi](https://www.agensi.io/skills/convo-vault-chat-exporter) 提供纯文字版 Agent Skill，指导 Agent 从 GitHub 源码或便携 ZIP 安装。
+- [官方 MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.amethyst-cosmos%2Fconvo-vault) 收录 `io.github.amethyst-cosmos/convo-vault`，指向 GitHub 上带版本号的本地 MCP 安装包。
+
+在 Ego Lite 中登录聊天网站即可免扩展导出。Chrome、Edge、Brave 首次使用需手动加载一次扩展。
 
 ### Grok
 
@@ -185,9 +193,12 @@ Gemini 的对话也可以：把 `https://gemini.google.com/app/<id>` 链接给 A
 | `*.topics.json`、`*.entities.json` | 话题索引；链接、文件名、日期等实体线索 |
 | `*.agent-trace.json` | 按顺序保存平台提供的思考摘要、工具活动与来源，并报告每条对话的轨迹覆盖情况 |
 | `*.agent-trace.md` | 同一份记录的可读版，长输出截断并指向 JSON |
+| `*.decision-path.md` | 按回答分段查看思路怎样展开，点击进度说明、思考摘要和工具事件编号回到完整轨迹 |
 | `*.assets.manifest.json` | 图片和附件的来源、存储方式与降级原因；已下载文件的大小和 SHA-256 |
 | `assets/files/` | 仅 `--files` 或 `--files-kind` 时有：对话里上传和生成的 Word、PDF、zip 等文件 |
 | `*.payload.json`、`*.conversation.json`、`*.data.json` | 完整导出数据和对话元数据，可用于重新渲染 |
+
+**导出标签语言。** 思考路线的标题和提示支持英文、简体中文、繁体中文、日文、韩文、西班牙文、法文、德文、葡萄牙文、阿拉伯文和印地文。单次可用 `--locale fr-CA` 指定标签，Agent 和 CLI 的长期偏好可用 `setup --locale fr-CA` 保存。自动模式优先使用聊天界面或浏览器的语言，再用上次成功的 CLI 导出标签语言作为后备。缺少对应译文的标签使用英文。包内分别记录标签语言和已知的对话语言，对话正文和轨迹保留各自的原文。
 
 ## 命令行
 

@@ -1,5 +1,5 @@
 (() => {
-  const EXPORTER_VERSION = "0.17.3";
+  const EXPORTER_VERSION = "0.17.6";
   const installedState = window.__chatGptConversationExporterInstalled;
 
   if (

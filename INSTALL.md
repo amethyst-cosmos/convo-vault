@@ -52,6 +52,8 @@ node <location>/cli/convo-vault.mjs export "<link>"
 
 The whole conversation is exported, and the result is in `~/Downloads/convo-vault/<title>/`. Do not ask the user to click the popup. The only question is whether to also download the files uploaded and generated in the conversation (default no, `--files`); the installed skill says how to ask. The installed `convo-vault-skill` has the detailed rules.
 
+Open `*.decision-path.md` for the readable sequence of available notes, summaries and tool activity, and use the event links to verify details. Keep the wording and language of every captured message and trace record. Use `--locale` when the user requests a language for the file's navigation labels. Gemini currently provides visible messages and images, with page-based coverage.
+
 ## Keep everything in one folder
 
 By default Convo Vault writes outside the project: its config to `~/.convo-vault`, the skill to `~/.claude/skills` and `~/.codex/skills`, and exports to `~/Downloads/convo-vault`. To keep it all in one folder (for example when you are sandboxed to your working folder):

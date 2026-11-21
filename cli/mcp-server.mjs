@@ -31,6 +31,7 @@ const TOOLS = [
         url: { type: "string", description: "Conversation link like https://chatgpt.com/c/<id>, https://grok.com/c/<id> or https://gemini.google.com/app/<id>, or a bare ChatGPT conversation id." },
         out_dir: { type: "string", description: "Folder to save into. Default: ~/Downloads/convo-vault." },
         pdf: { type: "boolean", description: "Set false to skip the PDF and export data only (faster). Default true." },
+        locale: { type: "string", description: "Label language, such as fr-CA, ja or zh-Hant. Set it when the user wants a particular language. Original conversation and trace text stay as recorded." },
         files: { type: "boolean", description: "Set true to also download the files uploaded to and generated in the conversation (Word, PDF, zip...) into assets/files/. Default false: ask the user first; if they do not clearly say yes, leave it off." },
         files_kind: { type: "string", enum: ["generated", "uploaded"], description: "Download only one side's files: generated (what ChatGPT made) or uploaded (what the user attached). Implies files. Use it when the user asks for only one of the two." }
       },
@@ -88,6 +89,7 @@ async function callTool(name, args) {
     const cliArgs = ["export", String(args.url || "")];
     if (args.out_dir) cliArgs.push("--out", String(args.out_dir));
     if (args.pdf === false) cliArgs.push("--no-pdf");
+    if (args.locale) cliArgs.push("--locale", String(args.locale));
     if (args.files_kind === "generated" || args.files_kind === "uploaded") cliArgs.push("--files-kind", args.files_kind);
     else if (args.files === true) cliArgs.push("--files");
     const id = randomBytes(6).toString("hex");

@@ -11,7 +11,8 @@ Every fixture is registered in `export-regression-cases.json` with:
 - `purpose`: why this sample exists.
 - `coverage`: stable tags for the behavior it protects.
 - `expectedLang`: the expected document language after normalization. Use `und`
-  when the source has no explicit language metadata.
+  when the source has no explicit language metadata. Decision-path label
+  locale is separate and does not set the document language.
 - `expectedCounts`: message, role, QA-pair, code-block, and table counts.
 - `expectedOutputObjects`: optional object counts for non-plain-text content
   such as formulas, diagrams, media, file references, citations, and
@@ -28,8 +29,8 @@ The fixture tests check three layers:
   caught before renderer output is blamed.
 - Renderer contract: the advanced PDF HTML output must preserve language,
   fallback fonts, `dir="auto"`, and fixture text.
-- Backend contract: `/render-markdown` and `/render-data` must preserve the
-  same fixture text and produce self-consistent data sidecars.
+- Backend contract: the Markdown and data builders preserve the fixture text,
+  and `/prepare-render-bundle` packages those sidecars in the ZIP.
 
 ## Failure Attribution
 

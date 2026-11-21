@@ -24,6 +24,9 @@ import { installClaudeDesktopMcp, mcpSnippets } from "./lib/mcp.mjs";
 import { installSkill, skillStatus } from "./lib/skill.mjs";
 import { extractZip, readZip } from "./lib/zip-reader.mjs";
 import { writeDebugPack } from "./lib/debug-pack.mjs";
+import exportLocale from "../renderer/lib/export-locale.js";
+
+const { normalizeExportLocale } = exportLocale;
 
 const CLAIM_TIMEOUT_MS = 25_000;
 const EXPORT_TIMEOUT_MS = 15 * 60_000;
@@ -37,7 +40,7 @@ Usage:
   convo-vault export <chatgpt-grok-or-gemini-url|conversation-id>... [options]
   convo-vault export --project NAME [options]
   convo-vault list [--project NAME|ID|URL] [--limit N] [--json]
-  convo-vault setup [--verify] [--agents auto|claude|codex|all] [--browser NAME] [--no-open] [--no-skill]
+  convo-vault setup [--verify] [--agents auto|claude|codex|all] [--browser NAME] [--locale LANG] [--no-open] [--no-skill]
   convo-vault verify [--browser NAME]
   convo-vault update
   convo-vault reload [--browser NAME]
@@ -53,6 +56,7 @@ Export options:
                        (default: the one that worked last time)
   --no-extract         Keep only the .zip
   --no-pdf             Data only: skip the PDF (faster, needs no headless Chrome)
+  --locale LANG        Export label language, e.g. fr-CA, ja, zh-Hant or auto. Original text is preserved.
   --files              Also download uploaded and generated files (Word, PDF, zip...) into assets/files/
   --files-kind KIND    Only one side's files: generated (what ChatGPT made) or uploaded (what you attached).
                        On its own it applies to every conversation; with --files-for, only to those.
@@ -97,7 +101,7 @@ try {
 function parseArgs(args) {
   const positional = [];
   const flags = {};
-  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "filesKind", "limit", "from"]);
+  const valued = new Set(["out", "browser", "timeout", "agents", "client", "dir", "project", "filesFor", "filesKind", "limit", "from", "locale"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -117,6 +121,30 @@ function parseArgs(args) {
   }
 
   return { positional, flags };
+}
+
+function validateExportLocale(value) {
+  if (value === undefined || value === "auto") return value;
+  const locale = normalizeExportLocale(value);
+  if (!locale) throw new Error("--locale needs a language tag, such as es, fr-CA, zh-Hant, or auto.");
+  return locale;
+}
+
+function exportLanguageOptions(flags, config) {
+  const selected = flags.locale ?? config.exportLocale;
+  return {
+    language: normalizeExportLocale(selected),
+    fallbackLanguage: normalizeExportLocale(config.recentExportLocale)
+  };
+}
+
+async function rememberExportLanguage(language, previousLanguage) {
+  if (!language || language === previousLanguage) return;
+  try {
+    await writeConfig({ recentExportLocale: language });
+  } catch (error) {
+    log(`The export was saved, but the recent language could not be remembered: ${error.message}`);
+  }
 }
 
 // ChatGPT accepts /c/<id> on chatgpt.com and the older chat.openai.com, also under /g/... projects.
@@ -168,6 +196,7 @@ async function exportConversation(input, flags) {
       allowIncomplete: flags.allowIncomplete === true,
       closeTab: flags.keepTab !== true,
       pdf: flags.pdf !== false,
+      ...exportLanguageOptions(flags, config),
       files: filesJobOption(flags, false)
     });
     log(`Opening the conversation in ${browser?.name || "the default browser"}...`);
@@ -193,6 +222,7 @@ async function exportConversation(input, flags) {
 
   const job = await waitForDone(jobId, timeoutMs);
   const saved = await saveJobBundle(jobId, job, outDir, flags);
+  await rememberExportLanguage(saved.labelLocale, config.recentExportLocale);
 
   console.log(`Exported: ${conversationUrl}`);
   printSaved(saved, "");
@@ -214,21 +244,24 @@ async function saveJobBundle(jobId, job, outDir, flags) {
     files = (await fs.readdir(folder)).sort();
   }
 
-  return { zipPath, folder, files, images: countBundleImages(zip) };
+  return { zipPath, folder, files, ...inspectSavedBundle(zip) };
 }
 
-// Images embedded and not downloaded, from the bundle's payload, so a missing one is never silent.
-function countBundleImages(zip) {
+// Read the label preference and image counts from the saved payload.
+function inspectSavedBundle(zip) {
   const entry = zip.entries.find((item) => /\.payload\.json$/.test(item.name) && !item.name.includes("/"));
-  if (!entry) return null;
+  if (!entry) return {};
   try {
-    const messages = JSON.parse(zip.data(entry).toString("utf8")).messages || [];
+    const { labelLocale, messages = [] } = JSON.parse(zip.data(entry).toString("utf8"));
     return {
-      embedded: messages.reduce((sum, message) => sum + (Number(message.imagesEmbedded) || 0), 0),
-      failed: messages.reduce((sum, message) => sum + (Number(message.imagesFailed) || 0), 0)
+      labelLocale: normalizeExportLocale(labelLocale),
+      images: {
+        embedded: messages.reduce((sum, message) => sum + (Number(message.imagesEmbedded) || 0), 0),
+        failed: messages.reduce((sum, message) => sum + (Number(message.imagesFailed) || 0), 0)
+      }
     };
   } catch {
-    return null;
+    return {};
   }
 }
 
@@ -246,6 +279,7 @@ function printSaved({ zipPath, folder, files, images }, indent) {
 // `export` takes one link (the original path), several links, or a whole project. Several
 // conversations run in ONE browser tab, one after another, so nothing pops up per conversation.
 async function exportCommand(inputs, flags) {
+  flags = { ...flags, locale: validateExportLocale(flags.locale) };
   if (inputs.length === 1 && !flags.project && !flags.filesFor) {
     await exportConversation(inputs[0], flags);
     return;
@@ -338,6 +372,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
   }
 
   const jobs = [];
+  const languages = exportLanguageOptions(flags, config);
   for (const [index, target] of targets.entries()) {
     const files = filesJobOption(flags, matchesFilesFor(flags.filesFor, target));
     const jobId = await createJob({
@@ -346,6 +381,7 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
       // The tab stays open until the last conversation is done.
       closeTab: flags.keepTab !== true && index === targets.length - 1,
       pdf: flags.pdf !== false,
+      ...languages,
       files
     });
     jobs.push({ ...target, jobId, files });
@@ -392,6 +428,8 @@ async function exportBatch(targets, flags, origin = "https://chatgpt.com") {
   }
 
   const failed = outcomes.filter((outcome) => !outcome.ok);
+  const latestLanguage = outcomes.findLast((outcome) => outcome.saved?.labelLocale)?.saved.labelLocale;
+  await rememberExportLanguage(latestLanguage, config.recentExportLocale);
   console.log(`\nExported ${outcomes.length - failed.length} of ${outcomes.length} conversation(s).`);
   for (const outcome of failed) console.log(`  FAILED ${outcome.title || outcome.id}: ${outcome.error}`);
   if (failed.length) process.exitCode = 1;
@@ -516,6 +554,7 @@ async function uniquePath(target) {
 }
 
 async function setup(flags) {
+  const exportLocale = validateExportLocale(flags.locale);
   if (Number(process.versions.node.split(".")[0]) < 20) throw new Error(`Node 20+ is required (this is ${process.version}).`);
 
   if (backendDependenciesInstalled()) {
@@ -544,7 +583,11 @@ async function setup(flags) {
   }
   const skill = await installSkillBestEffort(flags);
   // The skill finds this project again through the recorded path.
-  await writeConfig({ repo: repoRoot, ...(browser ? { browser: browser.name } : {}) });
+  await writeConfig({
+    repo: repoRoot,
+    ...(browser ? { browser: browser.name } : {}),
+    ...(exportLocale ? { exportLocale } : {})
+  });
 
   console.log("");
   console.log("Convo Vault is ready.");

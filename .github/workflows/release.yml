@@ -76,7 +76,7 @@ jobs:
             $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
             name: `io.github.${owner}/convo-vault`,
             title: 'Convo Vault',
-            description: 'Export signed-in ChatGPT, Grok and Gemini chats to local Markdown, PDF and JSON.',
+            description: 'Local ChatGPT, Grok and Gemini exports with original text and available reasoning records.',
             repository: { url, source: 'github' },
             version: tag.slice(1),
             packages: [{

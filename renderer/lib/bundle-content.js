@@ -9,6 +9,8 @@ const fs = require("fs");
 const path = require("path");
 const { buildOutputObjectIndex } = require("./assets");
 const { buildAgentTraceFile, buildAgentTraceMarkdown } = require("./agent-trace-files");
+const { buildDecisionPathMarkdown } = require("./decision-path");
+const { normalizeExportLocale } = require("./export-locale");
 const { getProvider } = require("./provider.js");
 
 function normalizePayload(body) {
@@ -16,6 +18,7 @@ function normalizePayload(body) {
   const messages = Array.isArray(payload.messages)
     ? payload.messages.map((message, index) => normalizePayloadMessage(message, index))
     : [];
+  const labelLocale = normalizeExportLocale(payload.labelLocale);
 
   return {
     schemaVersion: payload.schemaVersion || 1,
@@ -25,6 +28,7 @@ function normalizePayload(body) {
     source: payload.source || "",
     exportedAt: payload.exportedAt || new Date().toISOString(),
     language: payload.language || payload.locale || payload.documentLanguage || "",
+    ...(labelLocale ? { labelLocale } : {}),
     captureMode: payload.captureMode || "",
     messageCount: payload.messageCount || messages.length,
     ...(payload.fileDownload && typeof payload.fileDownload === "object" ? { fileDownload: payload.fileDownload } : {}),
@@ -77,6 +81,7 @@ function writeDataSidecars(directory, baseName, payload, options = {}) {
     [`${baseName}.conversation.json`, JSON.stringify(bundle.conversation, null, 2)],
     [`${baseName}.agent-trace.json`, JSON.stringify(bundle.agentTrace, null, 2)],
     [`${baseName}.agent-trace.md`, bundle.agentTraceMarkdown],
+    [`${baseName}.decision-path.md`, buildDecisionPathMarkdown(bundle.agentTrace, baseName, payload.labelLocale || payload.language)],
     [`${baseName}.messages.jsonl`, bundle.messagesJsonl],
     [`${baseName}.qa-pairs.json`, JSON.stringify(bundle.qaPairs, null, 2)],
     [`${baseName}.topics.json`, JSON.stringify(bundle.topics, null, 2)],
@@ -105,6 +110,7 @@ function buildDataBundle(payload, options = {}) {
     exportedAt: payload.exportedAt || new Date().toISOString(),
     generatedAt: new Date().toISOString(),
     language: payload.language || "",
+    ...(payload.labelLocale ? { labelLocale: payload.labelLocale } : {}),
     captureMode: payload.captureMode || "",
     messageCount: messages.length,
     roles: countBy(messages, (message) => message.role),

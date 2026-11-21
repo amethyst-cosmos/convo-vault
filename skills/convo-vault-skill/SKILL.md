@@ -49,6 +49,7 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 - Output goes to `~/Downloads/convo-vault/` unless the user names a place: add `--out "<dir>"`.
 - Add `--files` only when the user said yes in step 2. It downloads uploaded and generated files into `assets/files/` with the browser's ChatGPT session and records size and SHA-256 in the manifest. Files that cannot be downloaded (ChatGPT has already deleted the conversation's sandbox, a file over 64 MB, more than 120 MB in one export) are listed with the reason; the export itself still succeeds.
 - Add `--no-pdf` when the user only wants the data (Markdown, JSON, JSONL): it is faster and needs no PDF renderer.
+- If the user has requested a language for the export labels, pass `--locale` with its language tag, such as `ja` or `fr-CA`. Otherwise leave language selection to the saved preference and active interface. Preserve the original conversation and trace text.
 - The local renderer starts and stops by itself (it exits two minutes after the last export). Never ask the user to start or close a terminal for it.
 - Several conversations: pass them all to ONE command, `export <link> <link> ...` (ids work too). They run in a single browser tab, one after another, so nothing pops up per conversation; the output lists each result and any failure, and the exit code is 1 if any failed. Never start several export commands at once.
 - A whole project: `export --project "Research"` exports every conversation in it (add links to include others).
@@ -57,7 +58,7 @@ node "{{SKILL_DIR}}/scripts/run.mjs" export "<url-or-id>"
 
 ## 4. After it finishes
 
-- Give the output folder and the key files, including `*.agent-trace.md` and `*.agent-trace.json` for the reasoning records available in ChatGPT or Grok. Check the trace coverage before describing a conversation as having a reasoning record. Gemini's separate thinking panel is currently outside the export.
+- Give the output folder and the key files. Use `*.decision-path.md` to orient the reader, and `*.agent-trace.md` or `*.agent-trace.json` for the complete captured records. Check coverage before describing a conversation as having a reasoning record. Gemini's separate thinking panel is currently outside the export.
 - If files were requested, report how many were stored and how many failed (`fileDownload` in `*.assets.manifest.json`: `requested`, `total`, `stored`, `failed`), and name the main failure reason. If files were not requested but the manifest lists some, you may tell the user they can ask for them and re-run with `--files`.
 - If the user wanted something done with the conversation (summarize, continue the work, extract decisions), read the `.md` or `*.messages.jsonl` from the folder and do it. Do not paste the whole conversation back.
 - The integrity gate can refuse an incomplete capture. Report that message to the user. Do not retry with `--allow-incomplete` unless they say they accept a partial export.
